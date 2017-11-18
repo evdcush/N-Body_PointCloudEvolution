@@ -99,12 +99,12 @@ def volumize_arrow(datain,# n x 3
         mlab.show()
 
 
-j = 19 # sample
+j = 3 # sample
 
 #data_dir = '../Evaluation/'
 data_dir = '../Models/'
-model_name = 'set0_16_1_32_1000_01'
-
+#model_name = 'set0_16_1_32_1000_01'
+model_name = 'coovelset1_16_1_32_1000_01'
 x_input = np.load(data_dir + model_name + 'train_input.npy')
 x_truth = np.load(data_dir + model_name + 'train_truth.npy')
 x_pred  = np.load(data_dir + model_name + 'train_pred.npy')
@@ -127,10 +127,10 @@ sfactor = .005
 arrow_true  = (x_input[j,mask_nz,:3], x_truth[j,mask_nz,:3] - x_input[j,mask_nz,:3])
 arrow_input = (x_input[j,mask_nz,:3], x_input[j,mask_nz,3:])
 arrow_pred  = (x_input[j,mask_nz,:3], x_pred[j, mask_nz,:3] - x_input[j,mask_nz,:3])
-#volumize_arrow(*arrow_true,  figure=fig, color=red,   opacity=.3, show=False, mode=arrow_mode)
-#volumize_arrow(*arrow_input, figure=fig, color=green, opacity=.3, show=False, mode=arrow_mode)
-#volumize_arrow(*arrow_pred,  figure=fig, color=blue,  opacity=.3, show=True,  mode=arrow_mode)
-volumize_ptc(x_truth[j,:,:3], show=False,figure=fig, opacity=.9, color=red,  mode='point', scale_factor=sfactor)
-volumize_ptc(x_input[j,:,:3], show=False,figure=fig, opacity=.9, color=green,mode='point', scale_factor=sfactor)
-volumize_ptc( x_pred[j,:,:3], show=True, figure=fig, opacity=.9, color=blue, mode='point', scale_factor=sfactor)
+volumize_arrow(*arrow_true,  figure=fig, color=red,   opacity=.3, show=False, mode=arrow_mode)
+volumize_arrow(*arrow_input, figure=fig, color=green, opacity=.3, show=False, mode=arrow_mode)
+volumize_arrow(*arrow_pred,  figure=fig, color=blue,  opacity=.3, show=True,  mode=arrow_mode)
+#volumize_ptc(x_truth[j,:,:3], show=False,figure=fig, opacity=.9, color=red,  mode='point', scale_factor=sfactor)
+#volumize_ptc(x_input[j,:,:3], show=False,figure=fig, opacity=.9, color=green,mode='point', scale_factor=sfactor)
+#volumize_ptc( x_pred[j,:,:3], show=True, figure=fig, opacity=.9, color=blue, mode='point', scale_factor=sfactor)
 
