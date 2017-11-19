@@ -1,5 +1,6 @@
 # User ignore:
 Models/
+Evaluation/
 
 # # # # BEGIN PYTHON IGNORE
 # Byte-compiled / optimized / DLL files
