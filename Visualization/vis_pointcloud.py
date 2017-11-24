@@ -99,13 +99,13 @@ def volumize_arrow(datain,# n x 3
         mlab.show()
 
 
-j = 3 # sample
+j = 6 # sample
 
 #data_dir = '../Evaluation/'
 data_dir = '../Models/'
 #model_name = 'set0_16_1_32_1000_01'
 #model_name = 'coovelset3_16_1_16_1000_01_'
-model_name = 'set1_216_2_32_2000_01_'
+model_name = 'graph_16_1_8_2000_01_'
 x_input = np.load(data_dir + model_name + 'train_input.npy')
 x_truth = np.load(data_dir + model_name + 'train_truth.npy')
 x_pred  = np.load(data_dir + model_name + 'train_pred.npy')
@@ -135,7 +135,7 @@ least = np.argmin(np.abs(displacement))
 arrow_true  = (x_input[j,mask_nz,:3], x_truth[j,mask_nz,:3] - x_input[j,mask_nz,:3])
 arrow_input = (x_input[j,mask_nz,:3], x_input[j,mask_nz,3:])
 arrow_pred  = (x_input[j,mask_nz,:3], x_pred[j, mask_nz,:3] - x_input[j,mask_nz,:3])
-#volumize_arrow(*arrow_true,  figure=fig, color=red,   opacity=.3, show=False, mode=arrow_mode)
+volumize_arrow(*arrow_true,  figure=fig, color=red,   opacity=.3, show=False, mode=arrow_mode)
 volumize_arrow(*arrow_input, figure=fig, color=green, opacity=.3, show=False, mode=arrow_mode)
 volumize_arrow(*arrow_pred,  figure=fig, color=blue,  opacity=.3, show=True,  mode=arrow_mode)
 #volumize_ptc(x_truth[j,:,:3], show=False,figure=fig, opacity=.9, color=red,  mode='point', scale_factor=sfactor)
