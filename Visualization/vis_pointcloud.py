@@ -99,19 +99,19 @@ def volumize_arrow(datain,# n x 3
         mlab.show()
 
 
-j = 6 # sample
+j = 600 # sample
 
 model_name = 'graph_16_bi_8_2000_01_'
 
-#data_dir = '../Evaluation/'
-#x_input = np.load(data_dir + '04-00' +'_input.npy')
-#x_truth = np.load(data_dir + model_name + '_truth.npy')
-#x_pred  = np.load(data_dir + model_name + '_pred.npy')
+data_dir = '../Evaluation/'
+x_input = np.load(data_dir + model_name +'_input.npy')
+x_truth = np.load(data_dir + model_name + '_truth.npy')
+x_pred  = np.load(data_dir + model_name + '_pred.npy')
 
-data_dir = '../Models/'
-x_input = np.load(data_dir + model_name + 'train_input.npy')
-x_truth = np.load(data_dir + model_name + 'train_truth.npy')
-x_pred  = np.load(data_dir + model_name + 'train_pred.npy')
+#data_dir = '../Models/'
+#x_input = np.load(data_dir + model_name + 'train_input.npy')
+#x_truth = np.load(data_dir + model_name + 'train_truth.npy')
+#x_pred  = np.load(data_dir + model_name + 'train_pred.npy')
 
 
 xtmp = x_input[j,:,:3]
