@@ -1,4 +1,7 @@
 import numpy as np
+import cupy
+import chainer
+from chainer import cuda
 import glob
 import struct
 import code
@@ -90,3 +93,13 @@ def next_minibatch(in_list,batch_size):
         tmp[:,:,:3] = tmploc
         out.append(tmp)
     return out
+
+def to_variable(lst_data, use_gpu=True):
+    xp = cupy if use_gpu else np
+    chainer_vars = []
+    for data in lst_data:
+        data = data.astype(xp.float32)
+        if use_gpu: data = cuda.to_gpu(data)
+        data_var = chainer.Variable(data)
+        chainer_vars.append(data_var)
+    return chainer_vars
