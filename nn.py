@@ -23,8 +23,7 @@ class SetLinear(chainer.Chain):
         # Linear link wraps Wx+b function
         # can specify weight-init function with initialW=chainer.initializers.*
 
-    def __call__(self, x, alist=None, n_NN=None, add=False):
-        # alist and n_NN placeholders, not to be used here
+    def __call__(self, x, add=False):
         mb_size, N, D = x.shape
         k_in, k_out  = self.kdim
         x_mean = F.broadcast_to(F.mean(x, axis=1, keepdims=True),x.shape)
@@ -51,9 +50,11 @@ class GraphSubset(chainer.Chain):
             setlayer2 = SetLinear(kdim, nobias=nobias),
             )
         
-    def __call__(self, X_in, alist, n_NN, add=False):
+    def __call__(self, X_in, alist, add=False):
         # CAREFUL WITH SKIP CONNECTION REDUNDANCY
-        x0 = F.mean(graph_ops.nneighbors_graph(X_in, alist, n_NN), axis=2)
+        #ngraph = graph_ops.nneighbors_graph(X_in, alist, n_NN) # (b, N, n_NN, D)
+        x0 = alist(X_in)
+        #x0 = F.mean(ngraph, axis=2)
         x1 = self.setlayer1(X_in)
         x2 = self.setlayer2(x0)
         x_out = x1 + x2
