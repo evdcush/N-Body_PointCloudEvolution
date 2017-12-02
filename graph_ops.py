@@ -44,9 +44,12 @@ def get_rad_alist(X_in, rad):
         graph_idx = radius_neighbors_graph(X_in[b,:,:3], rad, include_self=True)
         #gidx = graph_idx.toarray().astype(np.bool)
         gidx = graph_idx.toarray().astype(np.float32)
+        #gidx = gidx / np.sum(gidx, axis=-1, keepdims=True)
         X_out[b] = gidx
     X_out = chainer.Variable(cuda.to_gpu(X_out))
+    X_out = F.scale(X_out, 1/F.sum(X_out, axis=-1),axis=0)
     return X_out
+
 
 def get_alist(X_in, p, search_type):
     x_in = cuda.to_cpu(X_in.data)
@@ -55,18 +58,6 @@ def get_alist(X_in, p, search_type):
     else:
         return get_k_alist(x_in, p)
 
-# adjacency list to proper index list for get_item
-def alist_to_indexlist(alist):
-    """ tiles batch indices to adjacency list for tf.gather
-    """
-    b, n, k = alist.shape
-    #b = alist.shape[0] # batch size
-    #n = alist.shape[1] # set size
-    #k = alist.shape[2] # number of nn
-    id1 = np.reshape(np.arange(b),[b,1])
-    id1 = np.tile(id1,n*k).flatten()
-    out = np.stack([id1,alist.flatten()],axis=1)
-    return out
 
 def nneighbors_graph(X_in, alist, n_NN=30):
     """ gets nneighbors for data, indexing from adjacency list indices
