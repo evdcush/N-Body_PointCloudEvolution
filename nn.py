@@ -64,7 +64,7 @@ class GraphSubset(chainer.Chain):
 #=============================================================================
 # Loss related ops
 #=============================================================================
-def loss_fun(readout, x_true, bound=None):
+def loss_fun(readout, x_true):
     # loss part
     x_true_loc = x_true[...,:3]
     dist = F.minimum(F.square(readout - x_true_loc), F.square(readout - (1 + x_true_loc)))
@@ -81,7 +81,7 @@ def get_bounded(x, bound, xp=cupy):
     bounded = xp.all(gt & lt, axis=-1) # shape should be (mb_size, 4096)
     return bounded
 
-def loss_fun_bounded(readout, x_true, bound=0.1):
+def loss_fun_bounded(readout, x_true, bound):
     # loss part
     x_true_loc = x_true[...,:3]
     bounding_idx = get_bounded(x_true_loc, bound)
