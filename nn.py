@@ -50,13 +50,13 @@ class GraphSubset(chainer.Chain):
             setlayer2 = SetLinear(kdim, nobias=nobias),
             )
         
-    def __call__(self, X_in, alist, add=False):
+    def __call__(self, X_in, graphNN, add=False):
         # CAREFUL WITH SKIP CONNECTION REDUNDANCY
         #ngraph = graph_ops.nneighbors_graph(X_in, alist, n_NN) # (b, N, n_NN, D)
-        x0 = alist(X_in)
+        nn_graph = graphNN(X_in)
         #x0 = F.mean(ngraph, axis=2)
         x1 = self.setlayer1(X_in)
-        x2 = self.setlayer2(x0)
+        x2 = self.setlayer2(nn_graph)
         x_out = x1 + x2
         if add and self.kdim[0] == self.kdim[1]: x_out += X_in # is this the right place to have skips
         return x_out

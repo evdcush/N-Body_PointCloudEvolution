@@ -2,14 +2,11 @@ import chainer
 import chainer.links as L
 import chainer.functions as F
 import nn
-from graph_ops import AdjacencyList
-
 
 class nBodyModel(chainer.Chain):
-    def __init__(self, channels, nn_search_type=None):
+    def __init__(self, channels, use_graph=False):
         self.channels = ch = channels
-        self.use_graph = (nn_search_type is not None)
-        self.nn_search_type = nn_search_type # otherwise ('rad', radius) or ('knn', k)
+        self.use_graph = use_graph
         ch = [(ch[i],ch[i+1]) for i in range(0,len(ch)-1)]
 
         super(nBodyModel, self).__init__()
@@ -34,9 +31,7 @@ class nBodyModel(chainer.Chain):
         readout = final
         return readout
 
-    def fwd_graph(self, x, activation, add=False):
-        search_type, p = self.nn_search_type
-        alist = AdjacencyList(x, search_type, p)
+    def fwd_graph(self, x, activation, alist, add=False):
         h = activation(self.H1(x, alist))
         for i in range(2, len(self.channels)):
             cur_layer = getattr(self, 'H' + str(i))
@@ -54,9 +49,13 @@ class nBodyModel(chainer.Chain):
                 h = activation(h)
         return h
                 
-    def __call__(self, x, activation=F.relu, add=True, bounded=False):
-        fwd = self.fwd_graph if self.use_graph else self.fwd_set
-        h = fwd(x, activation, add)
+    def __call__(self, x, activation=F.relu, graphNN=None, add=True, bounded=False):
+        if self.use_graph:
+            h = self.fwd_graph(x, activation, graphNN, add=add)
+        else:
+            h = self.fwd_set(x, activation, add=add)
+        #fwd = self.fwd_graph if self.use_graph else self.fwd_set
+        #h = fwd(x, activation, add)
         if add: h += x[...,:3]
         if not bounded: h = self.get_readout(h)
         return h
