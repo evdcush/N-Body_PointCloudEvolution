@@ -81,14 +81,17 @@ def get_bounded(x, bound, xp=cupy):
     bounded = xp.all(gt & lt, axis=-1) # shape should be (mb_size, 4096)
     return bounded
 
-def loss_fun_bounded(readout, x_true, bound):
+def loss_fun_bounded(x_hat, x_true, bound):
     # loss part
+    readout = x_hat[...,:3]
     x_true_loc = x_true[...,:3]
     bounding_idx = get_bounded(x_true_loc, bound)
     bdreadout = F.get_item(readout, bounding_idx)
     bdx_true_loc = F.get_item(x_true_loc, bounding_idx)
     dist_mse = F.mean(F.sum(F.square(bdreadout - bdx_true_loc), axis=-1))
     return dist_mse
+
+
 
 def loss_fun_bounded2(readout, x_true, bound=0.1):
     # loss part

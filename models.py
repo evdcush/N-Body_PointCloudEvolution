@@ -56,6 +56,9 @@ class nBodyModel(chainer.Chain):
             h = self.fwd_set(x, activation, add=add)
         #fwd = self.fwd_graph if self.use_graph else self.fwd_set
         #h = fwd(x, activation, add)
-        if add: h += x[...,:3]
+        if add: 
+            if h.shape[-1] == 3: h += x[...,:3]
+            else: h += x
+            #h += x[...,:3]
         if not bounded: h = self.get_readout(h)
         return h
