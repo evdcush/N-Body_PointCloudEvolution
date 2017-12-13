@@ -31,8 +31,8 @@ class nBodyModel(chainer.Chain):
         readout = final
         return readout
 
-    def fwd_graph(self, x, activation, alist, add=False):
-        h = activation(self.H1(x, alist))
+    def fwd_graph(self, x, activation, graphNN, add=False):
+        h = activation(self.H1(x, graphNN))
         for i in range(2, len(self.channels)):
             cur_layer = getattr(self, 'H' + str(i))
             h = cur_layer(h, alist, add=add)
@@ -59,6 +59,5 @@ class nBodyModel(chainer.Chain):
         if add: 
             if h.shape[-1] == 3: h += x[...,:3]
             else: h += x
-            #h += x[...,:3]
         if not bounded: h = self.get_readout(h)
         return h
