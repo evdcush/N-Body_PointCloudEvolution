@@ -35,7 +35,7 @@ class nBodyModel(chainer.Chain):
         h = activation(self.H1(x, graphNN))
         for i in range(2, len(self.channels)):
             cur_layer = getattr(self, 'H' + str(i))
-            h = cur_layer(h, alist, add=add)
+            h = cur_layer(h, graphNN, add=add)
             if i != len(self.channels)-1:
                 h = activation(h)
         return h
