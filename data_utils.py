@@ -5,6 +5,7 @@ from chainer import cuda
 import glob
 import struct
 import code
+import chainer.serializers as serializers
 import matplotlib
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -106,6 +107,19 @@ def to_variable(lst_data, use_gpu=True):
         data_var = chainer.Variable(data)
         chainer_vars.append(data_var)
     return chainer_vars
+
+def save_data_batches(batch_tuple, save_name):
+    x_in, xt, xh = batch_tuple
+    assert x_in.shape[0] == xt.shape[0] == xh.shape[0]
+    np.save(save_name + 'input', x_in)
+    np.save(save_name + 'truth', xt)
+    np.save(save_name + 'hat'  , xh)
+    print('data saved')
+
+def save_model(mopt_tuple, save_name):
+    model, opt = mopt_tuple
+    serializers.save_npz(save_name + '.model', model)
+    serializers.save_npz(save_name + '.state', opt)
 
 #=============================================================================
 # Plotting utils
