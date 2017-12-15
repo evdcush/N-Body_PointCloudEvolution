@@ -5,6 +5,9 @@ from chainer import cuda
 import glob
 import struct
 import code
+import matplotlib
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 '''
 Data utils
 '''
@@ -103,3 +106,22 @@ def to_variable(lst_data, use_gpu=True):
         data_var = chainer.Variable(data)
         chainer_vars.append(data_var)
     return chainer_vars
+
+def plot_3D_pointcloud(xt, xh, j, pt_size=.9, colors=('b','r'), fsize=(18,18), xin=None):
+    xt_x, xt_y, xt_z = np.split(xt[...,:3], 3, axis=-1)
+    xh_x, xh_y, xh_z = np.split(xh[...,:3], 3, axis=-1)
+    
+    fig = plt.figure(figsize=fsize)
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(xt_x[j], xt_y[j], xt_z[j], s=pt_size, c=colors[0])
+    ax.scatter(xh_x[j], xh_y[j], xh_z[j], s=pt_size, c=colors[1])
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    return fig
+
+
+
+
+

@@ -50,10 +50,14 @@ class VelocityBias(chainer.Chain):
     def __init__(self,):
         super(VelocityBias, self).__init__(
             theta = L.Linear(3, 3, nobias=True),
+            #theta = nn.SetLinear([3,3], nobias=True),
         )
 
     def __call__(self, x):
         mb_size, N, D = x.shape
+        #x_coo, x_vel = F.split_axis(x, 2, -1)
+        #x_out = x_coo + self.theta(x_vel)
+        #return x_out
         x_r = F.reshape(x, (mb_size*N, D))
         x_coo, x_vel = F.split_axis(x_r, 2, -1)
         vel_scaled   = self.theta(x_vel)
