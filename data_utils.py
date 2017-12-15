@@ -107,6 +107,9 @@ def to_variable(lst_data, use_gpu=True):
         chainer_vars.append(data_var)
     return chainer_vars
 
+#=============================================================================
+# Plotting utils
+#=============================================================================
 def plot_3D_pointcloud(xt, xh, j, pt_size=.9, colors=('b','r'), fsize=(18,18), xin=None):
     xt_x, xt_y, xt_z = np.split(xt[...,:3], 3, axis=-1)
     xh_x, xh_y, xh_z = np.split(xh[...,:3], 3, axis=-1)
@@ -120,6 +123,25 @@ def plot_3D_pointcloud(xt, xh, j, pt_size=.9, colors=('b','r'), fsize=(18,18), x
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
     return fig
+
+def plot_training_curve(y, cur_iter, yclip=.0004, c='b', poly=None, fsize=(16,10)):
+    fig = plt.figure(figsize=fsize)
+    ax = fig.add_subplot(111)
+    ax.set_xlabel('Iterations')
+    ax.set_ylabel('MSE')
+
+    cur = str(cur_iter)
+    yclipped = np.clip(y, 0, yclip)
+    plt.grid(True)
+    ax.plot(yclipped,c=c)
+    if poly is not None:
+        xvals = np.arange(cur_iter)
+        pfit = np.poly1d(np.polyfit(xvals, yclipped, poly))
+        ax.plot(poly(xvals), c='orange', linewidth=3)
+    title = 'Iteration: {0}, loss: {1:.4}'.format(cur_iter, y[-1])
+    ax.set_title(title)
+    return fig
+    
 
 
 
