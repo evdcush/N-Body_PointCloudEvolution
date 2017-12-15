@@ -64,14 +64,30 @@ class GraphSubset(chainer.Chain):
 #=============================================================================
 # Loss related ops
 #=============================================================================
-def loss_fun(readout, x_true):
-    # loss part
+
+def get_MSE(x_hat, x_true, boundary=0.095):
+    if boundary is None:
+        return get_min_readout_MSE(x_hat, x_true)
+    else:
+        return get_bounded_MSE(x_hat, x_true, boundary)
+
+def get_readout(x_hat):
+    readout = x_hat[...,:3]
+    gt_one  = (F.sign(readout - 1) + 1) // 2
+    ls_zero = -(F.sign(readout) - 1) // 2
+    rest = 1 - gt_one - ls_zero
+    readout_xhat = rest*readout + gt_one*(readout-1) + ls_zero*(1-readout)
+    return readout_xhat
+
+def get_min_readout_MSE(x_hat, x_true):
+    '''x_hat needs to be bounded'''
+    readout = get_readout(x_hat)
     x_true_loc = x_true[...,:3]
     dist = F.minimum(F.square(readout - x_true_loc), F.square(readout - (1 + x_true_loc)))
     dist = F.minimum(dist, F.square((1 + readout) - x_true_loc))
-    # l2-dist
-    loss = F.mean(F.sum(dist, axis=-1))
-    return loss
+    mse = F.mean(F.sum(dist, axis=-1))
+    return mse
+
 
 def get_bounded(x, bound, xp=cupy):
     #gtb, ltb = bound, 1-bound
@@ -81,27 +97,12 @@ def get_bounded(x, bound, xp=cupy):
     bounded = xp.all(gt & lt, axis=-1) # shape should be (mb_size, 4096)
     return bounded
 
-def loss_fun_bounded(x_hat, x_true, bound):
-    # loss part
-    readout = x_hat[...,:3]
+
+def get_bounded_MSE(x_hat, x_true, boundary):
+    x_hat_loc  = x_hat[...,:3]
     x_true_loc = x_true[...,:3]
-    bounding_idx = get_bounded(x_true_loc, bound)
-    bdreadout = F.get_item(readout, bounding_idx)
-    bdx_true_loc = F.get_item(x_true_loc, bounding_idx)
-    dist_mse = F.mean(F.sum(F.square(bdreadout - bdx_true_loc), axis=-1))
-    return dist_mse
-
-
-
-def loss_fun_bounded2(readout, x_true, bound=0.1):
-    # loss part
-    x_true_loc = x_true[...,:3]
-    bounded = get_bounded(x_true_loc, bound)
-    unbounded = F.sum(F.square(readout - x_true_loc), axis=-1)
-    zeros = xp.zeros_like(unbounded)
-    bounded_diff = F.where(bounded, unbounded, zeros)
-    dist_mse = F.mean(bounded_diff)
-    return dist_mse
-
-def foo(xp=cupy):
-    print('cupy: {}'.format(cupy))
+    bounding_idx = get_bounded(x_true_loc, boundary)
+    bounded_hat  = F.get_item(x_hat_loc, bounding_idx)
+    bounded_true = F.get_item(x_true_loc, bounding_idx)
+    mse = F.mean(F.sum(F.squared_difference(bounded_hat, bounded_true), axis=-1))
+    return mse
