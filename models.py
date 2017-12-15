@@ -44,3 +44,18 @@ class nBodyModel(chainer.Chain):
             if h.shape[-1] == 3: h += x[...,:3]
             else: h += x
         return h
+
+
+class VelocityBias(chainer.Chain):
+    def __init__(self,):
+        super(VelocityBias, self).__init__(
+            theta = L.Linear(3, 3, nobias=True),
+        )
+
+    def __call__(self, x):
+        mb_size, N, D = x.shape
+        x_r = F.reshape(x, (mb_size*N, D))
+        x_coo, x_vel = F.split_axis(x_r, 2, -1)
+        vel_scaled   = self.theta(x_vel)
+        x_out = x_coo + vel_scaled
+        return F.reshape(x_out, (mb_size, N, x_out.shape[-1]))
