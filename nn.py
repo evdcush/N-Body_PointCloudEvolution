@@ -116,19 +116,12 @@ def get_min_readout_MSE(x_hat, x_true):
 
 
 def get_bounded(x, bound, xp=cupy):
-    #gtb, ltb = bound, 1-bound
-    lower, upper = bound, 1-bound
-    gt = lower < x.data
-    lt = x.data < upper
-    bounded = xp.all(gt & lt, axis=-1) # shape should be (mb_size, 4096)
-    return bounded
-
+    return xp.all(xp.logical_and(bound<x.data, x.data<1-bound),axis=-1)
 
 def get_bounded_MSE(x_hat, x_true, boundary):
     x_hat_loc  = x_hat[...,:3]
     x_true_loc = x_true[...,:3]
-    bounding_idx = get_bounded(x_true_loc, boundary)
-    bounded_hat  = F.get_item(x_hat_loc, bounding_idx)
-    bounded_true = F.get_item(x_true_loc, bounding_idx)
-    mse = F.mean(F.sum(F.squared_difference(bounded_hat, bounded_true), axis=-1))
-    return mse
+    bidx = get_bounded(x_true_loc, boundary)
+    bhat  = F.get_item(x_hat_loc, bidx)
+    btrue = F.get_item(x_true_loc, bidx)
+    return F.mean(F.sum(F.squared_difference(bhat, btrue), axis=-1))
