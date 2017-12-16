@@ -99,14 +99,15 @@ def volumize_arrow(datain,# n x 3
         mlab.show()
 
 
-j = 600 # sample
+j = 6 # sample
 
-model_name = 'graph_16_bi_8_2000_01_'
+#model_name = 'velmodel_16_8_1000_01_'
+model_name = 'graphmodel_1.2-0.0_16_8_2000_01_'
 
-data_dir = '../Evaluation/'
-x_input = np.load(data_dir + model_name +'_input.npy')
-x_truth = np.load(data_dir + model_name + '_truth.npy')
-x_pred  = np.load(data_dir + model_name + '_pred.npy')
+data_dir = '../Models/'
+x_input = np.load(data_dir + model_name +'train_input.npy')
+x_truth = np.load(data_dir + model_name + 'train_truth.npy')
+x_pred  = np.load(data_dir + model_name + 'train_hat.npy')
 
 #data_dir = '../Models/'
 #x_input = np.load(data_dir + model_name + 'train_input.npy')
@@ -115,7 +116,8 @@ x_pred  = np.load(data_dir + model_name + '_pred.npy')
 
 
 xtmp = x_input[j,:,:3]
-lower, upper = .1, 0.9
+bound = 0.1
+lower, upper = bound, 1-bound 
 mask1 = np.logical_and(xtmp[:,0] < upper, xtmp[:,0] > lower) 
 mask2 = np.logical_and(xtmp[:,1] < upper, xtmp[:,1] > lower) 
 mask3 = np.logical_and(xtmp[:,2] < upper, xtmp[:,2] > lower) 

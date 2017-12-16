@@ -53,7 +53,7 @@ class VelocityBias(chainer.Chain):
             #theta = nn.SetLinear([3,3], nobias=True),
         )
 
-    def __call__(self, x):
+    def __call__(self, x, activation=None, graphNN=None, add=None):
         mb_size, N, D = x.shape
         #x_coo, x_vel = F.split_axis(x, 2, -1)
         #x_out = x_coo + self.theta(x_vel)
