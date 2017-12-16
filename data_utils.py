@@ -49,6 +49,21 @@ def load_data(zA, zB, n_P):
     B = read_sim(Bpath, n_P)
     return A,B
 
+def load_datum(zA, n_P):
+    """ loads two redshift datasets from proper data directory
+
+    Args:
+        zA: (float) redshift
+        zB: (float) redshift
+        n_P: (int) base of number of particles (n_P**3 particles)
+    """
+    N_P = 10000 if n_P == 32 else 1000
+    Apath = glob.glob(DATA_PATH.format(N_P, 'xv', zA))
+    Bpath = glob.glob(DATA_PATH.format(N_P, 'xv', zB))
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    A = read_sim(Apath, n_P)
+    B = read_sim(Bpath, n_P)
+    return A,B
 
 def normalize(X_in):
     """ Normalize features
@@ -138,21 +153,22 @@ def plot_3D_pointcloud(xt, xh, j, pt_size=.9, colors=('b','r'), fsize=(18,18), x
     ax.set_zlabel('Z')
     return fig
 
-def plot_training_curve(y, cur_iter, yclip=.0004, c='b', poly=None, fsize=(16,10)):
+def plot_training_curve(y, cur_iter, yclip=.0004, c='b', poly=None, fsize=(16,10), title=None):
     fig = plt.figure(figsize=fsize)
     ax = fig.add_subplot(111)
     ax.set_xlabel('Iterations')
     ax.set_ylabel('MSE')
 
     cur = str(cur_iter)
-    yclipped = np.clip(y, 0, yclip)
+    yclipped = np.clip(y, 0, yclip) if yclip > 0 else y
     plt.grid(True)
     ax.plot(yclipped,c=c)
     if poly is not None:
         xvals = np.arange(cur_iter)
         pfit = np.poly1d(np.polyfit(xvals, yclipped, poly))
         ax.plot(poly(xvals), c='orange', linewidth=3)
-    title = 'Iteration: {0}, loss: {1:.4}'.format(cur_iter, y[-1])
+    if title is None:
+        title = 'Iteration: {0}, loss: {1:.4}'.format(cur_iter, y[-1])
     ax.set_title(title)
     return fig
     

@@ -3,6 +3,18 @@ import chainer.links as L
 import chainer.functions as F
 import nn
 
+"""
+class Model(chainer.Chain):
+    def __init__(self, channels):
+        self.channels = ch = channels
+        ch = [(ch[i],ch[i+1]) for i in range(0,len(ch)-1)]
+        super(Model, self).__init__()
+
+    def __call__(self, x, activation=F.relu, graphNN=Non)
+"""
+
+
+
 class nBodyModel(chainer.Chain):
     def __init__(self, channels, use_graph=False):
         self.channels = ch = channels
@@ -46,20 +58,12 @@ class nBodyModel(chainer.Chain):
         return h
 
 
-class VelocityBias(chainer.Chain):
-    def __init__(self,):
-        super(VelocityBias, self).__init__(
-            theta = L.Linear(3, 3, nobias=True),
-            #theta = nn.SetLinear([3,3], nobias=True),
+class ScaleVelocity(chainer.Chain):
+    def __init__(self, scalar=False):
+        j = 1 if scalar else 3
+        super(ScaleVelocity, self).__init__(
+            theta = L.Scale(axis=0, W_shape=(1,1,j)), # theta either scalar or (3,) vector
         )
 
     def __call__(self, x, activation=None, graphNN=None, add=None):
-        mb_size, N, D = x.shape
-        #x_coo, x_vel = F.split_axis(x, 2, -1)
-        #x_out = x_coo + self.theta(x_vel)
-        #return x_out
-        x_r = F.reshape(x, (mb_size*N, D))
-        x_coo, x_vel = F.split_axis(x_r, 2, -1)
-        vel_scaled   = self.theta(x_vel)
-        x_out = x_coo + vel_scaled
-        return F.reshape(x_out, (mb_size, N, x_out.shape[-1]))
+        return x[...,:3] + self.theta(x[...,3:])
