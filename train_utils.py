@@ -15,10 +15,7 @@ from chainer.iterators import SerialIterator
 
 #tupset = TupleDataset(x,y) # tupset[i] == x[i],y[i]
 
-class nBodyUpdater(training.Updater):
-    def __init__(self, foo):
-        super(nBodyUpdater, self).__init__()
-    def __next__(self,):
+
 
 
 
