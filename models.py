@@ -21,7 +21,9 @@ class nBodyModel(chainer.Chain):
         self.use_graph = use_graph
         ch = [(ch[i],ch[i+1]) for i in range(0,len(ch)-1)]
 
-        super(nBodyModel, self).__init__()
+        super(nBodyModel, self).__init__(
+            VelScalar = L.Scale(axis=0, W_shape=(1,1,1)),
+            )
         layer = nn.GraphSubset if self.use_graph else nn.SetLinear
         # instantiate model layers
         for i in range(len(ch)):
@@ -52,9 +54,9 @@ class nBodyModel(chainer.Chain):
         else:
             h = self.fwd_set(x, activation, add=add)
 
-        if add: 
-            if h.shape[-1] == 3: h += x[...,:3]
-            else: h += x
+        if add:
+            # assume h.shape[-1] == 3
+            h += x[...,:3] + self.VelScalar(x[...,3:])
         return h
 
 

@@ -5,6 +5,8 @@ import chainer.functions as F
 from chainer import cuda
 import cupy
 
+xp = cupy
+
 def adjacency_list_tf(X_in,k):
     shape_in = X_in.shape
     X_out = np.zeros([shape_in[0],shape_in[1],k],dtype=np.int32)
@@ -149,10 +151,10 @@ class KNN():
             graph_idx = kneighbors_graph(X_in[b,:,:3], n_NN, include_self=True).indices
             graph_idx = graph_idx.reshape([N,n_NN]) + (N * b)
             X_out[b] = graph_idx
-        return X_out
+        return cuda.to_gpu(X_out)
 
     def __call__(self, X):
-        alist = np.copy(self.alist)
+        alist = xp.copy(self.alist)
         mb_size, N, D = X.shape
         n_NN = alist.shape[-1]
         xr = F.reshape(X, (-1,D))
