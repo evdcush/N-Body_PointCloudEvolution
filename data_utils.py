@@ -81,6 +81,7 @@ def normalize(X_in, cupy_out=False):
         out = cuda.to_gpu(out.astype(np.float32))
     return out
 
+
 def next_minibatch(in_list,batch_size):
     if all(len(i) == len(in_list[0]) for i in in_list) == False:   
         raise ValueError('Inputs do not have the same dimension')
