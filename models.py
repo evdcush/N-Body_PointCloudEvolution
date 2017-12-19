@@ -27,6 +27,7 @@ class nBodyModel(chainer.Chain):
         layer = nn.GraphSubset if self.use_graph else nn.SetLinear
         # instantiate model layers
         for i in range(len(ch)):
+            #self.add_link('LN' + str(i+1), L.LayerNormalization())
             self.add_link('H' + str(i+1), layer(ch[i]))
     
 
@@ -43,8 +44,9 @@ class nBodyModel(chainer.Chain):
         h = activation(self.H1(x))
         for i in range(2, len(self.channels)):
             cur_layer = getattr(self, 'H' + str(i))
-            h = cur_layer(h, add=add)
+            h = cur_layer(h, add=add, final=(i == len(self.channels)-1))
             if i != len(self.channels)-1:
+                #cur_ln = getattr(self, 'LN' + str(i))
                 h = activation(h)
         return h
                 
