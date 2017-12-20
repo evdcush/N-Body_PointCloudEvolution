@@ -58,7 +58,11 @@ class nBodyModel(chainer.Chain):
 
         if add:
             # assume h.shape[-1] == 3
-            h += x[...,:3] #+ self.VelScalar(x[...,3:])
+            if h.shape[-1] != 3:
+                x_in_loc = self.xp.zeros_like((x.data))
+                x_in_loc[...,:3] += x.data[...,:3]
+                h += x_in_loc
+            else: h += x[...,:3] #+ self.VelScalar(x[...,3:])
         return h
 
 

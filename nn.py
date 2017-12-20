@@ -19,7 +19,7 @@ class SetLinear(chainer.Chain):
         self.kdim = kdim
         super(SetLinear, self).__init__(
             lin1 = L.Linear(kdim[0], kdim[1], nobias=nobias),
-            layer_norm = L.LayerNormalization()
+            #layer_norm = L.LayerNormalization()
             )
         # Linear link wraps Wx+b function
         # can specify weight-init function with initialW=chainer.initializers.*
@@ -32,7 +32,7 @@ class SetLinear(chainer.Chain):
         x_r = F.reshape(x - x_mean, (mb_size*N, k_in))
         x1 = self.lin1(x_r)
         if add and k_in == k_out: x1 += x_r # shouldn't this be += x ?
-        if not final: x1 = self.layer_norm(x1)
+        #if not final: x1 = self.layer_norm(x1)
         x_out = F.reshape(x1, (mb_size,N,k_out))  
         return x_out
 
@@ -127,3 +127,24 @@ def get_bounded_MSE(x_hat, x_true, boundary):
     bhat  = F.get_item(x_hat_loc, bidx)
     btrue = F.get_item(x_true_loc, bidx)
     return F.mean(F.sum(F.squared_difference(bhat, btrue), axis=-1))
+
+
+def get_combined_MSE(x_input, x_hat, x_true, boundary):
+    x_input_loc  = x_input[...,:3]
+    x_hat_loc = x_hat[...,:3]
+    x_true_loc = x_true[...,:3]
+    bidx = get_bounded(x_true_loc, boundary)
+    binput = F.get_item(x_input_loc, bidx)
+    bhat   = F.get_item(x_hat_loc, bidx)
+    btrue  = F.get_item(x_true_loc, bidx)
+
+    dist_in_true  = F.sum(F.squared_difference(binput, btrue), axis=-1)
+    dist_in_hat   = F.sum(F.squared_difference(binput,  bhat), axis=-1)
+    dist_hat_true = F.sum(F.squared_difference(bhat,   btrue), axis=-1)
+    input_dist = F.squared_difference(dist_in_true, dist_in_hat)
+    combined = F.mean(input_dist * dist_hat_true)
+    normal = F.mean(dist_hat_true.data).data
+
+    return combined, normal
+
+
