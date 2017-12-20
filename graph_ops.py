@@ -18,11 +18,12 @@ def adjacency_list_tf(X_in,k):
 
 
 class GraphNN():
-    def __init__(self, X_in, search_type, k):
-        self.search_type = search_type
+    """ Interface for knn and density-based neighbor graphs
+    """
+    def __init__(self, X_in, k):
         self.k = k
-        graph_init = DensityNN if search_type == 'rad' else KNN
-        self.graph = graph_init(X_in, k)
+        NNtype = DensityNN if isinstance(k, float) else KNN
+        self.graph = NNtype(X_in, k)
 
     def __call__(self, X):
         return self.graph(X)
@@ -31,9 +32,9 @@ class GraphNN():
 class DensityNN():
     def __init__(self, X_in, rad):
         self.k = rad
-        self.alist = self.get_alist(X_in)
+        self.adjacency_list = self.get_adjacency_list(X_in)
         
-    def get_alist(self, X_in):
+    def get_adjacency_list(self, X_in):
         '''
         how to deal with variable size neighborhood?
         gravity clumps will have large neighborhood, while isolated points will have small (possibly a single point)
@@ -44,32 +45,25 @@ class DensityNN():
         X_out = np.zeros([mb_size, N, N], dtype=np.float32)
         for b in range(mb_size):
             graph_idx = radius_neighbors_graph(X_in[b,:,:3], rad, include_self=True)
-            #gidx = graph_idx.toarray().astype(np.bool)
             gidx = graph_idx.toarray().astype(np.float32)
-            #gidx = gidx / np.sum(gidx, axis=-1, keepdims=True)
             X_out[b] = gidx
         X_out = chainer.Variable(cuda.to_gpu(X_out))
         X_out = F.scale(X_out, 1/F.sum(X_out, axis=-1),axis=0)
         return X_out
 
-    def __call__(self, X):
-        mb_size, N, D = X.shape
-        """
-        ar = F.broadcast_to(F.reshape(alist, (mb_size,N,N,1)), (mb_size,N,N,D))
-        xr = F.broadcast_to(F.reshape(X, (mb_size, 1, N, D)), (mb_size, N, N, D))
-        zeros = chainer.Variable(xp.zeros_like(ar.data).astype(xp.float32))
-        graph = F.where(ar, xr, zeros)
-        """
-        graph = F.batch_matmul(self.alist, X)
+    def __call__(self, x):
+        # NEED TO DO SPARSE OPS HERE
+        mb_size, N, D = x.shape
+        graph = F.batch_matmul(self.adjacency_list, x)
         return graph
         
 
 class KNN():
     def __init__(self, X_in, n_NN):
         self.k = n_NN
-        self.alist = self.get_alist(X_in)
+        self.adjacency_list = self.get_adjacency_list(X_in)
         
-    def get_alist(self, X_in):
+    def get_adjacency_list(self, X_in):
         """ search for k nneighbors, and return offsetted indices in adjacency list
         
         Args:
@@ -86,10 +80,10 @@ class KNN():
             X_out[b] = graph_idx
         return cuda.to_gpu(X_out)
 
-    def __call__(self, X):
-        alist = xp.copy(self.alist)
-        mb_size, N, D = X.shape
+    def __call__(self, x):
+        alist = xp.copy(self.adjency_list)
+        mb_size, N, D = x.shape
         n_NN = alist.shape[-1]
-        xr = F.reshape(X, (-1,D))
+        xr = F.reshape(x, (-1,D))
         graph = F.reshape(F.get_item(xr, alist.flatten()), (mb_size, N, n_NN, D))
         return F.mean(graph, axis=2)

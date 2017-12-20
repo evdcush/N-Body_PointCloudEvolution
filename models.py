@@ -3,15 +3,64 @@ import chainer.links as L
 import chainer.functions as F
 import nn
 
-"""
-class Model(chainer.Chain):
-    def __init__(self, channels):
-        self.channels = ch = channels
-        ch = [(ch[i],ch[i+1]) for i in range(0,len(ch)-1)]
-        super(Model, self).__init__()
 
-    def __call__(self, x, activation=F.relu, graphNN=Non)
-"""
+class Model(chainer.Chain):
+    """ Base model class, defines basic functionality all models
+    channels (list): len(channels) = num layers, channels[i] = ith channel size
+    """
+    def __init__(self, channels, nn_layer):
+        self.channels = ch = channels
+        self.num_layers = len(channels)
+        ch = [(ch[i],ch[i+1]) for i in range(0,len(ch)-1)] # builds in/out tuples
+        super(Model, self).__init__() # Chain inherits Link
+
+        # build network layers
+        for i in range(len(ch)):
+            self.add_link('H' + str(i+1), nn_layer(ch[i]))
+
+
+    def __call__(self, x, activation=F.relu, add=True):
+        h = activation(self.H1(x))
+        for i in range(2, self.num_layers):
+            cur_layer = getattr(self, 'H' + str(i))
+            h = cur_layer(h, add=add)
+            if i != len(self.channels)-1:
+                h = activation(h)
+        return h
+
+
+
+class GraphModel(Model):
+    def __init__(self, channels, K):
+        self.K = K
+        super(GraphModel, self).__init__(channels, nn.GraphSubset)
+
+    def __call__(self, x_in, add=True):
+        neighborhood_graph = graph_ops.GraphNN(x_in, self.K)
+        h = activation(self.H1(x, neighborhood_graph, add=add))
+        for i in range(2, self.num_layers):
+            cur_layer = getattr(self, 'H' + str(i))
+            h = cur_layer(h, neighborhood_graph, add=add)
+            if i != len(self.channels)-1:
+                h = activation(h)
+        return h
+
+class SetModel(Model):
+    def __init__(self, channels, K):
+        self.K = K
+        super(GraphModel, self).__init__(channels, nn.GraphSubset)
+
+    def __call__(self, x_in, add=True):
+        neighborhood_graph = graph_ops.GraphNN(x_in, self.K)
+        h = activation(self.H1(x, neighborhood_graph, add=add))
+        for i in range(2, self.num_layers):
+            cur_layer = getattr(self, 'H' + str(i))
+            h = cur_layer(h, neighborhood_graph, add=add)
+            if i != len(self.channels)-1:
+                h = activation(h)
+        return h
+
+
 
 
 
@@ -27,7 +76,6 @@ class nBodyModel(chainer.Chain):
         layer = nn.GraphSubset if self.use_graph else nn.SetLinear
         # instantiate model layers
         for i in range(len(ch)):
-            #self.add_link('LN' + str(i+1), L.LayerNormalization())
             self.add_link('H' + str(i+1), layer(ch[i]))
     
 
