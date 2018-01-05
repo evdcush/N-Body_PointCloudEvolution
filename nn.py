@@ -8,12 +8,6 @@ import numpy as np
 #=============================================================================
 # network layers
 #=============================================================================
-
-
-
-
-
-
 class SetLinear(chainer.Chain):
     """ Permutation equivariant linear layer for set data
 
@@ -24,17 +18,18 @@ class SetLinear(chainer.Chain):
     def __init__(self, kdim, nobias=False):
         self.kdim = kdim
         super(SetLinear, self).__init__(
-            lin1 = L.Linear(kdim[0], kdim[1], nobias=nobias),
+            lin = L.Linear(kdim[0], kdim[1], nobias=nobias),
             )
 
-    def __call__(self, x, add=False, final=False):
+    def __call__(self, x, add=False):
         mb_size, N, D = x.shape
         k_in, k_out  = self.kdim
-        x_mean = F.broadcast_to(F.mean(x, axis=1, keepdims=True),x.shape)
+        x_mean = F.broadcast_to(F.mean(x, axis=1, keepdims=True), x.shape)
         x_r = F.reshape(x - x_mean, (mb_size*N, k_in))
-        x1 = self.lin1(x_r)
-        if add and k_in == k_out: x1 += x_r # shouldn't this be += x ?
-        x_out = F.reshape(x1, (mb_size,N,k_out))  
+        x1 = self.lin(x_r)
+        if add and k_in == k_out:
+            x1 += x_r
+        x_out = F.reshape(x1, (mb_size,N,k_out))
         return x_out
 
 #=============================================================================
@@ -49,46 +44,19 @@ class GraphSubset(chainer.Chain):
     def __init__(self, kdim, nobias=True):
         self.kdim = kdim
         super(GraphSubset, self).__init__(
-            setlayer1 = SetLinear(kdim, nobias=nobias),
-            setlayer2 = SetLinear(kdim, nobias=nobias),
+            input_layer = SetLinear(kdim, nobias=nobias),
+            graph_layer = SetLinear(kdim, nobias=nobias),
             )
         
     def __call__(self, x_in, graphNN, add=False):
-        # CAREFUL WITH SKIP CONNECTION REDUNDANCY
-        #ngraph = graph_ops.nneighbors_graph(X_in, alist, n_NN) # (b, N, n_NN, D)
-        nn_graph = graphNN(x_in)
-        #x0 = F.mean(ngraph, axis=2)
-        x1 = self.setlayer1(x_in)
-        x2 = self.setlayer2(nn_graph)
-        x_out = x1 + x2
-        if add and self.kdim[0] == self.kdim[1]: x_out += x_in # is this the right place to have skips
+        neighborhood_graph = graphNN(x_in)
+        x_out     = self.input_layer(x_in)
+        graph_out = self.graph_layer(neighborhood_graph)
+        x_out += graph_out
+        if add and self.kdim[0] == self.kdim[1]:
+            x_out += x_in
         return x_out
 
-class GatedGraphSubset(chainer.Chain):
-    """ graph subset layer, consists of two sets of permutation
-        equivariant weights for graph and data
-    
-        Args:
-            kdim: channel size tuple (k_in, k_out)
-            nobias: if True, no bias weights used
-        """
-    def __init__(self, kdim, nobias=True):
-        self.kdim = kdim
-        super(GatedGraphSubset, self).__init__(
-            setlayer1 = SetLinear(kdim, nobias=nobias),
-            setlayer2 = SetLinear(kdim, nobias=nobias),
-            )
-        
-    def __call__(self, X_in, graphNN, add=False):
-        # CAREFUL WITH SKIP CONNECTION REDUNDANCY
-        #ngraph = graph_ops.nneighbors_graph(X_in, alist, n_NN) # (b, N, n_NN, D)
-        nn_graph = graphNN(X_in)
-        #x0 = F.mean(ngraph, axis=2)
-        x1 = self.setlayer1(X_in)
-        x2 = self.setlayer2(nn_graph)
-        x_out = x1 + x2
-        if add and self.kdim[0] == self.kdim[1]: x_out += X_in # is this the right place to have skips
-        return x_out
 
 #=============================================================================
 # Loss related ops
