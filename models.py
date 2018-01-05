@@ -13,15 +13,21 @@ Design notes:
      - it doesn't make sense it keep it at child/link level, since all child 
        links only use once for any given pass. So still pass it as an arg?
 '''
-
-
+#=============================================================================
+# Models
+#=============================================================================
 class Model(chainer.Chain):
     """ Base model class, defines basic functionality all models
     """
-    def __init__(self, channels, layer=nn.SetLinear):
+    def __init__(self, channels, layer, vel_scalar=True):
         self.channels = channels
         self.num_layers = len(channels) - 1
-        super(Model, self).__init__() # Chain inherits Link
+        self.vel_scalar = vel_scalar
+        super(Model, self).__init__()
+
+        if vel_scalar: # theta timestep scaled velocity
+            #self.add_link('VelScalar', L.Scale(axis=0, W_shape=(1,1,1)))
+            theta = L.Scale(axis=0, W_shape=(1,1,1))
 
         # build network layers
         for i in range(self.num_layers):
@@ -30,26 +36,43 @@ class Model(chainer.Chain):
 
 
     def __call__(self, x, *args, activation=F.relu, add=True):
-        h = x
+        h = x # this may mutate x, probably need to copy x
         for i in range(self.num_layers):
             cur_layer = getattr(self, 'H' + str(i))
             h = cur_layer(h, *args, add=add)
             if i != self.num_layers - 1:
                 h = activation(h)
+        if add:
+            h += x[...,:3]
+        if self.vel_scalar:
+            h += self.theta(x[...,3:])
         return h
 
+#=============================================================================
 class GraphModel(Model):
+    """ GraphModel uses GraphLayer
+    """
     def __init__(self, channels, K):
         self.K = K
-        super(GraphModel, self).__init__(channels, nn.GraphSubset)
+        super(GraphModel, self).__init__(channels, nn.GraphLayer)
 
-    def __call__(self, x, **kwargs):
+    def __call__(self, x):
         graphNN = graph_ops.GraphNN(x, self.K)
-        super(GraphModel, self).__call__(x, graphNN, **kwargs)
+        return super(GraphModel, self).__call__(x, graphNN)
+
+#=============================================================================
+class SetModel(Model):
+    """ SetModel uses SetLayer
+    """
+    def __init__(self, channels):
+        super(SetModel, self).__init__(channels, nn.SetLayer)
+
+#=============================================================================
 
 
 
 
+'''
 class GraphModel(Model):
     def __init__(self, channels, K):
         self.K = K
@@ -143,3 +166,4 @@ class ScaleVelocity(chainer.Chain):
 
     def __call__(self, x, activation=None, graphNN=None, add=None):
         return x[...,:3] + self.theta(x[...,3:])
+'''
