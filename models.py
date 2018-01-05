@@ -3,30 +3,50 @@ import chainer.links as L
 import chainer.functions as F
 import nn
 
+'''
+Design notes:
+ - get a base model, let set and graph inherit
+ - reconsider how graphNN passed to graph model, maybe keep it as an
+   attribute in the GraphSubset instead of passing as arg?
+     - the neighborhood graph is calculated before forward pass and remains
+       static through the layers, so why keep passing as arg?
+     - it doesn't make sense it keep it at child/link level, since all child 
+       links only use once for any given pass. So still pass it as an arg?
+'''
+
 
 class Model(chainer.Chain):
     """ Base model class, defines basic functionality all models
-    channels (list): len(channels) = num layers, channels[i] = ith channel size
     """
-    def __init__(self, channels, nn_layer):
+    def __init__(self, channels, layer=nn.SetLinear):
         self.channels = channels
         self.num_layers = len(channels) - 1
         super(Model, self).__init__() # Chain inherits Link
 
         # build network layers
         for i in range(self.num_layers):
-            cur_layer = nn_layer(channels[i], channels[i+1])
+            cur_layer = layer(channels[i], channels[i+1])
             self.add_link('H' + str(i), cur_layer)
 
 
-    def __call__(self, x, activation=F.relu, add=True, **kwargs):
+    def __call__(self, x, *args, activation=F.relu, add=True):
         h = x
         for i in range(self.num_layers):
             cur_layer = getattr(self, 'H' + str(i))
-            h = cur_layer(h, add=add)
+            h = cur_layer(h, *args, add=add)
             if i != self.num_layers - 1:
                 h = activation(h)
         return h
+
+class GraphModel(Model):
+    def __init__(self, channels, K):
+        self.K = K
+        super(GraphModel, self).__init__(channels, nn.GraphSubset)
+
+    def __call__(self, x, **kwargs):
+        graphNN = graph_ops.GraphNN(x, self.K)
+        super(GraphModel, self).__call__(x, graphNN, **kwargs)
+
 
 
 

@@ -12,7 +12,7 @@ class SetLinear(chainer.Chain):
     """ Permutation equivariant linear layer for set data
 
     Args:
-        kdim tuple(int): channel size(k_in, k_out)
+        kdim tuple(int): channel size (k_in, k_out)
         nobias (bool): if True, no bias weights used
     """
     def __init__(self, kdim, nobias=False):
@@ -31,6 +31,45 @@ class SetLinear(chainer.Chain):
             x_out += x_r
         x_out = F.reshape(x_out, (mb_size,N,k_out))
         return x_out
+
+#=============================================================================
+class SetLayer(chainer.Chain):
+    """ Set layer, interface to SetLinear
+    
+    Args:
+        kdim: channel size tuple (k_in, k_out)
+        nobias: if True, no bias weights used
+    """
+    def __init__(self, kdim, nobias=False):
+        self.kdim = kdim
+        super(SetLayer, self).__init__(
+            input_linear = SetLinear(kdim, nobias=nobias),
+            )
+        
+    def __call__(self, x_in, add=True):
+        x_out = self.input_linear(x_in, add=add)
+        return x_out
+
+#=============================================================================
+class GraphLayer(chainer.Chain):
+    """ Graph layer
+    Consists of two set layers, one for the data input, the other for the 
+    neighborhood graph
+    
+    Args:
+        kdim: channel size tuple (k_in, k_out)
+        nobias: if True, no bias weights used
+    """
+    def __init__(self, kdim, nobias=True):
+        self.kdim = kdim
+        super(SetLayer, self).__init__(
+            input_linear = SetLinear(kdim, nobias=nobias),
+            graph_linear = SetLinear(kdim, nobias=nobias),
+            )
+        
+    def __call__(self, x_in, graphNN, add=True):
+        x_out = 
+        return self.input_layer(x_in, add=add)
 
 #=============================================================================
 class GraphSubset(chainer.Chain):
