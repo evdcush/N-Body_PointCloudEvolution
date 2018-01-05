@@ -8,31 +8,32 @@ import numpy as np
 #=============================================================================
 # network layers
 #=============================================================================
+
+
+
+
+
+
 class SetLinear(chainer.Chain):
     """ Permutation equivariant linear layer for set data
 
     Args:
-        kdim: channel size tuple (k_in, k_out)
-        nobias: if True, no bias weights used
+        kdim tuple(int): channel size(k_in, k_out)
+        nobias (bool): if True, no bias weights used
     """
     def __init__(self, kdim, nobias=False):
         self.kdim = kdim
         super(SetLinear, self).__init__(
             lin1 = L.Linear(kdim[0], kdim[1], nobias=nobias),
-            #layer_norm = L.LayerNormalization()
             )
-        # Linear link wraps Wx+b function
-        # can specify weight-init function with initialW=chainer.initializers.*
 
     def __call__(self, x, add=False, final=False):
         mb_size, N, D = x.shape
         k_in, k_out  = self.kdim
         x_mean = F.broadcast_to(F.mean(x, axis=1, keepdims=True),x.shape)
-        #x_max  = F.broadcast_to(F.max(x, axis=1, keepdims=True),x.shape)
         x_r = F.reshape(x - x_mean, (mb_size*N, k_in))
         x1 = self.lin1(x_r)
         if add and k_in == k_out: x1 += x_r # shouldn't this be += x ?
-        #if not final: x1 = self.layer_norm(x1)
         x_out = F.reshape(x1, (mb_size,N,k_out))  
         return x_out
 

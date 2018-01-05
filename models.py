@@ -9,22 +9,22 @@ class Model(chainer.Chain):
     channels (list): len(channels) = num layers, channels[i] = ith channel size
     """
     def __init__(self, channels, nn_layer):
-        self.channels = ch = channels
-        self.num_layers = len(channels)
-        ch = [(ch[i],ch[i+1]) for i in range(0,len(ch)-1)] # builds in/out tuples
+        self.channels = channels
+        self.num_layers = len(channels) - 1
         super(Model, self).__init__() # Chain inherits Link
 
         # build network layers
-        for i in range(len(ch)):
-            self.add_link('H' + str(i+1), nn_layer(ch[i]))
+        for i in range(self.num_layers):
+            cur_layer = nn_layer(channels[i], channels[i+1])
+            self.add_link('H' + str(i), cur_layer)
 
 
-    def __call__(self, x, activation=F.relu, add=True):
-        h = activation(self.H1(x))
-        for i in range(2, self.num_layers):
+    def __call__(self, x, activation=F.relu, add=True, **kwargs):
+        h = x
+        for i in range(self.num_layers):
             cur_layer = getattr(self, 'H' + str(i))
             h = cur_layer(h, add=add)
-            if i != len(self.channels)-1:
+            if i != self.num_layers - 1:
                 h = activation(h)
         return h
 
@@ -92,7 +92,7 @@ class nBodyModel(chainer.Chain):
         h = activation(self.H1(x))
         for i in range(2, len(self.channels)):
             cur_layer = getattr(self, 'H' + str(i))
-            h = cur_layer(h, add=add, final=(i == len(self.channels)-1))
+            h = cur_layer(h, add=add)
             if i != len(self.channels)-1:
                 #cur_ln = getattr(self, 'LN' + str(i))
                 h = activation(h)
