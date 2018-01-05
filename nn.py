@@ -53,7 +53,7 @@ class SetLayer(chainer.Chain):
 #=============================================================================
 class GraphLayer(chainer.Chain):
     """ Graph layer
-    Consists of two set layers, one for the data input, the other for the 
+    Consists of two sets of weights, one for the data input, the other for the 
     neighborhood graph
     
     Args:
@@ -62,41 +62,16 @@ class GraphLayer(chainer.Chain):
     """
     def __init__(self, kdim, nobias=True):
         self.kdim = kdim
-        super(SetLayer, self).__init__(
+        super(GraphLayer, self).__init__(
             input_linear = SetLinear(kdim, nobias=nobias),
             graph_linear = SetLinear(kdim, nobias=nobias),
             )
         
     def __call__(self, x_in, graphNN, add=True):
-        x_out = self.input_linear(x_in, add=False)
+        x_out     = self.input_linear(x_in, add=False)
         graph_out = self.graph_linear(graphNN(x_in), add=False)
         x_out += graph_out
-        if add and self.kdim[0] == self.kdim[1]:
-            x_out += x_in
-        return x_out
-
-#=============================================================================
-class GraphSubset(chainer.Chain):
-    """ graph subset layer, consists of two sets of permutation
-        equivariant weights for graph and data
-    
-        Args:
-            kdim: channel size tuple (k_in, k_out)
-            nobias: if True, no bias weights used
-        """
-    def __init__(self, kdim, nobias=True):
-        self.kdim = kdim
-        super(GraphSubset, self).__init__(
-            input_layer = SetLinear(kdim, nobias=nobias),
-            graph_layer = SetLinear(kdim, nobias=nobias),
-            )
-        
-    def __call__(self, x_in, graphNN, add=False):
-        neighborhood_graph = graphNN(x_in)
-        x_out     = self.input_layer(x_in)
-        graph_out = self.graph_layer(neighborhood_graph)
-        x_out += graph_out
-        if add and self.kdim[0] == self.kdim[1]:
+        if add and x_in.shape == x_out.shape:
             x_out += x_in
         return x_out
 
