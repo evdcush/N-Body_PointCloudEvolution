@@ -26,10 +26,10 @@ class SetLinear(chainer.Chain):
         k_in, k_out  = self.kdim
         x_mean = F.broadcast_to(F.mean(x, axis=1, keepdims=True), x.shape)
         x_r = F.reshape(x - x_mean, (mb_size*N, k_in))
-        x1 = self.lin(x_r)
+        x_out = self.lin(x_r)
         if add and k_in == k_out:
-            x1 += x_r
-        x_out = F.reshape(x1, (mb_size,N,k_out))
+            x_out += x_r
+        x_out = F.reshape(x_out, (mb_size,N,k_out))
         return x_out
 
 #=============================================================================
