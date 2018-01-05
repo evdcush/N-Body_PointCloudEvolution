@@ -68,8 +68,12 @@ class GraphLayer(chainer.Chain):
             )
         
     def __call__(self, x_in, graphNN, add=True):
-        x_out = 
-        return self.input_layer(x_in, add=add)
+        x_out = self.input_linear(x_in, add=False)
+        graph_out = self.graph_linear(graphNN(x_in), add=False)
+        x_out += graph_out
+        if add and self.kdim[0] == self.kdim[1]:
+            x_out += x_in
+        return x_out
 
 #=============================================================================
 class GraphSubset(chainer.Chain):
