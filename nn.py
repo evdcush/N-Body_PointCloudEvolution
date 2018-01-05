@@ -67,7 +67,8 @@ class GraphLayer(chainer.Chain):
             graph_linear = SetLinear(kdim, nobias=nobias),
             )
         
-    def __call__(self, x_in, graphNN, add=True):
+    def __call__(self, x_in, graph_arg, add=True):
+        graphNN = graph_arg[0]
         x_out     = self.input_linear(x_in, add=False)
         graph_out = self.graph_linear(graphNN(x_in), add=False)
         x_out += graph_out
