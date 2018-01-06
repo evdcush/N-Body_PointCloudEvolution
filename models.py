@@ -2,16 +2,13 @@ import chainer
 import chainer.links as L
 import chainer.functions as F
 import nn
+import graph_ops
 
 '''
 Design notes:
- - get a base model, let set and graph inherit
- - reconsider how graphNN passed to graph model, maybe keep it as an
-   attribute in the GraphSubset instead of passing as arg?
-     - the neighborhood graph is calculated before forward pass and remains
-       static through the layers, so why keep passing as arg?
-     - it doesn't make sense it keep it at child/link level, since all child 
-       links only use once for any given pass. So still pass it as an arg?
+ - finished base model class
+ - up next is graph_ops, trainers
+   - for graph_ops, make it so it accepts a chainer.Variable too
 '''
 #=============================================================================
 # Models
@@ -26,12 +23,12 @@ class Model(chainer.Chain):
         super(Model, self).__init__()
 
         if vel_scalar: # theta timestep scaled velocity
-            #self.add_link('VelScalar', L.Scale(axis=0, W_shape=(1,1,1)))
-            theta = L.Scale(axis=0, W_shape=(1,1,1))
+            self.add_link('theta', L.Scale(axis=0, W_shape=(1,1,1)))
+            #self.theta = L.Scale(axis=0, W_shape=(1,1,1)) # not within init scope
 
         # build network layers
         for i in range(self.num_layers):
-            cur_layer = layer(channels[i], channels[i+1])
+            cur_layer = layer((channels[i], channels[i+1]))
             self.add_link('H' + str(i), cur_layer)
 
 
@@ -56,8 +53,8 @@ class GraphModel(Model):
         self.K = K
         super(GraphModel, self).__init__(channels, nn.GraphLayer)
 
-    def __call__(self, x):
-        graphNN = graph_ops.GraphNN(x, self.K)
+    def __call__(self, x, add=True):
+        graphNN = graph_ops.GraphNN(chainer.cuda.to_cpu(x.data), self.K)
         return super(GraphModel, self).__call__(x, graphNN)
 
 #=============================================================================
@@ -103,8 +100,7 @@ class SetModel(Model):
                 h = activation(h)
         return h
 
-
-
+'''
 
 
 class nBodyModel(chainer.Chain):
@@ -114,9 +110,9 @@ class nBodyModel(chainer.Chain):
         ch = [(ch[i],ch[i+1]) for i in range(0,len(ch)-1)]
 
         super(nBodyModel, self).__init__(
-            #VelScalar = L.Scale(axis=0, W_shape=(1,1,1)),
+            VelScalar = L.Scale(axis=0, W_shape=(1,1,1)),
             )
-        layer = nn.GraphSubset if self.use_graph else nn.SetLinear
+        layer = nn.GraphLayer if self.use_graph else nn.SetLayer
         # instantiate model layers
         for i in range(len(ch)):
             self.add_link('H' + str(i+1), layer(ch[i]))
@@ -143,17 +139,19 @@ class nBodyModel(chainer.Chain):
                 
     def __call__(self, x, activation=F.relu, graphNN=None, add=True):
         if self.use_graph:
+            graphNN = graph_ops.GraphNN(chainer.cuda.to_cpu(x.data), 14)
             h = self.fwd_graph(x, activation, graphNN, add=add)
         else:
             h = self.fwd_set(x, activation, add=add)
 
         if add:
             # assume h.shape[-1] == 3
+            """
             if h.shape[-1] != 3:
                 x_in_loc = self.xp.zeros_like((x.data))
                 x_in_loc[...,:3] += x.data[...,:3]
-                h += x_in_loc
-            else: h += x[...,:3] #+ self.VelScalar(x[...,3:])
+                h += x_in_loc"""
+            h += x[...,:3] + self.VelScalar(x[...,3:])
         return h
 
 
@@ -166,4 +164,3 @@ class ScaleVelocity(chainer.Chain):
 
     def __call__(self, x, activation=None, graphNN=None, add=None):
         return x[...,:3] + self.theta(x[...,3:])
-'''

@@ -81,7 +81,7 @@ class KNN():
         return cuda.to_gpu(X_out)
 
     def __call__(self, x):
-        alist = xp.copy(self.adjency_list)
+        alist = xp.copy(self.adjacency_list)
         mb_size, N, D = x.shape
         n_NN = alist.shape[-1]
         xr = F.reshape(x, (-1,D))
