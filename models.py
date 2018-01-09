@@ -52,6 +52,8 @@ class Model(chainer.Chain):
 #=============================================================================
 class GraphModel(Model):
     """ GraphModel uses GraphLayer
+     - apparently need to pass the numpy data to graph_ops.KNN
+       since the to_cpu stuff within graph_ops gives significantly worse loss
     """
     def __init__(self, channels, K, **kwargs):
         self.K = K
@@ -59,8 +61,7 @@ class GraphModel(Model):
 
     def __call__(self, x, **kwargs):
         #graphNN = graph_ops.KNN(x, self.K)
-        graphNN = graph_ops.KNN(chainer.cuda.to_cpu(x.data), self.K)
-        #graphNN = graph_ops.GraphNN(chainer.cuda.to_cpu(x.data), self.K) # testing
+        graphNN = graph_ops.KNN(chainer.cuda.to_cpu(x.data), self.K) # KNN DATA MUST BE NUMPY HERE
         return super(GraphModel, self).__call__(x, graphNN, **kwargs)
 
 #=============================================================================
