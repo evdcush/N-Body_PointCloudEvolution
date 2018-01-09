@@ -57,7 +57,8 @@ class GraphModel(Model):
         super(GraphModel, self).__init__(channels, nn.GraphLayer, **kwargs)
 
     def __call__(self, x, **kwargs):
-        graphNN = graph_ops.KNN(x, self.K)
+        #graphNN = graph_ops.KNN(x, self.K)
+        graphNN = graph_ops.GraphNN(chainer.cuda.to_cpu(x.data), self.K) # testing
         return super(GraphModel, self).__call__(x, graphNN, **kwargs)
 
 #=============================================================================
