@@ -209,9 +209,3 @@ def plot_training_curve(y, cur_iter, yclip=.0004, c='b', poly=None, fsize=(16,10
         title = 'Iteration: {0}, loss: {1:.4}'.format(cur_iter, y[-1])
     ax.set_title(title)
     return fig
-    
-
-
-
-
-

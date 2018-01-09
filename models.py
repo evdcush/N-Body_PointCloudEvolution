@@ -41,6 +41,7 @@ class Model(chainer.Chain):
         if add:
             h += x[...,:3]
         if self.theta_scale:
+            print('theta scale, shouldnt be here')
             # scales output by some timestep*input_vel
             if static_theta is not None:
                 h += static_theta * x[...,3:]
@@ -58,7 +59,8 @@ class GraphModel(Model):
 
     def __call__(self, x, **kwargs):
         #graphNN = graph_ops.KNN(x, self.K)
-        graphNN = graph_ops.GraphNN(chainer.cuda.to_cpu(x.data), self.K) # testing
+        graphNN = graph_ops.KNN(chainer.cuda.to_cpu(x.data), self.K)
+        #graphNN = graph_ops.GraphNN(chainer.cuda.to_cpu(x.data), self.K) # testing
         return super(GraphModel, self).__call__(x, graphNN, **kwargs)
 
 #=============================================================================
