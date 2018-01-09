@@ -9,6 +9,11 @@ Design notes:
  - finished base model class
  - up next is graph_ops, trainers
    - for graph_ops, make it so it accepts a chainer.Variable too
+ - FINISH graph_ops refactor, next up:
+   - Fix data_utils. Currently messy duplicate functions with normal and gpu,
+     just dispatch in funs
+   - make trainer
+   - work on density based graph, read attention stuff
 '''
 #=============================================================================
 # Models
@@ -60,8 +65,7 @@ class GraphModel(Model):
         super(GraphModel, self).__init__(channels, nn.GraphLayer, **kwargs)
 
     def __call__(self, x, **kwargs):
-        #graphNN = graph_ops.KNN(x, self.K)
-        graphNN = graph_ops.KNN(chainer.cuda.to_cpu(x.data), self.K) # KNN DATA MUST BE NUMPY HERE
+        graphNN = graph_ops.KNN(chainer.cuda.to_cpu(x.data), self.K)
         return super(GraphModel, self).__call__(x, graphNN, **kwargs)
 
 #=============================================================================
