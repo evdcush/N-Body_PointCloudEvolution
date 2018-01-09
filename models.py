@@ -16,15 +16,14 @@ Design notes:
 class Model(chainer.Chain):
     """ Base model class, defines basic functionality all models
     """
-    def __init__(self, channels, layer, vel_scalar=True):
+    def __init__(self, channels, layer, scale_vel=False):
         self.channels = channels
         self.num_layers = len(channels) - 1
         self.vel_scalar = vel_scalar
         super(Model, self).__init__()
 
-        if vel_scalar: # theta timestep scaled velocity
+        if scale_vel: # theta timestep scaled velocity
             self.add_link('theta', L.Scale(axis=0, W_shape=(1,1,1)))
-            #self.theta = L.Scale(axis=0, W_shape=(1,1,1)) # not within init scope
 
         # build network layers
         for i in range(self.num_layers):
@@ -41,7 +40,7 @@ class Model(chainer.Chain):
                 h = activation(h)
         if add:
             h += x[...,:3]
-        if self.vel_scalar:
+        if self.scale_vel:
             h += self.theta(x[...,3:])
         return h
 
@@ -49,9 +48,9 @@ class Model(chainer.Chain):
 class GraphModel(Model):
     """ GraphModel uses GraphLayer
     """
-    def __init__(self, channels, K):
+    def __init__(self, channels, K, **kwargs):
         self.K = K
-        super(GraphModel, self).__init__(channels, nn.GraphLayer)
+        super(GraphModel, self).__init__(channels, nn.GraphLayer, **kwargs)
 
     def __call__(self, x, add=True):
         graphNN = graph_ops.GraphNN(chainer.cuda.to_cpu(x.data), self.K)
@@ -61,8 +60,8 @@ class GraphModel(Model):
 class SetModel(Model):
     """ SetModel uses SetLayer
     """
-    def __init__(self, channels):
-        super(SetModel, self).__init__(channels, nn.SetLayer)
+    def __init__(self, channels, **kwargs):
+        super(SetModel, self).__init__(channels, nn.SetLayer, **kwargs)
 
 #=============================================================================
 
