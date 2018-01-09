@@ -81,7 +81,7 @@ class GraphLayer(chainer.Chain):
 # Loss related ops
 #=============================================================================
 
-def get_MSE(x_hat, x_true, boundary=0.095):
+def mean_squared_error(x_hat, x_true, boundary=0.095):
     if boundary is None:
         return get_min_readout_MSE(x_hat, x_true)
     else:
@@ -117,7 +117,7 @@ def get_bounded_MSE(x_hat, x_true, boundary):
     return F.mean(F.sum(F.squared_difference(bhat, btrue), axis=-1))
 
 
-def get_combined_MSE(x_input, x_hat, x_true, boundary):
+def get_combined_MSE(x_input, x_hat, x_true, boundary): # EXPERIMENTAL
     x_input_loc  = x_input[...,:3]
     x_hat_loc = x_hat[...,:3]
     x_true_loc = x_true[...,:3]

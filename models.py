@@ -16,13 +16,13 @@ Design notes:
 class Model(chainer.Chain):
     """ Base model class, defines basic functionality all models
     """
-    def __init__(self, channels, layer, scale_vel=False):
+    def __init__(self, channels, layer, theta_scale=False):
         self.channels = channels
         self.num_layers = len(channels) - 1
-        self.vel_scalar = vel_scalar
+        self.theta_scale = theta_scale
         super(Model, self).__init__()
 
-        if scale_vel: # theta timestep scaled velocity
+        if theta_scale: # scalar for timestep
             self.add_link('theta', L.Scale(axis=0, W_shape=(1,1,1)))
 
         # build network layers
@@ -31,7 +31,7 @@ class Model(chainer.Chain):
             self.add_link('H' + str(i), cur_layer)
 
 
-    def __call__(self, x, *args, activation=F.relu, add=True):
+    def __call__(self, x, *args, activation=F.relu, add=True, static_theta=None):
         h = x # this may mutate x, probably need to copy x
         for i in range(self.num_layers):
             cur_layer = getattr(self, 'H' + str(i))
@@ -40,8 +40,12 @@ class Model(chainer.Chain):
                 h = activation(h)
         if add:
             h += x[...,:3]
-        if self.scale_vel:
-            h += self.theta(x[...,3:])
+        if self.theta_scale:
+            # scales output by some timestep*input_vel
+            if static_theta is not None:
+                h += static_theta * x[...,3:]
+            else:
+                h += self.theta(x[...,3:])
         return h
 
 #=============================================================================
@@ -52,9 +56,9 @@ class GraphModel(Model):
         self.K = K
         super(GraphModel, self).__init__(channels, nn.GraphLayer, **kwargs)
 
-    def __call__(self, x, add=True):
+    def __call__(self, x, **kwargs):
         graphNN = graph_ops.GraphNN(chainer.cuda.to_cpu(x.data), self.K)
-        return super(GraphModel, self).__call__(x, graphNN)
+        return super(GraphModel, self).__call__(x, graphNN, **kwargs)
 
 #=============================================================================
 class SetModel(Model):
