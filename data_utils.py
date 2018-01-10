@@ -14,6 +14,10 @@ Data utils
 '''
 DATA_PATH = '/home/evan/Data/nbody_simulations/N_{0}/DM*/{1}_dm.z=0{2}000'
 
+
+#=============================================================================
+# Data utils
+#=============================================================================
 def read_sim(file_list, n_P):
     """ reads simulation data from disk and returns
 
@@ -64,6 +68,24 @@ def load_datum(zA, n_P):
     return A
 
 def normalize(X_in, cupy_out=False):
+    """ Normalize features
+    coordinates are rescaled to (0,1)
+    velocities normalized by mean/std    
+    """
+    X_1 = np.reshape(X_in,[-1,6])
+    coo_min, coo_max = np.min(X_1[:,:3],axis=0), np.max(X_1[:,:3],axis=0)
+    #coo_mean, coo_std = np.mean(X_1[:,:3],axis=0), np.std(X_1[:,:3],axis=0)
+    #X_1[:,:3] = (X_1[:,:3] - coo_mean) / (coo_std)
+    v_mean, v_std = np.mean(X_1[:,3:],axis=0), np.std(X_1[:,3:],axis=0)
+    X_1[:,:3] = (X_1[:,:3] - coo_min) / (coo_max - coo_min) # proper rescale function?
+    #X_1[:,:3] = (X_1[:,:3] - coo_min) / (coo_max) # rescale fn originally used
+    X_1[:,3:] = (X_1[:,3:] - v_mean) / v_std
+    out = np.reshape(X_1,[X_in.shape[0],X_in.shape[1],6])
+    if cupy_out:
+        out = cuda.to_gpu(out.astype(np.float32))
+    return out
+
+def normalize_redo(X_in, cupy_out=False):
     """ Normalize features
     coordinates are rescaled to (0,1)
     velocities normalized by mean/std    
