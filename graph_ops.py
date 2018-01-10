@@ -61,7 +61,6 @@ class DensityNN():
 class KNN():
     def __init__(self, X_in, K):
         self.K = K
-        self.xp = chainer.cuda.get_array_module(X_in)
         self.adjacency_list = self.get_adjacency_list(X_in)
         
     def get_adjacency_list(self, X_in):
@@ -70,20 +69,18 @@ class KNN():
         Args:
             X_in (numpy ndarray): input data of shape (mb_size, N, 6)
         """
-        n_NN = self.K
+        K = self.K
         mb_size, N, D = X_in.shape
-        adj_list = np.zeros([mb_size, N, n_NN],dtype=np.int32)
+        adj_list = np.zeros([mb_size, N, K],dtype=np.int32)
         for i in range(mb_size):
             # this returns indices of the nn
-            graph_idx = kneighbors_graph(X_in[i,:,:3], n_NN, include_self=True).indices
-            graph_idx = graph_idx.reshape([N, n_NN]) + (N * i) # offset idx for batches
+            graph_idx = kneighbors_graph(X_in[i,:,:3], K, include_self=True).indices
+            graph_idx = graph_idx.reshape([N, K]) + (N * i) # offset idx for batches
             adj_list[i] = graph_idx
-        if self.xp == cupy:
-            adj_list = cuda.to_gpu(adj_list)
         return adj_list
 
     def __call__(self, x):
-        alist = self.xp.copy(self.adjacency_list) # loss worse without copying
+        alist = np.copy(self.adjacency_list) # loss worse without copying
         alist = alist.flatten()
         mb_size, N, D = x.shape
         xr = F.reshape(x, (-1,D))
