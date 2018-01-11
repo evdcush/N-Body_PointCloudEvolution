@@ -37,6 +37,33 @@ def read_sim(file_list, n_P):
     dataset = np.array(dataset).reshape([len(file_list),num_particles,6])  
     return dataset
 
+def load_datum(redshift, n_P, normalize_data=False):
+    """ loads two redshift datasets from proper data directory
+
+    Args:
+        redshift: (float) redshift
+        n_P: (int) base of number of particles (n_P**3 particles)
+    """
+    N_P = 10000 if n_P == 32 else 1000
+    glob_paths = glob.glob(DATA_PATH.format(N_P, 'xv', redshift))
+    X = read_sim(glob_paths, n_P)
+    if normalize_data:
+        X = normalize(X)
+    return X
+
+def load_data(zA, zB, n_P, **kwargs):
+    """ loads two redshift datasets from proper data directory
+
+    Args:
+        zA: (float) redshift
+        zB: (float) redshift
+        n_P: (int) base of number of particles (n_P**3 particles)
+    """
+    A = load_datum(zA, n_P, **kwargs)
+    B = load_datum(zB, n_P, **kwargs)
+    return A,B
+
+'''
 def load_data(zA, zB, n_P, normalize_data=True):
     """ loads two redshift datasets from proper data directory
 
@@ -55,23 +82,10 @@ def load_data(zA, zB, n_P, normalize_data=True):
         A = normalize(A)
         B = normalize(B)
     return A,B
-
-def load_datum(zA, n_P):
-    """ loads two redshift datasets from proper data directory
-
-    Args:
-        zA: (float) redshift
-        zB: (float) redshift
-        n_P: (int) base of number of particles (n_P**3 particles)
-    """
-    N_P = 10000 if n_P == 32 else 1000
-    Apath = glob.glob(DATA_PATH.format(N_P, 'xv', zA))
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    A = read_sim(Apath, n_P)
-    return A
+'''
 
 
-def normalize_redo(X_in):
+def normalize(X_in):
     """ Normalize features
     coordinates are rescaled to (0,1)
     velocities normalized by mean/std    
