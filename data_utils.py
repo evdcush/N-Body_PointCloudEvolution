@@ -37,7 +37,7 @@ def read_sim(file_list, n_P):
     dataset = np.array(dataset).reshape([len(file_list),num_particles,6])  
     return dataset
 
-def load_datum(redshift, n_P, normalize_data=False):
+def load_datum(n_P, redshift, normalize_data=False):
     """ loads two redshift datasets from proper data directory
 
     Args:
@@ -51,39 +51,17 @@ def load_datum(redshift, n_P, normalize_data=False):
         X = normalize(X)
     return X
 
-def load_data(zA, zB, n_P, **kwargs):
-    """ loads two redshift datasets from proper data directory
+def load_data(n_P, *args, **kwargs):
+    """ loads datasets from proper data directory
 
     Args:
-        zA: (float) redshift
-        zB: (float) redshift
         n_P: (int) base of number of particles (n_P**3 particles)
     """
-    A = load_datum(zA, n_P, **kwargs)
-    B = load_datum(zB, n_P, **kwargs)
-    return A,B
-
-'''
-def load_data(zA, zB, n_P, normalize_data=True):
-    """ loads two redshift datasets from proper data directory
-
-    Args:
-        zA: (float) redshift
-        zB: (float) redshift
-        n_P: (int) base of number of particles (n_P**3 particles)
-    """
-    N_P = 10000 if n_P == 32 else 1000
-    Apath = glob.glob(DATA_PATH.format(N_P, 'xv', zA))
-    Bpath = glob.glob(DATA_PATH.format(N_P, 'xv', zB))
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    A = read_sim(Apath, n_P)
-    B = read_sim(Bpath, n_P)
-    if normalize_data:
-        A = normalize(A)
-        B = normalize(B)
-    return A,B
-'''
-
+    data = []
+    for redshift in args:
+        x = load_datum(n_P, redshift, **kwargs)
+        data.append(x)
+    return data
 
 def normalize(X_in):
     """ Normalize features
