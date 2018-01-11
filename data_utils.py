@@ -37,7 +37,7 @@ def read_sim(file_list, n_P):
     dataset = np.array(dataset).reshape([len(file_list),num_particles,6])  
     return dataset
 
-def load_data(zA, zB, n_P):
+def load_data(zA, zB, n_P, normalize_data=True):
     """ loads two redshift datasets from proper data directory
 
     Args:
@@ -51,6 +51,9 @@ def load_data(zA, zB, n_P):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     A = read_sim(Apath, n_P)
     B = read_sim(Bpath, n_P)
+    if normalize_data:
+        A = normalize(A)
+        B = normalize(B)
     return A,B
 
 def load_datum(zA, n_P):
@@ -67,41 +70,24 @@ def load_datum(zA, n_P):
     A = read_sim(Apath, n_P)
     return A
 
-def normalize(X_in, cupy_out=False):
-    """ Normalize features
-    coordinates are rescaled to (0,1)
-    velocities normalized by mean/std    
-    """
-    X_1 = np.reshape(X_in,[-1,6])
-    coo_min, coo_max = np.min(X_1[:,:3],axis=0), np.max(X_1[:,:3],axis=0)
-    #coo_mean, coo_std = np.mean(X_1[:,:3],axis=0), np.std(X_1[:,:3],axis=0)
-    #X_1[:,:3] = (X_1[:,:3] - coo_mean) / (coo_std)
-    v_mean, v_std = np.mean(X_1[:,3:],axis=0), np.std(X_1[:,3:],axis=0)
-    X_1[:,:3] = (X_1[:,:3] - coo_min) / (coo_max - coo_min) # proper rescale function?
-    #X_1[:,:3] = (X_1[:,:3] - coo_min) / (coo_max) # rescale fn originally used
-    X_1[:,3:] = (X_1[:,3:] - v_mean) / v_std
-    out = np.reshape(X_1,[X_in.shape[0],X_in.shape[1],6])
-    if cupy_out:
-        out = cuda.to_gpu(out.astype(np.float32))
-    return out
 
-def normalize_redo(X_in, cupy_out=False):
+def normalize_redo(X_in):
     """ Normalize features
     coordinates are rescaled to (0,1)
     velocities normalized by mean/std    
     """
-    X_1 = np.reshape(X_in,[-1,6])
-    coo_min, coo_max = np.min(X_1[:,:3],axis=0), np.max(X_1[:,:3],axis=0)
-    #coo_mean, coo_std = np.mean(X_1[:,:3],axis=0), np.std(X_1[:,:3],axis=0)
-    #X_1[:,:3] = (X_1[:,:3] - coo_mean) / (coo_std)
-    v_mean, v_std = np.mean(X_1[:,3:],axis=0), np.std(X_1[:,3:],axis=0)
-    X_1[:,:3] = (X_1[:,:3] - coo_min) / (coo_max - coo_min) # proper rescale function?
-    #X_1[:,:3] = (X_1[:,:3] - coo_min) / (coo_max) # rescale fn originally used
-    X_1[:,3:] = (X_1[:,3:] - v_mean) / v_std
-    out = np.reshape(X_1,[X_in.shape[0],X_in.shape[1],6])
-    if cupy_out:
-        out = cuda.to_gpu(out.astype(np.float32))
-    return out
+    x_r = np.reshape(X_in, [-1,6])
+    coo, vel = np.split(x_r, [3], axis=-1)
+    coo_min = np.min(coo, axis=0)
+    coo_max = np.max(coo, axis=0)
+    #coo_mean, coo_std = np.mean(coo,axis=0), np.std(coo,axis=0)
+    #x_r[:,:3] = (x_r[:,:3] - coo_mean) / (coo_std)
+    vel_mean = np.mean(vel, axis=0)
+    vel_std  = np.std( vel, axis=0)
+    x_r[:,:3] = (x_r[:,:3] - coo_min) / (coo_max - coo_min)
+    x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
+    X_out = np.reshape(x_r,X_in.shape)
+    return X_out
 
 
 def next_minibatch(in_list,batch_size):
