@@ -53,6 +53,8 @@ def load_datum(n_P, redshift, normalize_data=False):
 
 def load_data(n_P, *args, **kwargs):
     """ loads datasets from proper data directory
+    # Note: is this function necessary? may add unnecessary coupling,
+    can probably do everything with a single load data fun.
 
     Args:
         n_P: (int) base of number of particles (n_P**3 particles)
@@ -80,6 +82,23 @@ def normalize(X_in):
     x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
     X_out = np.reshape(x_r,X_in.shape)
     return X_out
+
+class nBodyDataset():
+    def __init__(self, num_particles, zX, zY, normalize_data=True, validation=True):
+        # do stuff with validation
+        self.n_P = num_particles
+        self.zX, self.zY = zX, zY
+        self.X, self.Y = load_data(num_particles, zX, zY, normalize_data=normalize_data)
+        self.index_list = np.arange(self.X.shape[0])
+
+    def next_minibatch(self, batch_size):
+        return foo
+
+    def shuffle_idx(self):
+        # shuffle self.index_list
+
+    def __call__(self,):
+
 
 
 def next_minibatch(in_list,batch_size):
