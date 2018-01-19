@@ -145,18 +145,23 @@ class nBodyDataset():
     def next_minibatch(self, batch_size, shift=True):
         N,M,D = self.X_train.shape
         index_list = self.xp.random.choice(N, batch_size)
-        x = self.xp.copy(self.X_train[index_list])
-        y = self.xp.copy(self.Y_train[index_list])
+        x = self.xp.copy(self.X_train[index_list])#self.X_train[index_list]#self.xp.copy(self.X_train[index_list])
+        y = self.xp.copy(self.Y_train[index_list])#self.Y_train[index_list]#self.xp.copy(self.Y_train[index_list])
         if shift:
             x,y = self.shift_data(x,y)
         return x,y
 
     def __call__(self, batch_size, val_idx=None):
+        to_var = lambda arr: chainer.Variable(arr)
         if val_idx is not None:
             val_start, val_stop = val_idx
-            return self.X_val[val_start:val_stop], self.Y_val[val_start:val_stop]
+            x_val = self.X_val[val_start:val_stop]
+            y_val = self.Y_val[val_start:val_stop]
+            return x_val, y_val
+            
         else:
-            return self.next_minibatch(batch_size)
+            x_train, y_train = self.next_minibatch(batch_size)
+            return x_train, y_train
 
 
 def split_data_validation(X, Y, num_val_samples=200):
