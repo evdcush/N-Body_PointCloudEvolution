@@ -21,13 +21,14 @@ Design notes:
 class Model(chainer.Chain):
     """ Base model class, defines basic functionality all models
     """
-    def __init__(self, channels, layer, theta_scale=False):
+    def __init__(self, channels, layer, theta_scale=None):
         self.channels = channels
         self.num_layers = len(channels) - 1
         self.theta_scale = theta_scale
         super(Model, self).__init__()
 
-        if theta_scale: # scalar for timestep
+        if theta_scale is not None: # scalar for timestep
+            #self.theta = theta_scale
             self.add_link('theta', L.Scale(axis=0, W_shape=(1,1,1)))
 
         # build network layers
@@ -45,13 +46,11 @@ class Model(chainer.Chain):
                 h = activation(h)
         if add:
             h += x[...,:3]
-        if self.theta_scale:
-            print('theta scale, shouldnt be here')
+        if static_theta is not None:
+           h += static_theta * x[...,3:]
+        if self.theta_scale: # shouldnt have two theta conds, do this more dynamically
             # scales output by some timestep*input_vel
-            if static_theta is not None:
-                h += static_theta * x[...,3:]
-            else:
-                h += self.theta(x[...,3:])
+            h += self.theta(x[...,3:])
         return h
 
 #=============================================================================
