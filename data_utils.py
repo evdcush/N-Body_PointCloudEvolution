@@ -145,8 +145,8 @@ class nBodyDataset():
     def next_minibatch(self, batch_size, shift=True):
         N,M,D = self.X_train.shape
         index_list = self.xp.random.choice(N, batch_size)
-        x = self.xp.copy(self.X_train[index_list])#self.X_train[index_list]#self.xp.copy(self.X_train[index_list])
-        y = self.xp.copy(self.Y_train[index_list])#self.Y_train[index_list]#self.xp.copy(self.Y_train[index_list])
+        x = self.X_train[index_list]#self.xp.copy(self.X_train[index_list])
+        y = self.Y_train[index_list]#self.xp.copy(self.Y_train[index_list])
         if shift:
             x,y = self.shift_data(x,y)
         return x,y
@@ -213,13 +213,13 @@ def next_minibatch(in_list,batch_size):
         out.append(tmp)
     return out
 
-def next_minibatch(in_list, batch_size):
+def gpunext_minibatch(in_list, batch_size, xp=cupy):
     assert len(set([a.shape for a in in_list])) == 1
     M, N, D = in_list[0].shape
-    index_list = np.random.choice(M, batch_size)
+    index_list = xp.random.choice(M, batch_size)
     out = []
-    rands = np.random.rand(6)
-    shift = np.random.rand(batch_size, 3)
+    rands = xp.random.rand(6)
+    shift = xp.random.rand(batch_size, 3)
     for k in range(len(in_list)):
         tmp = in_list[k][index_list]
         if rands[0] < .5:
