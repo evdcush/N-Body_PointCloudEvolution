@@ -80,24 +80,98 @@ def normalize(X_in):
     vel_std  = np.std( vel, axis=0)
     x_r[:,:3] = (x_r[:,:3] - coo_min) / (coo_max - coo_min)
     x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
-    X_out = np.reshape(x_r,X_in.shape)
+    X_out = np.reshape(x_r,X_in.shape).astype(np.float32) # just convert to float32 here
     return X_out
 
 class nBodyDataset():
-    def __init__(self, num_particles, zX, zY, normalize_data=True, validation=True):
+    def __init__(self, num_particles, zX, zY, normalize_data=True, validation=True, use_GPU=True):
         # do stuff with validation
-        self.n_P = num_particles
+        self.num_particles = num_particles
         self.zX, self.zY = zX, zY
-        self.X, self.Y = load_data(num_particles, zX, zY, normalize_data=normalize_data)
-        self.index_list = np.arange(self.X.shape[0])
+        self.validation = validation
+        self.use_GPU = use_GPU
+        self.xp = cupy if use_GPU else np
+        self.data = {}
 
-    def next_minibatch(self, batch_size):
-        return foo
+        X, Y = load_data(num_particles, zX, zY, normalize_data=normalize_data)
+        if use_GPU:
+            X, Y = cuda.to_gpu(X), cuda.to_gpu(Y)
+        if validation:
+            X_sets, Y_sets = split_data_validation(X,Y)
+            self.X_train = X_sets[0]
+            self.X_val   = X_sets[1]
+            #self.data['X_train'] = X_sets[0]
+            #self.data['X_val']   = X_sets[1]
+            
+            self.Y_train = Y_sets[0]
+            self.Y_val   = Y_sets[1]
+            #self.data['Y_train'] = Y_sets[0]
+            #self.data['Y_val']   = Y_sets[1]
+        else:
+            #self.data['X_train'] = X
+            #self.data['Y_train'] = Y
+            self.X_train = X
+            self.Y_train = Y
 
-    def shuffle_idx(self):
-        # shuffle self.index_list
+    def shift_data(self, x, y):
+        batch_size, N, D = x.shape
+        rands = self.xp.random.rand(D) # 6
+        shift = self.xp.random.rand(batch_size, 3) # for loc only
+        out = []
+        for tmp in [x,y]:
+            if rands[0] < .5:
+                tmp = tmp[:,:,[1,0,2,4,3,5]]
+            if rands[1] < .5:
+                tmp = tmp[:,:, [0,2,1,3,5,4]]
+            if rands[2] < .5:
+                tmp = tmp[:,:, [2,1,0,5,4,3]]
+            if rands[3] < .5:
+                tmp[:,:,0] = 1 - tmp[:,:,0]
+                tmp[:,:,3] = -tmp[:,:,3]
+            if rands[4] < .5:
+                tmp[:,:,1] = 1 - tmp[:,:,1]
+                tmp[:,:,4] = -tmp[:,:,4]
+            if rands[5] < .5:
+                tmp[:,:,2] = 1 - tmp[:,:,2]
+                tmp[:,:,5] = -tmp[:,:,5]            
+            tmploc = tmp[:,:,:3]
+            tmploc += shift[:,None,:]
+            gt1 = tmploc > 1
+            tmploc[gt1] = tmploc[gt1] - 1
+            tmp[:,:,:3] = tmploc
+            out.append(tmp)
+        return out
 
-    def __call__(self,):
+    def next_minibatch(self, batch_size, shift=True):
+        N,M,D = self.X_train.shape
+        index_list = self.xp.random.choice(N, batch_size)
+        x = self.xp.copy(self.X_train[index_list])
+        y = self.xp.copy(self.Y_train[index_list])
+        if shift:
+            x,y = self.shift_data(x,y)
+        return x,y
+
+    def __call__(self, batch_size, val_idx=None):
+        if val_idx is not None:
+            val_start, val_stop = val_idx
+            return self.X_val[val_start:val_stop], self.Y_val[val_start:val_stop]
+        else:
+            return self.next_minibatch(batch_size)
+
+
+def split_data_validation(X, Y, num_val_samples=200):
+    """ split dataset into training and validation sets
+    
+    Args:        
+        X, Y (ndarray): data arrays of shape (num_samples, num_particles, 6)
+        num_val_samples (int): size of validation set
+    """
+    num_samples = X.shape[0]
+    idx_list = np.random.permutation(num_samples)
+    X, Y = X[idx_list], Y[idx_list]
+    X_train, X_val = X[:-num_val_samples], X[-num_val_samples:]#np.split(X, [-num_val_samples])
+    Y_train, Y_val = Y[:-num_val_samples], Y[-num_val_samples:]#np.split(Y, [-num_val_samples])
+    return [(X_train, X_val), (Y_train, Y_val)]
 
 
 
@@ -134,13 +208,13 @@ def next_minibatch(in_list,batch_size):
         out.append(tmp)
     return out
 
-def gpunext_minibatch(in_list,batch_size, xp=cupy):
+def next_minibatch(in_list, batch_size):
     assert len(set([a.shape for a in in_list])) == 1
     M, N, D = in_list[0].shape
-    index_list = xp.random.choice(M,batch_size)
+    index_list = np.random.choice(M, batch_size)
     out = []
-    rands = xp.random.rand(6)
-    shift = xp.random.rand(batch_size,3)
+    rands = np.random.rand(6)
+    shift = np.random.rand(batch_size, 3)
     for k in range(len(in_list)):
         tmp = in_list[k][index_list]
         if rands[0] < .5:
