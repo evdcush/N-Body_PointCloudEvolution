@@ -13,7 +13,7 @@ Design notes:
    - Fix data_utils. Currently messy duplicate functions with normal and gpu,
      just dispatch in funs
    - make trainer
-   - work on density based graph, read attention stuff
+   - work on density base dgraph, read attention stuff
 '''
 #=============================================================================
 # Models
@@ -28,6 +28,8 @@ class Model(chainer.Chain):
         super(Model, self).__init__()
 
         if theta_scale is not None: # scalar for timestep
+            if type(theta_scale) == float: # static theta
+                self.theta = lambda x: x*theta_scale
             #self.theta = theta_scale
             self.add_link('theta', L.Scale(axis=0, W_shape=(1,1,1)))
 
@@ -44,10 +46,31 @@ class Model(chainer.Chain):
             h = cur_layer(h, *args, add=add)
             if i != self.num_layers - 1:
                 h = activation(h)
+        '''
+        16 -> 3 # (batch_size, )
+
+        # calculate norm h
+        h[...,0] # x
+        h[...,1] # y
+        h[...,2] # z
+
+        take norm of output -> how much gravity should be at work here
+         - whatever force is remaining is the difference
+
+        h_init #(output of layer)
+        vector_of_acceleration = h_init
+         - plot: beginning of vector is x_input, end h_init + x_input -> vector
+         - for each locations of input x, 
+        
+        force_vector = x_input -> h_init + x_input
+        '''
         if add:
             h += x[...,:3]
         if static_theta is not None:
-           h += static_theta * x[...,3:]
+           h += static_theta * x[...,3:] #
+
+
+
         if self.theta_scale: # shouldnt have two theta conds, do this more dynamically
             # scales output by some timestep*input_vel
             h += self.theta(x[...,3:])
