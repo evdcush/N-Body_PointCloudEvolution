@@ -146,8 +146,7 @@ class nBodyDataset():
             x,y = self.shift_data(x,y)
         return x,y
 
-    def __call__(self, batch_size, val_idx=None):
-        to_var = lambda arr: chainer.Variable(arr)
+    def __call__(self, batch_size=8, val_idx=None):
         if val_idx is not None:
             val_start, val_stop = val_idx
             x_val = self.X_val[val_start:val_stop]
