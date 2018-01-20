@@ -21,25 +21,24 @@ Design notes:
 class Model(chainer.Chain):
     """ Base model class, defines basic functionality all models
     """
-    def __init__(self, channels, layer, theta_scale=None):
+    def __init__(self, channels, layer, theta=None):
         self.channels = channels
         self.num_layers = len(channels) - 1
-        self.theta_scale = theta_scale
+        self.theta = None
         super(Model, self).__init__()
 
-        if theta_scale is not None: # scalar for timestep
+        if theta is not None: # scalar for timestep
             if type(theta_scale) == float: # static theta
-                self.theta = lambda x: x*theta_scale
-            #self.theta = theta_scale
-            self.add_link('theta', L.Scale(axis=0, W_shape=(1,1,1)))
+                self.theta = lambda x: x*theta
+            else:
+                self.add_link('theta', L.Scale(axis=0, W_shape=(1,1,1)))
 
         # build network layers
         for i in range(self.num_layers):
             cur_layer = layer((channels[i], channels[i+1]))
             self.add_link('H' + str(i), cur_layer)
 
-
-    def __call__(self, x, *args, activation=F.relu, add=True, static_theta=None):
+    def __call__(self, x, *args, activation=F.relu, add=True):
         h = x # this may mutate x, probably need to copy x
         for i in range(self.num_layers):
             cur_layer = getattr(self, 'H' + str(i))
@@ -66,13 +65,7 @@ class Model(chainer.Chain):
         '''
         if add:
             h += x[...,:3]
-        if static_theta is not None:
-           h += static_theta * x[...,3:] #
-
-
-
-        if self.theta_scale: # shouldnt have two theta conds, do this more dynamically
-            # scales output by some timestep*input_vel
+        if self.theta is not None:
             h += self.theta(x[...,3:])
         return h
 
