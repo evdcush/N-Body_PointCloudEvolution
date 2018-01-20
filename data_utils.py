@@ -89,6 +89,7 @@ class nBodyDataset():
         self.num_particles = num_particles
         self.redshifts = (zX, zY)
         self.xp = cupy if use_GPU else np
+        self.validation = validation
 
         X, Y = load_data(num_particles, zX, zY, normalize_data=normalize_data)
         if use_GPU:
@@ -301,3 +302,29 @@ def plot_training_curve(y, cur_iter, yclip=.0004, c='b', poly=None, fsize=(16,10
         title = 'Iteration: {0}, loss: {1:.4}'.format(cur_iter, y[-1])
     ax.set_title(title)
     return fig
+
+def save_plot(lh, save_path, mname, val=False):
+    plt.clf()
+    plt.figure(figsize=(16,8))
+    plt.grid()
+    fig_name = save_path + mname
+    plot_title = mname
+    if val:
+        plot_title = plot_title + 'Validation'
+        fig_name   = fig_name + 'Validation'
+        label = 'mean val error: ' + str(np.mean(lh))
+        color = 'r'        
+    else:
+        plot_title = plot_title + 'Training'
+        fig_name   = fig_name + 'Training'
+        label = 'training error'
+        color = 'b'
+
+        converged_value = np.median(lh[-150:])
+        converge_line   = np.ones((lh.shape[-1])) * converged_value
+        plt.plot(converge_line, c='orange', label='converge: {}'.format(converged_value)) 
+        lh = np.clip(lh, 0, np.median(lh[:500]))
+    plt.plot(lh, c=color, label=label)
+    plt.legend()
+    plt.savefig(fig_name, bbox_inches='tight')
+    plt.close()
