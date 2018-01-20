@@ -87,31 +87,26 @@ class nBodyDataset():
     def __init__(self, num_particles, zX, zY, normalize_data=True, validation=True, use_GPU=True):
         # do stuff with validation
         self.num_particles = num_particles
-        self.zX, self.zY = zX, zY
-        self.validation = validation
-        self.use_GPU = use_GPU
+        self.redshifts = (zX, zY)
         self.xp = cupy if use_GPU else np
-        self.data = {}
 
         X, Y = load_data(num_particles, zX, zY, normalize_data=normalize_data)
         if use_GPU:
             X, Y = cuda.to_gpu(X), cuda.to_gpu(Y)
         if validation:
-            X_sets, Y_sets = split_data_validation(X,Y)
-            self.X_train = X_sets[0]
-            self.X_val   = X_sets[1]
-            #self.data['X_train'] = X_sets[0]
-            #self.data['X_val']   = X_sets[1]
-            
-            self.Y_train = Y_sets[0]
-            self.Y_val   = Y_sets[1]
-            #self.data['Y_train'] = Y_sets[0]
-            #self.data['Y_val']   = Y_sets[1]
+            X_tup, Y_tup = split_data_validation(X,Y)
+            self.X_train = X_tup[0]
+            self.X_val   = X_tup[1]
+            self.num_val_samples = self.X_val.shape[0]
+
+            self.Y_train = Y_tup[0]
+            self.Y_val   = Y_tup[1]
+
         else:
-            #self.data['X_train'] = X
-            #self.data['Y_train'] = Y
             self.X_train = X
             self.Y_train = Y
+
+        self.num_train_samples = self.X_train.shape[0]
 
     def shift_data(self, x, y):
         batch_size, N, D = x.shape
@@ -174,9 +169,9 @@ def split_data_validation(X, Y, num_val_samples=200):
     num_samples = X.shape[0]
     idx_list = np.random.permutation(num_samples)
     X, Y = X[idx_list], Y[idx_list]
-    X_train, X_val = X[:-num_val_samples], X[-num_val_samples:]#np.split(X, [-num_val_samples])
-    Y_train, Y_val = Y[:-num_val_samples], Y[-num_val_samples:]#np.split(Y, [-num_val_samples])
-    return [(X_train, X_val), (Y_train, Y_val)]
+    X_input, X_val = X[:-num_val_samples], X[-num_val_samples:]#np.split(X, [-num_val_samples])
+    X_truth, Y_val = Y[:-num_val_samples], Y[-num_val_samples:]#np.split(Y, [-num_val_samples])
+    return [(X_input, X_val), (X_truth, Y_val)]
 
 
 
