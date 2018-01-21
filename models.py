@@ -75,7 +75,7 @@ class GraphModel(Model):
      - apparently need to pass the numpy data to graph_ops.KNN
        since the to_cpu stuff within graph_ops gives significantly worse loss
     """
-    def __init__(self, channels, K, **kwargs):
+    def __init__(self, channels, K=14, **kwargs):
         self.K = K
         super(GraphModel, self).__init__(channels, nn.GraphLayer, **kwargs)
 
@@ -93,12 +93,12 @@ class SetModel(Model):
 #=============================================================================
 
 
-class ScaleVelocity(chainer.Chain):
-    def __init__(self, scalar=True):
+class VelocityScaled(chainer.Chain):
+    def __init__(self, *args, scalar=True, **kwargs): # *args, **kwargs just for convenience
         j = 1 if scalar else 3
-        super(ScaleVelocity, self).__init__(
+        super(VelocityScaled, self).__init__(
             theta = L.Scale(axis=0, W_shape=(1,1,j)), # theta either scalar or (3,) vector
         )
 
-    def __call__(self, x, activation=None, graphNN=None, add=None):
+    def __call__(self, x, **kwargs):
         return x[...,:3] + self.theta(x[...,3:])
