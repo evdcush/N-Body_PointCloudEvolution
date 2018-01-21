@@ -85,12 +85,19 @@ def normalize(X_in):
 
 class nBodyDataset():
     def __init__(self, num_particles, zX, zY, normalize_data=True, validation=True, use_GPU=True):
-        # do stuff with validation
-        self.num_particles = num_particles
-        self.redshifts = (zX, zY)
-        self.xp = cupy if use_GPU else np
-        self.validation = validation
+        """ nBodyDataset contains data as instance variables and wraps
+        the related data utility functions so an nBodyDataset can be used as 
+        a convenient interface
 
+        Args:
+            num_particles: either 16 or 32, the base number of particles in data
+            zX, zY: redshift floats, zX is input and zY is target
+        """
+        self.num_particles = num_particles
+        self.redshifts     = (zX, zY)
+        self.validation = validation
+        self.xp = cupy if use_GPU else np
+        
         X, Y = load_data(num_particles, zX, zY, normalize_data=normalize_data)
         if use_GPU:
             X, Y = cuda.to_gpu(X), cuda.to_gpu(Y)
@@ -110,6 +117,11 @@ class nBodyDataset():
         self.num_train_samples = self.X_train.shape[0]
 
     def shift_data(self, x, y):
+        """ Minor location-velocity symmetric shifting of data, to increase
+        the amount of training samples from our data.
+        So if we randomly swap the X,Z location axes, we also 
+          shift the X,Z velocity axes.
+        """
         batch_size, N, D = x.shape
         rands = self.xp.random.rand(D) # 6
         shift = self.xp.random.rand(batch_size, 3) # for loc only
@@ -178,7 +190,7 @@ def split_data_validation(X, Y, num_val_samples=200):
 def next_minibatch(in_list,batch_size):
     if all(len(i) == len(in_list[0]) for i in in_list) == False:   
         raise ValueError('Inputs do not have the same dimension')
-    index_list = np.random.permutation(len(in_list[0]))[:batch_size]#np.random.randint(len(in_list[0]), size=batch_size)
+    index_list = np.random.permutation(len(in_list[0]))[:batch_size]
     out = []
     rands = np.random.rand(6)
     shift = np.random.rand(batch_size,3)
@@ -207,52 +219,6 @@ def next_minibatch(in_list,batch_size):
         tmp[:,:,:3] = tmploc
         out.append(tmp)
     return out
-
-def gpunext_minibatch(in_list, batch_size, xp=cupy):
-    assert len(set([a.shape for a in in_list])) == 1
-    M, N, D = in_list[0].shape
-    index_list = xp.random.choice(M, batch_size)
-    out = []
-    rands = xp.random.rand(6)
-    shift = xp.random.rand(batch_size, 3)
-    for k in range(len(in_list)):
-        tmp = in_list[k][index_list]
-        if rands[0] < .5:
-            tmp = tmp[:,:,[1,0,2,4,3,5]]
-        if rands[1] < .5:
-            tmp = tmp[:,:, [0,2,1,3,5,4]]
-        if rands[2] < .5:
-            tmp = tmp[:,:, [2,1,0,5,4,3]]
-        if rands[3] < .5:
-            tmp[:,:,0] = 1 - tmp[:,:,0]
-            tmp[:,:,3] = -tmp[:,:,3]
-        if rands[4] < .5:
-            tmp[:,:,1] = 1 - tmp[:,:,1]
-            tmp[:,:,4] = -tmp[:,:,4]
-        if rands[5] < .5:
-            tmp[:,:,2] = 1 - tmp[:,:,2]
-            tmp[:,:,5] = -tmp[:,:,5]
-            
-        tmploc = tmp[:,:,:3]
-        tmploc += shift[:,None,:]
-        gt1 = tmploc > 1
-        tmploc[gt1] = tmploc[gt1] - 1
-        tmp[:,:,:3] = tmploc
-        out.append(tmp)
-    return out
-
-def to_var_xp(lst_data):
-    return [chainer.Variable(data) for data in lst_data]
-
-def to_variable(lst_data, use_gpu=True):
-    xp = cupy if use_gpu else np
-    chainer_vars = []
-    for data in lst_data:
-        data = data.astype(xp.float32)
-        if use_gpu: data = cuda.to_gpu(data)
-        data_var = chainer.Variable(data)
-        chainer_vars.append(data_var)
-    return chainer_vars
 
 def save_data_batches(batch_tuple, save_name):
     x_in, xt, xh = batch_tuple
@@ -285,6 +251,9 @@ def plot_3D_pointcloud(xt, xh, j, pt_size=(.9,.9), colors=('b','r'), fsize=(18,1
     return fig
 
 def plot_training_curve(y, cur_iter, yclip=.0004, c='b', poly=None, fsize=(16,10), title=None):
+    """ Function not currently used with the nbody trainer. Should refactor 
+    to allow for more general usage.
+    """
     fig = plt.figure(figsize=fsize)
     ax = fig.add_subplot(111)
     ax.set_xlabel('Iterations')
@@ -324,6 +293,7 @@ def save_plot(lh, save_path, mname, val=False):
         converge_line   = np.ones((lh.shape[-1])) * converged_value
         plt.plot(converge_line, c='orange', label='converge: {}'.format(converged_value)) 
         lh = np.clip(lh, 0, np.median(lh[:500]))
+    plt.title(plot_title)
     plt.plot(lh, c=color, label=label)
     plt.legend()
     plt.savefig(fig_name, bbox_inches='tight')

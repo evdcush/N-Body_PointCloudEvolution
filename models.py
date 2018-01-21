@@ -28,7 +28,7 @@ class Model(chainer.Chain):
         super(Model, self).__init__()
 
         if theta is not None: # scalar for timestep
-            if type(theta_scale) == float: # static theta
+            if type(theta) == float: # static theta
                 self.theta = lambda x: x*theta
             else:
                 self.add_link('theta', L.Scale(axis=0, W_shape=(1,1,1)))
