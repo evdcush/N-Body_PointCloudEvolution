@@ -29,7 +29,7 @@ class GraphNN():
         return self.graph(X)
 
 
-
+simushare@gmail.com 
 class DensityNN():
     def __init__(self, X_in, rad):
         self.k = rad
