@@ -106,6 +106,7 @@ def get_min_readout_MSE(x_hat, x_true):
 
 
 def get_bounded(x, bound, xp=cupy):
+    # need to select xp based on x array module
     return xp.all(xp.logical_and(bound<x.data, x.data<1-bound),axis=-1)
 
 def get_bounded_MSE(x_hat, x_true, boundary):
