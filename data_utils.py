@@ -187,15 +187,15 @@ def split_data_validation(X, Y, num_val_samples=200):
 
 
 
-def next_minibatch(in_list,batch_size):
-    if all(len(i) == len(in_list[0]) for i in in_list) == False:   
-        raise ValueError('Inputs do not have the same dimension')
-    index_list = np.random.permutation(len(in_list[0]))[:batch_size]
+def next_minibatch(in_list, batch_size):
+    num_samples, N, D = in_list[0].shape
+    xp = cuda.get_array_module(in_list[0])
+    index_list = xp.random.choice(num_samples, batch_size)
     out = []
-    rands = np.random.rand(6)
-    shift = np.random.rand(batch_size,3)
+    rands = xp.random.rand(6)
+    shift = xp.random.rand(batch_size,3)
     for k in range(len(in_list)):
-        tmp = in_list[k][index_list]
+        tmp = xp.copy(in_list[k][index_list]) # care
         if rands[0] < .5:
             tmp = tmp[:,:,[1,0,2,4,3,5]]
         if rands[1] < .5:
@@ -232,6 +232,16 @@ def save_model(mopt_tuple, save_name):
     model, opt = mopt_tuple
     serializers.save_npz(save_name + '.model', model)
     serializers.save_npz(save_name + '.state', opt)
+
+def get_save_label(mname, mtype, theta_use, num_particles, zfX, zfY):
+    zfX, zfY = str(zfX), str(zfY)
+    zx = zfX[0] + zfX[-1]
+    zy = zfY[0] + zfY[-1]
+    theta_tag = 'L' if theta_use == 1 else ''
+    # mname|mtype|theta_numparticles_zXzY_
+    tag = '{}{}{}_{}_{}{}_'.format(mname, mtype, theta_tag, num_particles, zx, zy)
+    return tag
+
 
 #=============================================================================
 # Plotting utils

@@ -5,14 +5,16 @@ import argparse
 import chainer
 import chainer.links as L
 import chainer.functions as F
+import chainer.optimizers as optimizers
 from chainer import cuda
 import numpy as np
 import cupy
+import matplotlib.pyplot as plt
 
 import models
 import nn
-import graph_ops
 import data_utils
+
 
 # static vars
 RNG_SEEDS     = [98765, 12345, 319, 77743196]
@@ -33,7 +35,7 @@ parser.add_argument('--model_type','-m', default=0,          type=int, help='mod
 parser.add_argument('--use_theta', '-t', default=0,          type=int, help='if 1, use theta timestep coeff')
 parser.add_argument('--gpu_use',   '-g', default=1,          type=int, help='use gpu if 1, else cpu')
 parser.add_argument('--particles', '-p', default=16,         type=int, help='number of particles, dataset')
-parser.add_argument('--redshifts', '-r', nargs='+',          type=int, help='redshift tuple')
+parser.add_argument('--redshifts', '-r', nargs='+',          type=float, help='redshift tuple')
 args = parser.parse_args()
 
 #=============================================================================
@@ -49,7 +51,7 @@ mtype  = NBODY_MODELS[args.model_type]
 channels = CHANNELS[args.model_type]
 mname  = args.model_name
 theta = None
-save_label = data_utils.get_save_label(mname, MTAGS[mtype], args.use_theta, num_particles, zX, zY)
+save_label = data_utils.get_save_label(mname, MTAGS[args.model_type], args.use_theta, num_particles, zX, zY)
 if args.use_theta == 1:
     thetas = np.load('./thetas_timesteps.npy').item()
     theta_val = thetas[(num_particles, zX, zY)]['W']
@@ -90,6 +92,7 @@ validation_loss_history = np.zeros((len(RNG_SEEDS), num_val_batches))
 #=============================================================================
 for rng_idx, rseed in enumerate(RNG_SEEDS):
     model_save_label = save_label + '{}_'.format(rseed)
+    print('{} BEGIN'.format(model_save_label))
     seed_rng(rseed)
     # setup model
     model = mtype(channels)
@@ -123,7 +126,7 @@ for rng_idx, rseed in enumerate(RNG_SEEDS):
         lh_train[cur_iter] = cuda.to_cpu(loss.data)
     train_loss_history[rng_idx] = lh_train
     np.save(loss_path + save_label + 'train_loss', train_loss_history)
-    print('{}: converged at {}'.format(model_save_label, np.median(lh_train[-200:])))
+    print('{}: converged at {}'.format(model_save_label, np.median(lh_train[-150:])))
     # save model, optimizer
     data_utils.save_model([model, optimizer], model_dir + model_save_label)
 
@@ -142,6 +145,19 @@ for rng_idx, rseed in enumerate(RNG_SEEDS):
         np.save(loss_path + save_label + 'val_loss', validation_loss_history)
         print('{}: validation avg {}'.format(model_save_label, np.mean(lh_val)))
     model = optimizer = lh_train = lh_val = None
+#print('{}: averaged convergence at {}'.format(save_label, np.median(np.mean(train_loss_history, axis=0))[-150:]))
 
-print('{}: averaged convergence at {}'.format(save_label, np.median(np.mean(train_loss_history, axis=0))[-200:]))
-print('{}'.format(save_label))
+#=============================================================================
+# Plot
+#=============================================================================
+plt.clf()
+plt.figure(figsize=(16,8))
+plt.grid()
+plot_title = save_label
+avg_lh = np.mean(train_loss_history, axis=0)
+plt.plot(avg_lh[100:], c='b', label='train error, {}'.format(np.median(avg_lh[-150:])))
+plt.title(plot_title)
+plt.legend()
+plt.savefig(loss_path + save_label + 'train_plot', bbox_inches='tight')
+plt.closeall()
+print('{} END'.format(save_label))

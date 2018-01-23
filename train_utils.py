@@ -45,8 +45,8 @@ class nBodyIterator(iterator.Iterator):
     def peturb_data(self, batch):
         # batch is tuple (x,y) where x.shape == y.shape == (mb_size, N, D)
         batch_size = batch[0].shape[0]
-        rands = np.random.rand(6)
-        shift = np.random.rand(batch_size,3)
+        rands = self.xp.random.rand(6)
+        shift = self.xp.random.rand(batch_size,3)
         out = []
         for arr in batch:
             tmp = arr
@@ -76,6 +76,8 @@ class nBodyIterator(iterator.Iterator):
     def __next__(self):
         batch = super(nBodyIterator, self).__next__()
         return self.peturb_data(batch)
+
+class nBodyUpdater()
 
 #=============================================================================
 # network layers
