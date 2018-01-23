@@ -22,9 +22,9 @@ BOUND         = 0.095
 LEARNING_RATE = 0.01
 GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3] # for graph model
 SET_CHANNELS   = [6, 32, 128, 256, 128, 32, 256, 16, 3]
-CHANNELS = {0:SET_CHANNELS, 1:GRAPH_CHANNELS, 2:None}
+CHANNELS     = {0:SET_CHANNELS, 1:GRAPH_CHANNELS, 2:None}
 NBODY_MODELS = {0:models.SetModel, 1:models.GraphModel, 2:models.VelocityScaled}
-MTAGS = {0:'S', 1:'G', 2:'V'}
+MTAGS        = {0:'S', 1:'G', 2:'V'}
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batchsize', '-b', default=8,          type=int, help='batch size')
@@ -52,6 +52,8 @@ channels = CHANNELS[args.model_type]
 mname  = args.model_name
 theta = None
 save_label = data_utils.get_save_label(mname, MTAGS[args.model_type], args.use_theta, num_particles, zX, zY)
+with open('model_tags.txt', 'a') as f:
+    f.write(save_label + '\n')
 if args.use_theta == 1:
     thetas = np.load('./thetas_timesteps.npy').item()
     theta_val = thetas[(num_particles, zX, zY)]['W']
@@ -95,7 +97,7 @@ for rng_idx, rseed in enumerate(RNG_SEEDS):
     print('{} BEGIN'.format(model_save_label))
     seed_rng(rseed)
     # setup model
-    model = mtype(channels)
+    model = mtype(channels, theta=theta)
     if use_gpu:
         model.to_gpu()
     # setup optimizer
@@ -109,10 +111,11 @@ for rng_idx, rseed in enumerate(RNG_SEEDS):
     
     # train loop
     for cur_iter in range(num_iters):
+        #print('train iter {}'.format(cur_iter))
         model.zerograds() # must always zero grads before another forward pass!
 
         # create mini-batches for training
-        _x_in, _x_true = data_utils.next_minibatch([X,Y], mb_size)
+        _x_in, _x_true = data_utils.next_minibatch([X_train, Y_train], mb_size)
         x_in, x_true = chainer.Variable(_x_in), chainer.Variable(_x_true)
 
         # get prediction and loss
@@ -159,5 +162,5 @@ plt.plot(avg_lh[100:], c='b', label='train error, {}'.format(np.median(avg_lh[-1
 plt.title(plot_title)
 plt.legend()
 plt.savefig(loss_path + save_label + 'train_plot', bbox_inches='tight')
-plt.closeall()
+plt.close('all')
 print('{} END'.format(save_label))
