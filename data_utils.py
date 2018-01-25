@@ -195,7 +195,8 @@ def next_minibatch(in_list, batch_size):
     rands = xp.random.rand(6)
     shift = xp.random.rand(batch_size,3)
     for k in range(len(in_list)):
-        tmp = xp.copy(in_list[k][index_list]) # care
+        #tmp = xp.copy(in_list[k][index_list]) # care
+        tmp = in_list[k][index_list]
         if rands[0] < .5:
             tmp = tmp[:,:,[1,0,2,4,3,5]]
         if rands[1] < .5:

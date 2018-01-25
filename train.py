@@ -17,7 +17,8 @@ import data_utils
 
 
 # static vars
-RNG_SEEDS     = [98765, 12345, 319, 77743196]
+#RNG_SEEDS     = [98765, 12345, 319, 77743196] # takes too long
+RNG_SEEDS     = [98765, 12345, 77743196] 
 BOUND         = 0.095
 LEARNING_RATE = 0.01
 GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3] # for graph model
@@ -74,13 +75,23 @@ seed_rng()
 #=============================================================================
 # Load data
 #=============================================================================
-X, Y = data_utils.load_data(num_particles, zX, zY, normalize_data=True)
+if (zX, zY) == (0.6, 0.0):
+    X = np.load('X32_0600.npy')
+    Y = np.load('Y32_0600.npy')
+elif (zX, zY) == (4.0, 2.0):
+    X = np.load('X32_4020.npy')
+    Y = np.load('Y32_4020.npy')
+else:
+    X, Y = data_utils.load_data(num_particles, zX, zY, normalize_data=True)
+
 if use_gpu:
     X = cuda.to_gpu(X)
     Y = cuda.to_gpu(Y)
 X_tup, Y_tup = data_utils.split_data_validation(X,Y, num_val_samples=200)
 X_train, X_val = X_tup
 Y_train, Y_val = Y_tup
+# memory overflow issues, try None-ing X,Y
+X = Y = None
 
 #=============================================================================
 # Loss history
@@ -137,8 +148,8 @@ for rng_idx, rseed in enumerate(RNG_SEEDS):
     with chainer.using_config('train', False):
         for val_iter in range(num_val_batches):
             j,k = val_iter * mb_size, (val_iter+1) * mb_size
-            _val_in   = xp.copy(X_val[j:k])
-            _val_true = xp.copy(Y_val[j:k])
+            _val_in   = X_val[j:k]#xp.copy(X_val[j:k])
+            _val_true = Y_val[j:k]#xp.copy(Y_val[j:k])
             val_in, val_true = chainer.Variable(_val_in), chainer.Variable(_val_true)
 
             val_hat  = model(val_in, add=True)
