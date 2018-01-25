@@ -16,11 +16,6 @@ from chainer.iterators import SerialIterator
 #tupset = TupleDataset(x,y) # tupset[i] == x[i],y[i]
 
 
-
-
-
-
-
 class nBodyIterator(iterator.Iterator):
     '''
     NOTE: only modification from chainer.iterators.SerialIterator is 

@@ -64,8 +64,10 @@ class Model(chainer.Chain):
         force_vector = x_input -> h_init + x_input
         '''
         if add:
-            h += x[...,:3]
-        if self.theta is not None:
+            if h.shape[-1] == x.shape[-1]: h+= x
+            else: h += x[...,:3]
+            #h += x[...,:3]
+        if self.theta is not None: 
             h += self.theta(x[...,3:])
         return h
 

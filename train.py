@@ -31,9 +31,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--batchsize', '-b', default=8,          type=int, help='batch size')
 parser.add_argument('--num_iters', '-i', default=3000,       type=int, help='number of training iterations')
 parser.add_argument('--model_dir', '-s', default='./Model/',           help='directory where you can find a file storing model information')
-parser.add_argument('--model_name','-n', default='',                   help='model name')
+parser.add_argument('--model_name','-n', default='',         type=str, help='model name')
 parser.add_argument('--model_type','-m', default=0,          type=int, help='model type, 0:set, 1:graph, 2:vel')
 parser.add_argument('--use_theta', '-t', default=0,          type=int, help='if 1, use theta timestep coeff')
+parser.add_argument('--pred_vel',  '-v', default=0,          type=int, help='if 1, predict velocity too')
 parser.add_argument('--gpu_use',   '-g', default=1,          type=int, help='use gpu if 1, else cpu')
 parser.add_argument('--particles', '-p', default=16,         type=int, help='number of particles, dataset')
 parser.add_argument('--redshifts', '-r', nargs='+',          type=float, help='redshift tuple')
@@ -50,11 +51,11 @@ num_particles = args.particles
 zX, zY = args.redshifts
 mtype  = NBODY_MODELS[args.model_type]
 channels = CHANNELS[args.model_type]
+if args.pred_vel: channels[-1] = 6
 mname  = args.model_name
+if args.pred_vel: mname += 'VP_'
 theta = None
 save_label = data_utils.get_save_label(mname, MTAGS[args.model_type], args.use_theta, num_particles, zX, zY)
-with open('model_tags.txt', 'a') as f:
-    f.write(save_label + '\n')
 if args.use_theta == 1:
     thetas = np.load('./thetas_timesteps.npy').item()
     theta_val = thetas[(num_particles, zX, zY)]['W']
@@ -75,10 +76,10 @@ seed_rng()
 #=============================================================================
 # Load data
 #=============================================================================
-if (zX, zY) == (0.6, 0.0):
+if (zX, zY) == (0.6, 0.0) and num_particles == 32:
     X = np.load('X32_0600.npy')
     Y = np.load('Y32_0600.npy')
-elif (zX, zY) == (4.0, 2.0):
+elif (zX, zY) == (4.0, 2.0) and num_particles == 32:
     X = np.load('X32_4020.npy')
     Y = np.load('Y32_4020.npy')
 else:
@@ -131,13 +132,19 @@ for rng_idx, rseed in enumerate(RNG_SEEDS):
 
         # get prediction and loss
         x_hat = model(x_in, add=True) # prediction
-        loss = nn.mean_squared_error(x_hat, x_true, boundary=BOUND) # bound = 0.095                
+        #loss = nn.mean_squared_error(x_hat, x_true, boundary=BOUND) # bound = 0.095
+        if x_hat.shape[-1] == 6:
+            loss, loc_loss, vel_loss = nn.get_bounded_MSE_vel(x_hat, x_true, boundary=BOUND)
+            s_loss = cuda.to_cpu(loc_loss.data)
+        else:
+            loss = nn.mean_squared_error(x_hat, x_true, boundary=BOUND) # bound = 0.095
+            s_loss = cuda.to_cpu(loss.data)
         
         # backprop and update
         loss.backward() # this calculates all the gradients (backprop)
         optimizer.update() # this updates the weights
 
-        lh_train[cur_iter] = cuda.to_cpu(loss.data)
+        lh_train[cur_iter] = s_loss
     train_loss_history[rng_idx] = lh_train
     np.save(loss_path + save_label + 'train_loss', train_loss_history)
     print('{}: converged at {}'.format(model_save_label, np.median(lh_train[-150:])))
@@ -153,14 +160,22 @@ for rng_idx, rseed in enumerate(RNG_SEEDS):
             val_in, val_true = chainer.Variable(_val_in), chainer.Variable(_val_true)
 
             val_hat  = model(val_in, add=True)
-            val_loss = nn.mean_squared_error(val_hat, val_true, boundary=BOUND)
-            lh_val[val_iter] = cuda.to_cpu(val_loss.data)
+            #val_loss = nn.mean_squared_error(val_hat, val_true, boundary=BOUND)
+            if x_hat.shape[-1] == 6:
+                val_loss, loc_loss, vel_loss = nn.get_bounded_MSE_vel(val_hat, val_true, boundary=BOUND)
+                s_loss = cuda.to_cpu(loc_loss.data)
+            else:
+                val_loss = nn.mean_squared_error(val_hat, val_true, boundary=BOUND) # bound = 0.095
+                s_loss = cuda.to_cpu(val_loss.data)
+            lh_val[val_iter] = s_loss
         validation_loss_history[rng_idx] = lh_val
         np.save(loss_path + save_label + 'val_loss', validation_loss_history)
         print('{}: validation avg {}'.format(model_save_label, np.mean(lh_val)))
     model = optimizer = lh_train = lh_val = None
 #print('{}: averaged convergence at {}'.format(save_label, np.median(np.mean(train_loss_history, axis=0))[-150:]))
 
+with open('model_tags.txt', 'a') as f:
+    f.write(save_label + '\n')
 #=============================================================================
 # Plot
 #=============================================================================
