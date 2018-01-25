@@ -18,8 +18,7 @@ import data_utils
 
 # static vars
 #RNG_SEEDS     = [98765, 12345, 319, 77743196] # takes too long
-#RNG_SEEDS     = [98765, 12345, 77743196] 
-RNG_SEEDS     = [77743196] 
+RNG_SEEDS     = [98765, 12345, 77743196] 
 BOUND         = 0.095
 LEARNING_RATE = 0.01
 GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3] # for graph model
@@ -49,12 +48,14 @@ xp = cupy if use_gpu == 1 else np
 mb_size   = args.batchsize # 8
 num_iters = args.num_iters # 3000
 num_particles = args.particles
-zX, zY = args.redshifts
-mtype  = NBODY_MODELS[args.model_type]
+zX, zY   = args.redshifts
+
+mtype    = NBODY_MODELS[args.model_type]
 channels = CHANNELS[args.model_type]
-if args.pred_vel: channels[-1] = 6
 mname  = args.model_name
-if args.pred_vel: mname += 'VP_'
+if args.pred_vel: 
+    mname += 'VP_'
+    channels[-1] = 6
 theta = None
 save_label = data_utils.get_save_label(mname, MTAGS[args.model_type], args.use_theta, num_particles, zX, zY)
 if args.use_theta == 1:
@@ -98,11 +99,9 @@ X = Y = None
 #=============================================================================
 # Loss history
 #=============================================================================
-#train_loss_history = np.zeros((len(RNG_SEEDS), num_iters))
-train_loss_history = np.load('./Model/Loss/VP_G_32_0600_train_loss.npy')
+train_loss_history = np.zeros((len(RNG_SEEDS), num_iters))
 num_val_batches = X_val.shape[0] // mb_size
-#validation_loss_history = np.zeros((len(RNG_SEEDS), num_val_batches))
-validation_loss_history = np.load('./Model/Loss/VP_G_32_0600_val_loss.npy')
+validation_loss_history = np.zeros((len(RNG_SEEDS), num_val_batches))
 
 #=============================================================================
 # Training
@@ -148,8 +147,7 @@ for rng_idx, rseed in enumerate(RNG_SEEDS):
         optimizer.update() # this updates the weights
 
         lh_train[cur_iter] = s_loss
-    #train_loss_history[rng_idx] = lh_train
-    train_loss_history[-1] = lh_train
+    train_loss_history[rng_idx] = lh_train
     np.save(loss_path + save_label + 'train_loss', train_loss_history)
     print('{}: converged at {}'.format(model_save_label, np.median(lh_train[-150:])))
     # save model, optimizer
@@ -172,8 +170,7 @@ for rng_idx, rseed in enumerate(RNG_SEEDS):
                 val_loss = nn.mean_squared_error(val_hat, val_true, boundary=BOUND) # bound = 0.095
                 s_loss = cuda.to_cpu(val_loss.data)
             lh_val[val_iter] = s_loss
-        #validation_loss_history[rng_idx] = lh_val
-        validation_loss_history[-1] = lh_val
+        validation_loss_history[rng_idx] = lh_val
         np.save(loss_path + save_label + 'val_loss', validation_loss_history)
         print('{}: validation avg {}'.format(model_save_label, np.mean(lh_val)))
     model = optimizer = lh_train = lh_val = None
