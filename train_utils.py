@@ -77,8 +77,6 @@ class nBodyIterator(iterator.Iterator):
         batch = super(nBodyIterator, self).__next__()
         return self.peturb_data(batch)
 
-class nBodyUpdater()
-
 #=============================================================================
 # network layers
 #=============================================================================
