@@ -18,7 +18,8 @@ import data_utils
 
 # static vars
 #RNG_SEEDS     = [98765, 12345, 319, 77743196] # takes too long
-RNG_SEEDS     = [98765, 12345, 77743196] 
+#RNG_SEEDS     = [98765, 12345, 77743196] 
+RNG_SEEDS     = [98765, 77743196] # speed things up
 BOUND         = 0.095
 LEARNING_RATE = 0.01
 GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3] # for graph model

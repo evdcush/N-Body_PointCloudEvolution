@@ -172,10 +172,7 @@ def plot_3D_pointcloud(xt, xh, j, pt_size=(.9,.9), colors=('b','r'), fsize=(18,1
     ax.set_zlabel('Z')
     return fig
 
-def plot_training_curve(y, cur_iter, yclip=.0004, c='b', poly=None, fsize=(16,10), title=None):
-    """ Function not currently used with the nbody trainer. Should refactor 
-    to allow for more general usage.
-    """
+def plot_training_curve(y, cur_iter, yclip=.0004, c='b', fsize=(12,6), title=None):
     fig = plt.figure(figsize=fsize)
     ax = fig.add_subplot(111)
     ax.set_xlabel('Iterations')
@@ -185,10 +182,6 @@ def plot_training_curve(y, cur_iter, yclip=.0004, c='b', poly=None, fsize=(16,10
     yclipped = np.clip(y, 0, yclip) if yclip > 0 else y
     plt.grid(True)
     ax.plot(yclipped,c=c)
-    if poly is not None:
-        xvals = np.arange(cur_iter)
-        pfit = np.poly1d(np.polyfit(xvals, yclipped, poly))
-        ax.plot(poly(xvals), c='orange', linewidth=3)
     if title is None:
         title = 'Iteration: {0}, loss: {1:.4}'.format(cur_iter, y[-1])
     ax.set_title(title)
