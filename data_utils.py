@@ -152,7 +152,7 @@ def random_augmentation_rotate(batches):
     for tmp in batches:
         tmp_coo = rotate_3D(thetas, tmp[...,:3])
         tmp_vel = rotate_3D(thetas, tmp[...,3:])
-        tmp = xp.concatenate((tmp_coo, tmp_vel), axis=-1)
+        tmp = xp.concatenate((tmp_coo, tmp_vel), axis=-1).astype(xp.float32) # MUST ALWAYS REMEMBER float32, was spitting errors
         out.append(tmp)
     return out
 
@@ -195,10 +195,10 @@ def next_minibatch(in_list, batch_size, data_aug=None):
     if data_aug is None:
         return batches
     elif data_aug == 'rotate':
-        print('rotate aug')
+        #print('rotate aug')
         return random_augmentation_rotate(batches)
     else:
-        print('shift aug')
+        #print('shift aug')
         return random_augmentation_shift(batches)
 
 def save_data_batches(batch_tuple, save_name):
