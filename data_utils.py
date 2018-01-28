@@ -97,17 +97,11 @@ def split_data_validation(X, Y, num_val_samples=200):
     return [(X_input, X_val), (X_truth, Y_val)]
 
 
-
-def next_minibatch(in_list, batch_size):
-    num_samples, N, D = in_list[0].shape
-    xp = cuda.get_array_module(in_list[0])
-    index_list = xp.random.choice(num_samples, batch_size)
+def random_augmentation_shift(batches, xp=cupy):
     out = []
     rands = xp.random.rand(6)
     shift = xp.random.rand(batch_size,3)
-    for k in range(len(in_list)):
-        #tmp = xp.copy(in_list[k][index_list]) # care
-        tmp = in_list[k][index_list]
+    for tmp in batches:
         if rands[0] < .5:
             tmp = tmp[:,:,[1,0,2,4,3,5]]
         if rands[1] < .5:
@@ -132,12 +126,70 @@ def next_minibatch(in_list, batch_size):
         out.append(tmp)
     return out
 
-def rotate_axis(data, ax_idx, theta):
-    """ Rotate data around axis ax_idx 
+def rotate_x(sin_t, cos_t, x, y, z):
+    out_x = x
+    out_y = cos_t * y - sin_t * z
+    out_z = sin_t * y + cos_t * z
+    return out_x, out_y, out_z
+
+def rotate_y(sin_t, cos_t, x, y, z):
+    out_x = cos_t * x + sin_t * z
+    out_y = y
+    out_z = -sin_t * x + cos_t * z
+    return out_x, out_y, out_z
+
+def rotate_z(sin_t, cos_t, x, y, z):
+    out_x = cos_t * x - sin_t * y
+    out_y = sin_t * x + cos_t * y
+    out_z = z
+    return out_x, out_y, out_z
+    
+def rotate_3D(thetas, input_data, xp=cupy):
+    """ Rotate data by random theta
+    thetas and input_data will be split by D axis, each retaining it's split
+    axis dim (1,)
+    sin, cos are performed once at the caller level, and the callee rotate
+    functions only perform the rotational algebra
+    
+    Args:
+        thetas     (ndarray): (mb_size, 3) random numbers for rotation
+        input_data (ndarray): (mb_size, n_P, 3) data to be rotated
     """
-    return None
+    xp = chainer.cuda.get_array_module(input_data) # xp either numpy or cupy, based on GPU usage
+    thetas = xp.expand_dims(thetas, -1)
+    
+    idx = [1,2]
+    xyz = xp.split(input_data, idx, axis=-1) # len 3 list, each of shape (mb_size, n_P, 1)    
+    sin_t = xp.split(xp.sin(thetas), idx, axis=1) # len 3 list, each of shape (mb_size, 1, 1)
+    cos_t = xp.split(xp.cos(thetas), idx, axis=1)
+    
+    rotated_z   = rotate_z(sin_t[0], cos_t[0], *xyz)
+    rotated_yz  = rotate_y(sin_t[1], cos_t[1], *rotated_z)
+    rotated_xyz = rotate_x(sin_t[2], cos_t[2], *rotated_yz)
+    out_data = xp.concatenate(rotated_xyz, axis=-1)
+    return out_data
+
+def random_augmentation_rotate(batches, xp=):
+    """ Randomly rotate data by theta
+    This function is redundant. No need to call rotate_3D twice if we 
+    spend a little more time on indexing, but for now it stays
+    """
+    xp = chainer.cuda.get_array_module(input_data) # xp either numpy or cupy, based on GPU usage
+    rotated_coo = rotate_3D(thetas, input_data[...,:3])
+    rotated_vel = rotate_3D(thetas, input_data[...,3:])
+    return xp.concatenate((rotated_coo, rotated_vel), axis=-1)    
 
 
+def next_minibatch(in_list, batch_size, data_aug=True):
+    num_samples, N, D = in_list[0].shape
+    xp = cuda.get_array_module(in_list[0])
+    index_list = xp.random.choice(num_samples, batch_size)
+    batches = [in_list[k][index_list] for k in range(len(in_list))]
+    if data_aug:
+        #return random_augmentation_shift(batches, xp)
+        return random_augmentation_rotate(batches, xp)
+    else:
+        return batches
 
 def save_data_batches(batch_tuple, save_name):
     x_in, xt, xh = batch_tuple
