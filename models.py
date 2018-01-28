@@ -24,7 +24,7 @@ class Model(chainer.Chain):
     def __init__(self, channels, layer, theta=None):
         self.channels = channels
         self.num_layers = len(channels) - 1
-        self.theta = None
+        
         super(Model, self).__init__()
 
         if theta is not None: # scalar for timestep
@@ -32,6 +32,8 @@ class Model(chainer.Chain):
                 self.theta = lambda x: x*theta
             else:
                 self.add_link('theta', L.Scale(axis=0, W_shape=(1,1,1)))
+        else:
+            self.theta = None
 
         # build network layers
         for i in range(self.num_layers):
@@ -45,24 +47,6 @@ class Model(chainer.Chain):
             h = cur_layer(h, *args, add=add)
             if i != self.num_layers - 1:
                 h = activation(h)
-        '''
-        16 -> 3 # (batch_size, )
-
-        # calculate norm h
-        h[...,0] # x
-        h[...,1] # y
-        h[...,2] # z
-
-        take norm of output -> how much gravity should be at work here
-         - whatever force is remaining is the difference
-
-        h_init #(output of layer)
-        vector_of_acceleration = h_init
-         - plot: beginning of vector is x_input, end h_init + x_input -> vector
-         - for each locations of input x, 
-        
-        force_vector = x_input -> h_init + x_input
-        '''
         if add:
             if h.shape[-1] == x.shape[-1]: h+= x
             else: h += x[...,:3]

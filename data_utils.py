@@ -132,6 +132,13 @@ def next_minibatch(in_list, batch_size):
         out.append(tmp)
     return out
 
+def rotate_axis(data, ax_idx, theta):
+    """ Rotate data around axis ax_idx 
+    """
+    return None
+
+
+
 def save_data_batches(batch_tuple, save_name):
     x_in, xt, xh = batch_tuple
     assert x_in.shape[0] == xt.shape[0] == xh.shape[0]
