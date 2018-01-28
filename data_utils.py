@@ -157,7 +157,7 @@ def random_augmentation_rotate(batches):
     return out
 
 def random_augmentation_shift(batches):
-    xp = chaner.cuda.get_array_module(batches[0])
+    xp = chainer.cuda.get_array_module(batches[0])
     batch_size = batches[0].shape[0]
     out = []
     rands = xp.random.rand(6)
@@ -188,15 +188,18 @@ def random_augmentation_shift(batches):
     return out
 
 
-def next_minibatch(in_list, batch_size, data_aug=True):
+def next_minibatch(in_list, batch_size, data_aug=None):
     num_samples, N, D = in_list[0].shape
     index_list = np.random.choice(num_samples, batch_size)
     batches = [in_list[k][index_list] for k in range(len(in_list))]
-    if data_aug:
-        #return random_augmentation_shift(batches)
+    if data_aug is None:
+        return batches
+    elif data_aug == 'rotate':
+        print('rotate aug')
         return random_augmentation_rotate(batches)
     else:
-        return batches
+        print('shift aug')
+        return random_augmentation_shift(batches)
 
 def save_data_batches(batch_tuple, save_name):
     x_in, xt, xh = batch_tuple
