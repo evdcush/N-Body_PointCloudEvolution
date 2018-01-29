@@ -81,7 +81,7 @@ class GraphLayer(chainer.Chain):
 # Loss related ops
 #=============================================================================
 
-def mean_squared_error(x_hat, x_true, boundary=0.095):
+def mean_squared_error(x_hat, x_true, boundary=(0.095, 1-0.095)):
     if boundary is None:
         return get_min_readout_MSE(x_hat, x_true)
     else:
@@ -105,10 +105,11 @@ def get_min_readout_MSE(x_hat, x_true):
     return mse
 
 
-def get_bounded(x, bound, xp=cupy):
+def get_bounded(x, bound):
     # need to select xp based on x array module
     xp = chainer.cuda.get_array_module(x)
-    return xp.all(xp.logical_and(bound<x.data, x.data<1-bound),axis=-1)
+    lower, upper = bound
+    return xp.all(xp.logical_and(lower<x.data, x.data<upper),axis=-1)
 
 def get_bounded_MSE(x_hat, x_true, boundary):
     x_hat_loc  = x_hat[...,:3]

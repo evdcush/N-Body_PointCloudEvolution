@@ -64,22 +64,25 @@ def load_data(n_P, *args, **kwargs):
         data.append(x)
     return data
 
-def normalize(X_in):
+def normalize(X_in, scale_range=(0,1)):
     """ Normalize features
     coordinates are rescaled to (0,1)
     velocities normalized by mean/std    
     """
-    x_r = np.reshape(X_in, [-1,6])
-    coo, vel = np.split(x_r, [3], axis=-1)
-    coo_min = np.min(coo, axis=0)
-    coo_max = np.max(coo, axis=0)
-    #coo_mean, coo_std = np.mean(coo,axis=0), np.std(coo,axis=0)
-    #x_r[:,:3] = (x_r[:,:3] - coo_mean) / (coo_std)
-    vel_mean = np.mean(vel, axis=0)
-    vel_std  = np.std( vel, axis=0)
-    x_r[:,:3] = (x_r[:,:3] - coo_min) / (coo_max - coo_min)
+    xp = chainer.cuda.get_array_module(X_in)
+    x_r = xp.reshape(X_in, [-1,6])
+    coo, vel = xp.split(x_r, [3], axis=-1)
+    
+    coo_min = xp.min(coo, axis=0)
+    coo_max = xp.max(coo, axis=0)
+    a,b = scale_range
+    x_r[:,:3] = (b-a) * (x_r[:,:3] - coo_min) / (coo_max - coo_min) + a
+    
+    vel_mean = xp.mean(vel, axis=0)
+    vel_std  = xp.std( vel, axis=0)    
     x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
-    X_out = np.reshape(x_r,X_in.shape).astype(np.float32) # just convert to float32 here
+
+    X_out = xp.reshape(x_r,X_in.shape).astype(xp.float32) # just convert to float32 here
     return X_out
 
 def split_data_validation(X, Y, num_val_samples=200):
@@ -147,12 +150,13 @@ def random_augmentation_rotate(batches):
     """
     xp = chainer.cuda.get_array_module(batches[0]) # xp either numpy or cupy, based on GPU usage
     mb_size = batches[0].shape[0]
-    thetas = xp.random.randn(mb_size, 3)
+    thetas = xp.random.rand(mb_size, 3) * np.pi
     out = []
     for tmp in batches:
         tmp_coo = rotate_3D(thetas, tmp[...,:3])
         tmp_vel = rotate_3D(thetas, tmp[...,3:])
-        tmp = xp.concatenate((tmp_coo, tmp_vel), axis=-1).astype(xp.float32) # MUST ALWAYS REMEMBER float32, was spitting errors
+        tmp = xp.concatenate((tmp_coo, tmp_vel), axis=-1).astype(xp.float32) # always remember float32 casting
+        tmp = normalize(tmp, scale_range=(-.125, .125)) # normalize casts
         out.append(tmp)
     return out
 
@@ -188,7 +192,7 @@ def random_augmentation_shift(batches):
     return out
 
 
-def next_minibatch(in_list, batch_size, data_aug=None):
+def next_minibatch(in_list, batch_size, data_aug='shift'):
     num_samples, N, D = in_list[0].shape
     index_list = np.random.choice(num_samples, batch_size)
     batches = [in_list[k][index_list] for k in range(len(in_list))]
