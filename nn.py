@@ -76,6 +76,26 @@ class GraphLayer(chainer.Chain):
             x_out += x_in
         return x_out
 
+# EXPERIMENTAL
+#=============================================================================
+
+class RSLayer(chainer.Chain):
+    """ Set layer, interface to SetLinear
+    
+    Args:
+        kdim: channel size tuple (k_in, k_out)
+        nobias: if True, no bias weights used
+    """
+    def __init__(self, channels, nobias=False):
+        self.channels = channels
+        super(RSLayer, self).__init__(
+            input_linear = SetLinear(kdim, nobias=nobias),
+            )
+        cur_layer = layer((channels[i], channels[i+1]))
+
+    def __call__(self, x_in, add=True):
+        x_out = self.input_linear(x_in, add=add)
+        return x_out
 
 #=============================================================================
 # Loss related ops

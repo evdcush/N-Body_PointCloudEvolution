@@ -88,3 +88,49 @@ class VelocityScaled(chainer.Chain):
 
     def __call__(self, x, **kwargs):
         return x[...,:3] + self.theta(x[...,3:])
+
+#=============================================================================
+# experimental models
+#=============================================================================
+
+class RSModel(chainer.Chain):
+    """ Base model class, defines basic functionality all models
+    """
+    rs_num = 10 # 11 redshifts, so 10 possible predictions
+    def __init__(self, channels, layer, theta=None):
+        self.channels = channels
+        self.num_layers = len(channels) - 1
+        
+        super(Model, self).__init__(
+            RS_6040 = SetModel(channels, theta=theta),
+            RS_4020 = SetModel(channels, theta=theta),
+            RS_2015 = SetModel(channels, theta=theta),
+            RS_1512 = SetModel(channels, theta=theta),
+            RS_1210 = SetModel(channels, theta=theta),
+            RS_1008 = SetModel(channels, theta=theta),
+            RS_0806 = SetModel(channels, theta=theta),
+            RS_0604 = SetModel(channels, theta=theta),
+            RS_0402 = SetModel(channels, theta=theta),
+            RS_0200 = SetModel(channels, theta=theta),
+            )
+
+    def __call__(self, x, *args, activation=F.relu, add=True):
+        """
+        x.shape == (1, n_P, 6) # just the 6.0 sample
+        """
+        
+
+
+        h = x # this may mutate x, probably need to copy x
+        for i in range(self.num_layers):
+            cur_layer = getattr(self, 'H' + str(i))
+            h = cur_layer(h, *args, add=add)
+            if i != self.num_layers - 1:
+                h = activation(h)
+        if add:
+            if h.shape[-1] == x.shape[-1]: h+= x
+            else: h += x[...,:3]
+            #h += x[...,:3]
+        if self.theta is not None: 
+            h += self.theta(x[...,3:])
+        return h
