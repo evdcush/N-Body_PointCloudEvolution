@@ -101,7 +101,7 @@ class RSModel(chainer.Chain):
         self.channels = channels
         self.num_layers = len(channels) - 1
         
-        super(Model, self).__init__(
+        super(RSModel, self).__init__(
             RS_6040 = SetModel(channels, theta=theta),
             RS_4020 = SetModel(channels, theta=theta),
             RS_2015 = SetModel(channels, theta=theta),
@@ -117,20 +117,16 @@ class RSModel(chainer.Chain):
     def __call__(self, x, *args, activation=F.relu, add=True):
         """
         x.shape == (1, n_P, 6) # just the 6.0 sample
+        returns (1, n_P, 6) # the prediction on 0.0
         """
-        
-
-
-        h = x # this may mutate x, probably need to copy x
-        for i in range(self.num_layers):
-            cur_layer = getattr(self, 'H' + str(i))
-            h = cur_layer(h, *args, add=add)
-            if i != self.num_layers - 1:
-                h = activation(h)
-        if add:
-            if h.shape[-1] == x.shape[-1]: h+= x
-            else: h += x[...,:3]
-            #h += x[...,:3]
-        if self.theta is not None: 
-            h += self.theta(x[...,3:])
-        return h
+        rs_40_hat = self.RS_6040(x)
+        rs_20_hat = self.RS_4020(rs_40_hat)
+        rs_15_hat = self.RS_2015(rs_20_hat)
+        rs_12_hat = self.RS_1512(rs_15_hat)
+        rs_10_hat = self.RS_1210(rs_12_hat)
+        rs_08_hat = self.RS_1008(rs_10_hat)
+        rs_06_hat = self.RS_0806(rs_08_hat)
+        rs_04_hat = self.RS_0604(rs_06_hat)
+        rs_02_hat = self.RS_0402(rs_04_hat)
+        rs_00_hat = self.RS_0200(rs_02_hat)
+        return rs_00_hat
