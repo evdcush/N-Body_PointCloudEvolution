@@ -196,14 +196,15 @@ def next_minibatch(in_list, batch_size, data_aug='shift'):
     num_samples, N, D = in_list[0].shape
     index_list = np.random.choice(num_samples, batch_size)
     batches = [in_list[k][index_list] for k in range(len(in_list))]
-    if data_aug is None:
-        return batches
+    if data_aug == 'shift':
+        return random_augmentation_shift(batches)
     elif data_aug == 'rotate':
         #print('rotate aug')
         return random_augmentation_rotate(batches)
     else:
-        #print('shift aug')
-        return random_augmentation_shift(batches)
+        return batches
+    
+    
 
 def save_data_batches(batch_tuple, save_name):
     x_in, xt, xh = batch_tuple
