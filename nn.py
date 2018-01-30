@@ -139,6 +139,14 @@ def get_bounded_MSE(x_hat, x_true, boundary):
     btrue = F.get_item(x_true_loc, bidx)
     return F.mean(F.sum(F.squared_difference(bhat, btrue), axis=-1))
 
+def get_bounded_squared_error(x_hat, x_true, boundary):
+    x_hat_loc  = x_hat[...,:3]
+    x_true_loc = x_true[...,:3]
+    bidx = get_bounded(x_true_loc, boundary)
+    bhat  = F.get_item(x_hat_loc, bidx)
+    btrue = F.get_item(x_true_loc, bidx)
+    return F.squared_difference(bhat, btrue)
+
 def get_bounded_MSE_vel(x_hat, x_true, boundary):
     #x_hat_loc  = x_hat[...,:3]
     x_true_loc = x_true[...,:3]
