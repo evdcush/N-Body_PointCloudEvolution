@@ -3,6 +3,7 @@ import chainer.links as L
 import chainer.functions as F
 import nn
 import graph_ops
+import cupy
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 #=============================================================================
@@ -66,7 +67,7 @@ class GraphModel(Model):
 
     def __call__(self, x, **kwargs):
         # (bs, n_p, 6)
-        L_box_size = 16 if x.shape[1] == 16**3 else 32
+        L_box_size = 16 if x.shape[-2] == 16**3 else 32
         graphNN = graph_ops.KNN(chainer.cuda.to_cpu(x.data), self.K, L_box_size)
         return super(GraphModel, self).__call__(x, graphNN, **kwargs)
 
@@ -96,26 +97,39 @@ class VelocityScaled(chainer.Chain):
 
 class RSModel(chainer.Chain):
     BOUND = (0.095, 1-0.095)
-    def __init__(self, channels, *args, layer=SetModel, theta=None, n_P=16):
+    redshifts = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
+    rs_idx    = list(range(len(redshifts)))
+    layer_tag = 'RS_'
+
+    tags = ['6040', '4020', '2015', '1512', '1210', '1008', '0806', '0604', '0402', '0200']    
+    def __init__(self, channels, layer=SetModel, theta=None, rng_seed=77743196):
         self.channels = channels
-        last_channels = channels[:-1] + [3,]
-        self.tags = ['6040', '4020', '2015', '1512', '1210', '1008', '0806', '0604', '0402', '0200']
-        theta_rs = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
-        theta_val = None
+        theta_weight = None
         super(RSModel, self).__init__()
-        for i in range(len(self.tags)):
-            cur_tag = self.tags[i]
+
+        for i in self.rs_idx:
             if theta is not None:
-                theta_val = theta[(n_P, theta_rs[i], theta_rs[i+1])]['W']
-            self.add_link('RS_' + cur_tag, layer(channels, theta=theta_val))
+                theta_weight = theta[(self.redshifts[i], self.redshifts[i+1])]
+            
+            # seed before each layer to ensure same weights used at each redshift
+            np.random.seed(rng_seed)
+            cupy.random.seed(rng_seed)
+            self.add_link('RS_{}'.format(i), layer(channels, theta=theta_weight))
         
     def fwd_pred(self, x, rs_tup=(0,10)):
+        """ Model makes predictions from rs_tup[0] to rs_tup[-1]
+        This is different from the forwarding used in training in that
+        it only receives input for a single redshift.
+        If rs_tup == (7, 10), then you are making predictions from
+        redshift 0.6 to 0.0
+
+        Args:
+            x: input data, of shape (1, n_P, 6) # rs_start
+            rs_tup: rs_tup[0] is the starting redshift, rs_tup[1] is target redshift
+        Returns:
+            hat: (rs_tup[1] - rs_tup[0], 1, n_p, 6) shaped variable for predictions
+                 from rs_start to rs_target
         """
-        # each layer receives previoous layer prediction        
-        rs_tup is idx of redshift
-        if rs_tup == (7, 10), then you are making prediction from redshift 0.6 to 0.0
-        """
-        # x.shape == (1, n_P, 6)
         rs_start, rs_target = rs_tup
         redshift_distance = rs_target - rs_start
         assert redshift_distance > 0 and rs_target <= 10

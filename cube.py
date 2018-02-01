@@ -70,7 +70,8 @@ mname    = args.model_name
 theta = None
 theta_tag  = 'L' if args.use_theta == 1 else ''
 if args.use_theta == 1:
-    theta = np.load('./thetas_timesteps.npy').item()
+    theta_path = './velocity_coefficients_{}.npy'.format(num_particles)
+    theta = np.load(theta_path).item()[(zX, zY)]
 
 # pathing vars
 save_label = '{}{}{}_{}_'.format(mname, MTAGS[args.model_type], theta_tag, num_particles)

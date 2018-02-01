@@ -44,7 +44,12 @@ parser.add_argument('--particles', '-p', default=16,         type=int, help='num
 parser.add_argument('--redshifts', '-r', nargs='+',          type=float, help='redshift tuple')
 args = parser.parse_args()
 start_time = time.time()
+'''
+ERRORS:
+- data was normalized twice
+- data was normalized ACROSS 
 
+'''
 #=============================================================================
 # Training and model params, from arg parser
 #=============================================================================
@@ -169,8 +174,9 @@ X_train = None
 # validation
 rs_distance = rs_target - rs_start
 val_predictions = np.zeros(((rs_distance,) + X_val.shape[1:])).astype(np.float32)
+val_iters = X_val.shape[1] # (11, 200, n_P, 6)
 with chainer.using_config('train', False):
-    for val_iter in range(X_val.shape[0]):
+    for val_iter in range(val_iters):
         _val_in   = X_val[rs_start,  val_iter: val_iter+1]
         _val_true = X_val[rs_target, val_iter: val_iter+1]
         if use_gpu:
