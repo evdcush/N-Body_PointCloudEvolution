@@ -3,7 +3,7 @@ import chainer.links as L
 import chainer.functions as F
 import nn
 import graph_ops
-
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 '''
 Design notes:
  - finished base model class
@@ -66,7 +66,9 @@ class GraphModel(Model):
         super(GraphModel, self).__init__(channels, nn.GraphLayer, **kwargs)
 
     def __call__(self, x, **kwargs):
-        graphNN = graph_ops.KNN(chainer.cuda.to_cpu(x.data), self.K)
+        # (bs, n_p, 6)
+        L_box_size = 16 if x.shape[1] == 16**3 else 32
+        graphNN = graph_ops.KNN(chainer.cuda.to_cpu(x.data), self.K, L_box_size)
         return super(GraphModel, self).__call__(x, graphNN, **kwargs)
 
 #=============================================================================

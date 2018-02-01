@@ -101,6 +101,9 @@ class RSLayer(chainer.Chain):
 # Loss related ops
 #=============================================================================
 
+def mean_squared_error_full(x_hat, x_true):
+    return F.mean(F.sum(F.squared_difference(x_hat[...,:3], x_true[...,:3]), axis=-1))
+
 def mean_squared_error(x_hat, x_true, boundary=(0.095, 1-0.095)):
     if boundary is None:
         return get_min_readout_MSE(x_hat, x_true)
