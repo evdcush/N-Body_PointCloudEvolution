@@ -14,7 +14,11 @@ import matplotlib.pyplot as plt
 import models
 import nn
 import data_utils
-
+'''
+pick one point at random:
+how many hops do you node to capture every oother point 
+- pick num layers based on that. (Hops being how many times it takes to get to that neighbor)
+'''
 
 # static vars
 #RNG_SEEDS     = [98765, 12345, 319, 77743196] # takes too long
