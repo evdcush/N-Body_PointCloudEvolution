@@ -139,19 +139,13 @@ for rng_idx, rseed in enumerate(RNG_SEEDS):
 
         # get prediction and loss
         x_hat = model(x_in, add=True) # prediction
-        #loss = nn.mean_squared_error(x_hat, x_true, boundary=BOUND) # bound = 0.095
-        if x_hat.shape[-1] == 6:
-            loss, loc_loss, vel_loss = nn.get_bounded_MSE_vel(x_hat, x_true, boundary=BOUND)
-            s_loss = cuda.to_cpu(loc_loss.data)
-        else:
-            loss = nn.mean_squared_error(x_hat, x_true, boundary=BOUND) # bound = 0.095
-            s_loss = cuda.to_cpu(loss.data)
+        loss = nn.mean_squared_error_full(x_hat, x_true) # bound = 0.095
         
         # backprop and update
         loss.backward() # this calculates all the gradients (backprop)
         optimizer.update() # this updates the weights
 
-        lh_train[cur_iter] = s_loss
+        lh_train[cur_iter] = cuda.to_cpu(loss.data)
     train_loss_history[rng_idx] = lh_train
     np.save(loss_path + save_label + 'train_loss', train_loss_history)
     print('{}: converged at {}'.format(model_save_label, np.median(lh_train[-150:])))
@@ -160,21 +154,15 @@ for rng_idx, rseed in enumerate(RNG_SEEDS):
 
     # validation
     with chainer.using_config('train', False):
-        for val_iter in range(num_val_batches):
-            j,k = val_iter * mb_size, (val_iter+1) * mb_size
+        for val_iter in range(X_val.shape[0]):
+            j,k = val_iter, val_iter+1
             _val_in   = X_val[j:k]#xp.copy(X_val[j:k])
             _val_true = Y_val[j:k]#xp.copy(Y_val[j:k])
             val_in, val_true = chainer.Variable(_val_in), chainer.Variable(_val_true)
 
             val_hat  = model(val_in, add=True)
-            #val_loss = nn.mean_squared_error(val_hat, val_true, boundary=BOUND)
-            if x_hat.shape[-1] == 6:
-                val_loss, loc_loss, vel_loss = nn.get_bounded_MSE_vel(val_hat, val_true, boundary=BOUND)
-                s_loss = cuda.to_cpu(loc_loss.data)
-            else:
-                val_loss = nn.mean_squared_error(val_hat, val_true, boundary=BOUND) # bound = 0.095
-                s_loss = cuda.to_cpu(val_loss.data)
-            lh_val[val_iter] = s_loss
+            val_loss = nn.mean_squared_error_full(val_hat, val_true)
+            lh_val[val_iter] = cuda.to_cpu(val_loss.data)
         validation_loss_history[rng_idx] = lh_val
         np.save(loss_path + save_label + 'val_loss', validation_loss_history)
         print('{}: validation avg {}'.format(model_save_label, np.mean(lh_val)))
