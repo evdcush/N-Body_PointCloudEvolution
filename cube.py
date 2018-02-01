@@ -32,7 +32,7 @@ MTAGS        = {0:'S', 1:'G', 2:'V', 3:'RS'}
 RS_IDX = {6.0:0, 4.0:1, 2.0:2, 1.5:3, 1.2:4, 1.0:5, 0.8:6, 0.6:7, 0.4:8, 0.2:9, 0.0:10} # for new data 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--batchsize', '-b', default=4,          type=int, help='batch size')
+parser.add_argument('--batchsize', '-b', default=8,          type=int, help='batch size')
 parser.add_argument('--num_iters', '-i', default=3000,       type=int, help='number of training iterations')
 parser.add_argument('--model_dir', '-s', default='./Model/',           help='directory where you can find a file storing model information')
 parser.add_argument('--model_name','-n', default='',         type=str, help='model name')

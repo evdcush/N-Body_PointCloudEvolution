@@ -4,17 +4,7 @@ import chainer.functions as F
 import nn
 import graph_ops
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-'''
-Design notes:
- - finished base model class
- - up next is graph_ops, trainers
-   - for graph_ops, make it so it accepts a chainer.Variable too
- - FINISH graph_ops refactor, next up:
-   - Fix data_utils. Currently messy duplicate functions with normal and gpu,
-     just dispatch in funs
-   - make trainer
-   - work on density base dgraph, read attention stuff
-'''
+
 #=============================================================================
 # Models
 #=============================================================================
@@ -47,12 +37,21 @@ class Model(chainer.Chain):
             h = cur_layer(h, *args, add=add)
             if i != self.num_layers - 1:
                 h = activation(h)
+
         if add:
-            if h.shape[-1] == x.shape[-1]: h+= x
-            else: h += x[...,:3]
-            #h += x[...,:3]
-        if self.theta is not None: 
-            h += self.theta(x[...,3:])
+            if h.shape[-1] == x.shape[-1]: # meaning, model is also predicting velocity
+                h += x
+            else: # model only predict coordinates
+                h += x[...,:3]
+        if self.theta is not None:
+            timestep_vel = self.theta(x[...,3:])
+            if h.shape[-1] == x.shape[-1]:
+                # need to split and concat, since direct index assignment not supported
+                h_loc, h_vel = F.split_axis(h, [3], -1) # splits h[...,:3], h[...,3:]
+                h_loc += timestep_vel
+                h = F.concat((h_loc, h_vel), axis=-1)
+            else:
+                h += timestep_vel
         return h
 
 #=============================================================================
