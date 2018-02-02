@@ -1,18 +1,16 @@
+import os, glob, struct, code, sys
+
 import numpy as np
 import cupy
-import chainer
-from chainer import cuda
-import glob
-import struct
-import code
-import chainer.serializers as serializers
 import matplotlib
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+
+import chainer
+from chainer import cuda
+import chainer.serializers as serializers
+
 from params import *
-'''
-Data utils
-'''
 
 
 #=============================================================================
@@ -282,6 +280,25 @@ def get_save_label(mname, mtype, theta_use, num_particles, zfX, zfY):
 def load_velocity_coefficients(num_particles):
     vel_coeffs = np.load('./Data/velocity_coefficients_{}.npy'.format(num_particles)).item()
     return vel_coeffs
+#=============================================================================
+# Saving utils
+#=============================================================================
+def make_dirs(dirs):
+    """ Make directories based on paths in dirs
+    Args:
+        dirs (list): list of paths of dirs to create
+    """
+    for path in dirs:
+        if not os.path.exists(path): os.makedirs(path)
+
+def save_files(save_path):
+    """ Save project files to save_path
+    For backing up files used for a model
+    Args:
+        save_path (str): path to save files
+    """
+    file_names = ['train.py', 'utils.py', 'models.py', 'nn.py', 'graph_ops.py', 'params.py']
+    
 
 
 #=============================================================================

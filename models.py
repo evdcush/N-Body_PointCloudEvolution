@@ -2,7 +2,6 @@ import chainer
 import chainer.links as L
 import chainer.functions as F
 import nn
-import graph_ops
 import cupy
 from params import PARAMS_SEED, REDSHIFTS, BOUND
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
@@ -59,8 +58,8 @@ class Model(chainer.Chain):
 #=============================================================================
 class GraphModel(Model):
     """ GraphModel uses GraphLayer
-     - apparently need to pass the numpy data to graph_ops.KNN
-       since the to_cpu stuff within graph_ops gives significantly worse loss
+     - apparently need to pass the numpy data to nn.KNN
+       since the to_cpu stuff within nn gives significantly worse loss
     """
     def __init__(self, channels, K=14, **kwargs):
         self.K = K
@@ -69,7 +68,7 @@ class GraphModel(Model):
     def __call__(self, x, **kwargs):
         # (bs, n_p, 6)
         L_box_size = 16 if x.shape[-2] == 16**3 else 32
-        graphNN = graph_ops.KNN(chainer.cuda.to_cpu(x.data), self.K, L_box_size)
+        graphNN = nn.KNN(chainer.cuda.to_cpu(x.data), self.K, L_box_size)
         return super(GraphModel, self).__call__(x, graphNN, **kwargs)
 
 #=============================================================================
@@ -116,8 +115,10 @@ class RSModel(chainer.Chain):
         
     def fwd_target(self, x, rs_tup=(0,10)):
         """ Model makes predictions from rs_tup[0] to rs_tup[-1]
-        This is different from the forwarding used in training in that
-        it only receives input for a single redshift.
+        *Assumed to be used in validation only*
+
+        Differs from fwd_prediction in that only a single redshift
+        is taken as input.
         If rs_tup == (7, 10), then you are making predictions from
         redshift 0.6 to 0.0
 
