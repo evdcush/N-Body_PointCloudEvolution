@@ -241,7 +241,6 @@ def next_minibatch(in_list, batch_size, data_aug='shift'):
         return batches
     
     
-
 def save_data_batches(batch_tuple, save_name):
     x_in, xt, xh = batch_tuple
     assert x_in.shape[0] == xt.shape[0] == xh.shape[0]
