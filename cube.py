@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from params import *
 import models
 import nn
-import data_utils
+import utils
 
 '''
 Design notes:
@@ -53,7 +53,7 @@ rs_start  = REDSHIFTS.index(zX)
 rs_target = REDSHIFTS.index(zY)
 vel_coeffs = vel_tag = None
 if args['vel_coeff']:
-    vel_coeffs = data_utils.load_velocity_coefficients(num_particles)
+    vel_coeffs = utils.load_velocity_coefficients(num_particles)
     vel_tag = 'L'
 
 #=============================================================================
@@ -101,13 +101,8 @@ model_dir = '{}/{}/'.format(args['model_dir'], save_name)
 loss_path = model_dir + 'Loss/'
 cube_path = model_dir + 'Cubes/'
 copy_path = model_dir + '.original_files/'
-data_utils.make_dirs([loss_path, cube_path, copy_path])
-data_utils.save_files(copy_path)
-
-fname = os.path.basename(__file__)
-shutil.copyfile('./{}'.format(fname), )
-
-
+utils.make_dirs([loss_path, cube_path, copy_path])
+utils.save_files(copy_path)
 
 def seed_rng(s=12345):
     np.random.seed(s)
@@ -117,14 +112,14 @@ def seed_rng(s=12345):
 #=============================================================================
 # Load data
 #=============================================================================
-X, Y = data_utils.load_data(num_particles, zX, zY, normalize_data=True)
+X, Y = utils.load_data(num_particles, zX, zY, normalize_data=True)
 
 if use_gpu:
     X = cuda.to_gpu(X)
     Y = cuda.to_gpu(Y)
 seed_rng()
 
-X_tup, Y_tup = data_utils.split_data_validation(X,Y, num_val_samples=200)
+X_tup, Y_tup = utils.split_data_validation(X,Y, num_val_samples=200)
 X_train, X_val = X_tup
 Y_train, Y_val = Y_tup
 
@@ -164,7 +159,7 @@ for cur_iter in range(num_iters):
     model.zerograds() # must always zero grads before another forward pass!
 
     # create mini-batches for training
-    _x_in, _x_true = data_utils.next_minibatch([X_train, Y_train], batch_size)
+    _x_in, _x_true = utils.next_minibatch([X_train, Y_train], batch_size)
     x_in   = chainer.Variable(_x_in)
     x_true = chainer.Variable(_x_true)
 
@@ -180,14 +175,14 @@ for cur_iter in range(num_iters):
     if cur_iter % 10 == 0 and cur_iter != 0:
         np.save(loss_path + save_label + 'train_loss', train_loss_history)
         if cur_iter % 100 == 0:
-            data_utils.save_model([model, optimizer], model_dir + save_label)
+            utils.save_model([model, optimizer], model_dir + save_label)
 
 # save loss
 np.save(loss_path + save_label + 'train_loss', train_loss_history)
 print('{}: converged at {}'.format(save_label, np.median(train_loss_history[-150:])))
 
 # save model, optimizer
-data_utils.save_model([model, optimizer], model_dir + save_label)
+utils.save_model([model, optimizer], model_dir + save_label)
 X_train = None
 
 # validation

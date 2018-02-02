@@ -297,7 +297,12 @@ def save_files(save_path):
     Args:
         save_path (str): path to save files
     """
-    file_names = ['train.py', 'utils.py', 'models.py', 'nn.py', 'graph_ops.py', 'params.py']
+    file_names = ['train.py', 'utils.py', 'models.py', 'nn.py', 'params.py']
+    for fname in file_names:
+        src = './{}'.format(fname)
+        dst = '{}{}'.format(save_path, fname)
+        shutil.copyfile(src, dst)
+        print('saved {} to {}'.format(src, dst))
     
 
 
