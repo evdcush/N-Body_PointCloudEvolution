@@ -47,7 +47,13 @@ start_time = time.time()
 '''
 ERRORS:
 - data was normalized twice
-- data was normalized ACROSS 
+- data was renormalized ACROSS redshifts (using population statistics from different redshifts)
+- validation loop only went over X_val.shape[0], which was 11 the number of redshifts, rather than number of samples
+  - make sure predictions are being saved correctly
+
+UPDATES:
+- theta can now be passed to RSModel, assuming you loaded the proper velocity_coeffients_*.npy based on num_particles
+- RSModel layer tags have been changed, now just denoted by their respective index number
 
 '''
 #=============================================================================
