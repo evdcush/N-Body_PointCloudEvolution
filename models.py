@@ -4,6 +4,7 @@ import chainer.functions as F
 import nn
 import graph_ops
 import cupy
+from params import PARAMS_SEED, REDSHIFTS, BOUND
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 #=============================================================================
@@ -12,19 +13,19 @@ import cupy
 class Model(chainer.Chain):
     """ Base model class, defines basic functionality all models
     """
-    def __init__(self, channels, layer, theta=None):
+    def __init__(self, channels, layer, vel_coeff=None):
         self.channels = channels
         self.num_layers = len(channels) - 1
         
         super(Model, self).__init__()
 
-        if theta is not None: # scalar for timestep
-            if type(theta) == float: # static theta
-                self.theta = lambda x: x*theta
+        if vel_coeff is not None: # scalar for timestep
+            if type(vel_coeff) == float: # static vel_coeff
+                self.vel_coeff = lambda x: x*vel_coeff
             else:
-                self.add_link('theta', L.Scale(axis=0, W_shape=(1,1,1)))
+                self.add_link('vel_coeff', L.Scale(axis=0, W_shape=(1,1,1)))
         else:
-            self.theta = None
+            self.vel_coeff = None
 
         # build network layers
         for i in range(self.num_layers):
@@ -44,8 +45,8 @@ class Model(chainer.Chain):
                 h += x
             else: # model only predict coordinates
                 h += x[...,:3]
-        if self.theta is not None:
-            timestep_vel = self.theta(x[...,3:])
+        if self.vel_coeff is not None:
+            timestep_vel = self.vel_coeff(x[...,3:])
             if h.shape[-1] == x.shape[-1]:
                 # need to split and concat, since direct index assignment not supported
                 h_loc, h_vel = F.split_axis(h, [3], -1) # splits h[...,:3], h[...,3:]
@@ -85,38 +86,35 @@ class VelocityScaled(chainer.Chain):
     def __init__(self, *args, scalar=True, **kwargs): # *args, **kwargs just for convenience
         j = 1 if scalar else 3
         super(VelocityScaled, self).__init__(
-            theta = L.Scale(axis=0, W_shape=(1,1,j)), # theta either scalar or (3,) vector
+            vel_coeff = L.Scale(axis=0, W_shape=(1,1,j)), # vel_coeff either scalar or (3,) vector
         )
 
     def __call__(self, x, **kwargs):
-        return x[...,:3] + self.theta(x[...,3:])
+        return x[...,:3] + self.vel_coeff(x[...,3:])
 
 #=============================================================================
 # experimental models
 #=============================================================================
 
 class RSModel(chainer.Chain):
-    BOUND = (0.095, 1-0.095)
-    redshifts = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
-    rs_idx    = list(range(len(redshifts)))
-    layer_tag = 'RS_'
+    bound = BOUND
+    redshifts = REDSHIFTS
+    layer_tag = 'Z_'
 
-    tags = ['6040', '4020', '2015', '1512', '1210', '1008', '0806', '0604', '0402', '0200']    
-    def __init__(self, channels, layer=SetModel, theta=None, rng_seed=77743196):
-        self.channels = channels
-        theta_weight = None
+    def __init__(self, channels, layer=SetModel, vel_coeff=None, rng_seed=PARAMS_SEED):
+        self.channels    = channels
+        vel_coeff_weight = None
         super(RSModel, self).__init__()
 
-        for i in self.rs_idx:
-            if theta is not None:
-                theta_weight = theta[(self.redshifts[i], self.redshifts[i+1])]
-            
+        for i in range(len(self.redshifts) - 1):
+            if vel_coeff is not None:
+                vel_coeff_weight = vel_coeff[(self.redshifts[i], self.redshifts[i+1])]            
             # seed before each layer to ensure same weights used at each redshift
             np.random.seed(rng_seed)
             cupy.random.seed(rng_seed)
-            self.add_link('RS_{}'.format(i), layer(channels, theta=theta_weight))
+            self.add_link('Z_{}'.format(i), layer(channels, vel_coeff=vel_coeff_weight))
         
-    def fwd_pred(self, x, rs_tup=(0,10)):
+    def fwd_target(self, x, rs_tup=(0,10)):
         """ Model makes predictions from rs_tup[0] to rs_tup[-1]
         This is different from the forwarding used in training in that
         it only receives input for a single redshift.
@@ -133,37 +131,37 @@ class RSModel(chainer.Chain):
         rs_start, rs_target = rs_tup
         redshift_distance = rs_target - rs_start
         assert redshift_distance > 0 and rs_target <= 10
+
         predictions = self.xp.zeros(((redshift_distance,) + x.shape)).astype(self.xp.float32)
-        cur_layer = getattr(self, 'RS_' + self.tags[rs_start])
+
+        cur_layer = getattr(self, 'Z_{}'.format(rs_start))
         hat = cur_layer(x)
         predictions[0] = hat.data
         if redshift_distance == 1:
             return hat, predictions
         else:
             for i in range(rs_start+1, rs_target):
-                cur_layer = getattr(self, 'RS_' + self.tags[i])
+                cur_layer = getattr(self, 'Z_{}'.format(i))
                 hat = cur_layer(hat)
                 predictions[i] = hat.data
             return hat, predictions
     
-    def fwd_input(self, x):
-        """ each layer receives external input
-        """
-        hat = self.RS_6040(x[0])
-        error = nn.get_bounded_MSE(hat, x[1], boundary=self.BOUND)
-        for i in range(1, len(self.tags)):
-            cur_layer = getattr(self, 'RS_' + self.tags[i])
-            hat = cur_layer(x[i])
-            error += nn.get_bounded_MSE(hat, x[i+1], boundary=self.BOUND)
-        return hat, error
     
-    def fwd_pred_loss(self, x):
-        """ each layer receives external input
+    def fwd_predictions(self, x):
+        """ Forward predictions through network layers
+        Each layer receives the previous layer's prediction as input
+        The loss is calculated between truth and prediction and summed
+
+        Args:
+            x (chainer.Variable): data batch of shape (11, batch_size, num_particles, 6)
+        Returns:
+            hat (chainer.Variable): the last layer's prediction of shape (batch_size, num_particles, 6)
+            error (chainer.Variable): summed error of layer predictions against truth
         """
-        hat = self.RS_6040(x[0])
-        error = nn.get_bounded_MSE(hat, x[1], boundary=self.BOUND)
+        hat = self.Z_0(x[0])
+        error = nn.get_bounded_MSE(hat, x[1], boundary=self.bound)
         for i in range(1, len(self.tags)):
-            cur_layer = getattr(self, 'RS_' + self.tags[i])
+            cur_layer = getattr(self, 'Z_{}'.format(i))
             hat = cur_layer(hat)
-            error += nn.get_bounded_MSE(hat, x[i+1], boundary=self.BOUND)
+            error += nn.get_bounded_MSE(hat, x[i+1], boundary=self.bound)
         return hat, error
