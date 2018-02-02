@@ -14,7 +14,7 @@ from params import *
 
 
 #=============================================================================
-# Data utils
+# Loading utils
 #=============================================================================
 def read_sim(file_list, n_P):
     """ reads simulation data from disk and returns
@@ -62,6 +62,18 @@ def load_data(n_P, *args, **kwargs):
         data.append(x)
     return data
 
+def load_npy_data(n_P):
+    """ Loads data serialized as numpy array of np.float32
+    Args:
+        n_P: base number of particles (16 or 32)
+    """
+    assert n_P in [16, 32]
+    return np.load(DATA_PATH_NPY.format(n_P))
+
+#=============================================================================
+# Data utils
+#=============================================================================
+
 def normalize(X_in, scale_range=(0,1)):
     """ Normalize data features
     coordinates are rescaled to be in range [0,1]
@@ -86,6 +98,37 @@ def normalize(X_in, scale_range=(0,1)):
 
     X_out = xp.reshape(x_r,X_in.shape).astype(xp.float32) # just convert to float32 here
     return X_out
+
+def normalize_fullrs(X, scale_range=(0,1)):
+    """ Normalize data features, for full data array of redshifts
+    coordinates are rescaled to be in range [0,1]
+    velocities are normalized to zero mean and unit variance
+
+    Args:
+        X_in (ndarray): data to be normalized, of shape (N, D, 6)
+        scale_range   : range to which coordinate data is rescaled
+    """
+    xp = chainer.cuda.get_array_module(X)
+    for rs_idx in range(X.shape[0]):
+        X_z = X[rs_idx]
+        x_r = xp.reshape(X_z, [-1, 6])
+        coo, vel = xp.split(x_r, [3], axis=-1)
+        
+        # rescale coordinates
+        coo_min = xp.min(coo, axis=0)
+        coo_max = xp.max(coo, axis=0)
+        a,b = scale_range
+        x_r[:,:3] = (b-a) * (x_r[:,:3] - coo_min) / (coo_max - coo_min) + a
+        
+        # normalize velocities
+        vel_mean = xp.mean(vel, axis=0) 
+        vel_std  = xp.std( vel, axis=0)
+        x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
+
+        # reshape current redshift x, and assign
+        X_z = xp.reshape(x_r, X_z.shape).astype(xp.float32) # safe redundant cast to float32
+        X[rs_idx] = X_z
+    return X
 
 def split_data_validation(X, Y, num_val_samples=200):
     """ split dataset into training and validation sets
@@ -263,23 +306,12 @@ def save_data_batches(batch_tuple, save_name):
     np.save(save_name + 'hat'  , xh)
     print('data saved')
 
-def save_model(mopt_tuple, save_name):
-    model, opt = mopt_tuple
-    serializers.save_npz(save_name + '.model', model)
-    serializers.save_npz(save_name + '.state', opt)
 
-def get_save_label(mname, mtype, theta_use, num_particles, zfX, zfY):
-    zfX, zfY = str(zfX), str(zfY)
-    zx = zfX[0] + zfX[-1]
-    zy = zfY[0] + zfY[-1]
-    theta_tag = 'L' if theta_use == 1 else ''
-    # mname|mtype|theta_numparticles_zXzY_
-    tag = '{}{}{}_{}_{}{}_'.format(mname, mtype, theta_tag, num_particles, zx, zy)
-    return tag
 
 def load_velocity_coefficients(num_particles):
     vel_coeffs = np.load('./Data/velocity_coefficients_{}.npy'.format(num_particles)).item()
     return vel_coeffs
+
 #=============================================================================
 # Saving utils
 #=============================================================================
@@ -291,7 +323,7 @@ def make_dirs(dirs):
     for path in dirs:
         if not os.path.exists(path): os.makedirs(path)
 
-def save_files(save_path):
+def save_pyfiles(save_path):
     """ Save project files to save_path
     For backing up files used for a model
     Args:
@@ -303,7 +335,37 @@ def save_files(save_path):
         dst = '{}{}'.format(save_path, fname)
         shutil.copyfile(src, dst)
         print('saved {} to {}'.format(src, dst))
-    
+
+def save_model(model, optimizer, save_name):
+    """ Save model and optimizer parameters
+    Model has fwd computation graph and weights saved
+    Optimizer has current weights from momentum vectors saved
+    Args:
+        model (chainer.Chain): a model with weights to save
+        optimizer (chainer.optimizers): optimizer
+    """
+    serializers.save_npz('{}{}'.format(save_name, '.model'),         model)
+    serializers.save_npz('{}{}'.format(save_name, '.optimizer'), optimizer)
+    print('Saved model and optimizer at {}'.format(save_name))
+
+def save_val_cube(X_val, cube_path, rs_pair, prediction=False):
+    """ Save validation data
+    Args:
+        X_val (ndarray): either input or prediction validation data
+        cube_path (str): path to save
+        rs_pair (int): tuple of redshift index from which the data is based
+        prediction   : whether data being saved is prediction or input
+    """
+    X_val = cuda.to_cpu(X_val)
+    num_particles = 16 if X_val.shape[-2] == 4096 else 32
+    z_start, z_target = rs_pair
+    rs_tag = '{}-{}'.format(REDSHIFTS[z_start], REDSHIFTS[z_target])
+    ptag = 'prediction' if prediction else 'input'
+    # eg X32_0.6-0.0_val_prediction.npy'
+    val_fname = 'X{}_{}_val_{}'.format(num_particles, rs_tag, ptag)
+    save_path = '{}{}'.format(cube_path, val_fname)
+    np.save(save_path, X_val)
+    print('saved {}'.format(save_path))
 
 
 #=============================================================================
