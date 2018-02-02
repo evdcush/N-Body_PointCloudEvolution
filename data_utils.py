@@ -9,10 +9,10 @@ import chainer.serializers as serializers
 import matplotlib
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from params import *
 '''
 Data utils
 '''
-DATA_PATH = '/home/evan/Data/nbody_simulations/N_{0}/DM*/{1}_dm.z=0{2}000'
 
 
 #=============================================================================
@@ -65,9 +65,13 @@ def load_data(n_P, *args, **kwargs):
     return data
 
 def normalize(X_in, scale_range=(0,1)):
-    """ Normalize features
-    coordinates are rescaled to (0,1)
-    velocities normalized by mean/std    
+    """ Normalize data features
+    coordinates are rescaled to be in range [0,1]
+    velocities are normalized to zero mean and unit variance
+
+    Args:
+        X_in (ndarray): data to be normalized, of shape (N, D, 6)
+        scale_range   : range to which coordinate data is rescaled
     """
     xp = chainer.cuda.get_array_module(X_in)
     x_r = xp.reshape(X_in, [-1,6])
@@ -79,7 +83,7 @@ def normalize(X_in, scale_range=(0,1)):
     x_r[:,:3] = (b-a) * (x_r[:,:3] - coo_min) / (coo_max - coo_min) + a
     
     vel_mean = xp.mean(vel, axis=0)
-    vel_std  = xp.std( vel, axis=0)    
+    vel_std  = xp.std( vel, axis=0)
     x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
 
     X_out = xp.reshape(x_r,X_in.shape).astype(xp.float32) # just convert to float32 here
@@ -93,12 +97,24 @@ def split_data_validation(X, Y, num_val_samples=200):
         num_val_samples (int): size of validation set
     """
     num_samples = X.shape[0]
-    idx_list = np.random.permutation(num_samples)
+    idx_list    = np.random.permutation(num_samples)
     X, Y = X[idx_list], Y[idx_list]
     X_input, X_val = X[:-num_val_samples], X[-num_val_samples:]#np.split(X, [-num_val_samples])
     X_truth, Y_val = Y[:-num_val_samples], Y[-num_val_samples:]#np.split(Y, [-num_val_samples])
     return [(X_input, X_val), (X_truth, Y_val)]
 
+def multi_split_data_validation(X, num_val_samples=200):
+    """ split dataset into training and validation sets
+    
+    Args:        
+        X (ndarray): data arrays of shape (num_rs, num_samples, num_particles, 6)
+        num_val_samples (int): size of validation set
+    """
+    idx_list = np.random.permutation(X.shape[1])
+    X = X[:,idx_list]
+    X_train = X[:, :-num_val_samples]
+    X_val   = X[:, -num_val_samples:]
+    return X_train, X_val
 
 def rotate_x(sin_t, cos_t, x, y, z):
     out_x = x
@@ -262,6 +278,10 @@ def get_save_label(mname, mtype, theta_use, num_particles, zfX, zfY):
     # mname|mtype|theta_numparticles_zXzY_
     tag = '{}{}{}_{}_{}{}_'.format(mname, mtype, theta_tag, num_particles, zx, zy)
     return tag
+
+def load_velocity_coefficients(num_particles):
+    vel_coeffs = np.load('./Data/velocity_coefficients_{}.npy'.format(num_particles)).item()
+    return vel_coeffs
 
 
 #=============================================================================

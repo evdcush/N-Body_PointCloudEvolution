@@ -11,25 +11,16 @@ import numpy as np
 import cupy
 import matplotlib.pyplot as plt
 
+from params import *
 import models
 import nn
 import data_utils
 import code
 
-
-# static vars
-#RNG_SEEDS     = [98765, 12345, 319, 77743196] # takes too long
-#RNG_SEEDS     = [98765, 12345, 77743196] 
-RNG_SEED     = 77743196 # speed things up
-BOUND         = (0.095, 1-0.095)
-LEARNING_RATE = 0.01
-GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3] # for graph model
-SET_CHANNELS   = [6, 32, 128, 256, 128, 32, 256, 16, 3]
-NBODY_MODELS = {0:{'mclass': models.SetModel,       'channels':   SET_CHANNELS, 'tag': 'S'},
-                1:{'mclass': models.GraphModel,     'channels': GRAPH_CHANNELS, 'tag': 'G'},
-                2:{'mclass': models.VelocityScaled, 'channels':           None, 'tag': 'V'}}
-
-RS_IDX = {6.0:0, 4.0:1, 2.0:2, 1.5:3, 1.2:4, 1.0:5, 0.8:6, 0.6:7, 0.4:8, 0.2:9, 0.0:10} # for new data 
+'''
+Design notes:
+- When training a new model, make sure you save save the py files to a model directory
+'''
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--particles', '-p', default=16,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
@@ -60,20 +51,22 @@ num_iters  = args['num_iters']
 # data vars
 num_particles = args['particles']
 zX, zY = args['redshifts']
-rs_start  = RS_IDX[zX]
-rs_target = RS_IDX[zY]
+rs_start  = REDSHIFTS.index(zX)
+rs_target = REDSHIFTS.index(zY)
 
 # Model vars
-vel_coeff = None
+vel_coeffs = None
 if args['vel_coeff']:
-    
+    vel_coeffs = data_utils.load_velocity_coefficients(num_particles)
+
+
 if args['multi_step']:
     # if multi_step, then args['model_type'] is to RSModel's constituent layers
     model_class = models.RSModel
     child_model = NBODY_MODELS[args['model_type']]
     child_class = child_model['mclass']
     channels = child_model['channels'][:-1] + [6]
-    tag = '{}{}'.format('R', child_model['tag'])
+    tag   = '{}{}'.format('R', child_model['tag'])
     model = model_class(channels, layer=child_class, rng_seed=RNG_SEED)
 mtype    = NBODY_MODELS[args.model_type]
 print('mtype: {}'.format(mtype))
