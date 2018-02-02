@@ -1,12 +1,11 @@
-import os
-import sys
-import time
-import argparse
+import os, sys, code, time, argparse, shutil
+
 import chainer
 import chainer.links as L
 import chainer.functions as F
 import chainer.optimizers as optimizers
 from chainer import cuda
+
 import numpy as np
 import cupy
 import matplotlib.pyplot as plt
@@ -15,7 +14,6 @@ from params import *
 import models
 import nn
 import data_utils
-import code
 
 '''
 Design notes:
@@ -30,7 +28,7 @@ parser.add_argument('--multi_step','-r', default=False,      type=bool, help='us
 parser.add_argument('--num_iters', '-i', default=5000,       type=int,  help='number of training iterations')
 parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
 parser.add_argument('--model_dir', '-s', default='./Model/', type=str,  help='directory where model parameters are saved')
-parser.add_argument('--model_name','-n', default='',         type=str,  help='model name')
+parser.add_argument('--save_name', '-n', default='',         type=str,  help='model name')
 parser.add_argument('--vel_coeff', '-c', default=False,      type=bool, help='use timestep coefficient on velocity')
 parser.add_argument('--use_gpu',   '-g', default=True,       type=bool, help='use gpu')
 parser.add_argument('--verbose',   '-v', default=False,      type=bool, help='verbose prints training progress')
@@ -38,7 +36,7 @@ args = vars(parser.parse_args())
 start_time = time.time()
 print('{}'.format(args))
 #=============================================================================
-# Training and model params, from arg parser
+# Data and training parameters
 #=============================================================================
 # backend
 use_gpu = args['use_gpu']
@@ -53,49 +51,63 @@ num_particles = args['particles']
 zX, zY = args['redshifts']
 rs_start  = REDSHIFTS.index(zX)
 rs_target = REDSHIFTS.index(zY)
-
-# Model vars
-vel_coeffs = None
+vel_coeffs = vel_tag = None
 if args['vel_coeff']:
     vel_coeffs = data_utils.load_velocity_coefficients(num_particles)
+    vel_tag = 'L'
 
-
+#=============================================================================
+# Model setup
+#=============================================================================
+# Initialize model
 if args['multi_step']:
-    # if multi_step, then args['model_type'] is to RSModel's constituent layers
-    model_class = models.RSModel
-    child_model = NBODY_MODELS[args['model_type']]
-    child_class = child_model['mclass']
-    channels = child_model['channels'][:-1] + [6]
-    tag   = '{}{}'.format('R', child_model['tag'])
-    model = model_class(channels, layer=child_class, rng_seed=RNG_SEED)
-mtype    = NBODY_MODELS[args.model_type]
-print('mtype: {}'.format(mtype))
-channels = CHANNELS[args.model_type]
-mname    = args.model_name
+    # if multi_step, then args['model_type'] corresponds to RSModel's constituent layers
+    child_model_params = NBODY_MODELS[args['model_type']]
+    child_class = child_model_params['mclass']
+    channels    = child_model_params['channels'][:-1] + [6] # insure velocity also predicted
+    child_tag   = child_model_params['tag']
+    tag   = '{}{}'.format('R', child_tag)
 
-# setup model
-model = mtype(channels, theta=theta)
-if use_gpu: model.to_gpu()
+    model_class = models.RSModel    
+    model = model_class(channels, layer=child_class, vel_coeff=vel_coeffs, rng_seed=RNG_SEED)
+else:
+    model_params = NBODY_MODELS[args['model_type']]
+    model_class = model_params['mclass']
+    channels    = model_params['channels']
+    tag         = model_params['tag']
+    if vel_coeffs is not None:
+        vel_coeffs = vel_coeffs[(zX, zY)]
+    model = model_class(channels, vel_coeff=vel_coeffs)
 
-# setup optimizer
+if use_gpu: 
+    model.to_gpu()
+
+# Setup optimizer
 optimizer = optimizers.Adam(alpha=LEARNING_RATE)
 optimizer.setup(model)
 
+#=============================================================================
+# Session save parameters
+#=============================================================================
+# save names # eg newknn_GL_32
+model_name = '{}{}_{}'.format(tag, vel_tag, num_particles)
+if args['save_label'] != '':
+    save_name = '{}_{}'.format(args['save_label'], model_name)
+else:
+    save_name = model_name
 
-# timestep coefficient
-theta = None
-theta_tag  = 'L' if args.use_theta == 1 else ''
-if args.use_theta == 1:
-    theta_path = './velocity_coefficients_{}.npy'.format(num_particles)
-    theta = np.load(theta_path).item()[(zX, zY)]
+# path variables # eg ./Model/newknn_GL_32/
+model_dir = '{}/{}/'.format(args['model_dir'], save_name)
+loss_path = model_dir + 'Loss/'
+cube_path = model_dir + 'Cubes/'
+copy_path = model_dir + '.original_files/'
+data_utils.make_dirs([loss_path, cube_path, copy_path])
+data_utils.save_files(copy_path)
 
-# pathing vars
-save_label = '{}{}{}_{}_'.format(mname, MTAGS[args.model_type], theta_tag, num_particles)
-model_dir  = args.model_dir
-loss_path  = model_dir + 'Loss/'
-cube_path  = model_dir + 'Cubes/'
-if not os.path.exists(loss_path): os.makedirs(loss_path)
-if not os.path.exists(cube_path): os.makedirs(cube_path)
+fname = os.path.basename(__file__)
+shutil.copyfile('./{}'.format(fname), )
+
+
 
 def seed_rng(s=12345):
     np.random.seed(s)
