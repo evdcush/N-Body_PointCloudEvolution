@@ -25,46 +25,69 @@ BOUND         = (0.095, 1-0.095)
 LEARNING_RATE = 0.01
 GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3] # for graph model
 SET_CHANNELS   = [6, 32, 128, 256, 128, 32, 256, 16, 3]
-RS_CHANNELS   = [6, 32, 128, 256, 64, 32, 16, 6]
-CHANNELS     = {0:SET_CHANNELS, 1:GRAPH_CHANNELS, 2:None, 3:RS_CHANNELS}
-NBODY_MODELS = {0:models.SetModel, 1:models.GraphModel, 2:models.VelocityScaled, 3:models.RSModel}
-MTAGS        = {0:'S', 1:'G', 2:'V', 3:'RS'}
+NBODY_MODELS = {0:{'mclass': models.SetModel,       'channels':   SET_CHANNELS, 'tag': 'S'},
+                1:{'mclass': models.GraphModel,     'channels': GRAPH_CHANNELS, 'tag': 'G'},
+                2:{'mclass': models.VelocityScaled, 'channels':           None, 'tag': 'V'}}
+
 RS_IDX = {6.0:0, 4.0:1, 2.0:2, 1.5:3, 1.2:4, 1.0:5, 0.8:6, 0.6:7, 0.4:8, 0.2:9, 0.0:10} # for new data 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--batchsize', '-b', default=8,          type=int, help='batch size')
-parser.add_argument('--num_iters', '-i', default=3000,       type=int, help='number of training iterations')
-parser.add_argument('--model_dir', '-s', default='./Model/',           help='directory where model parameters are saved')
-parser.add_argument('--model_name','-n', default='',         type=str, help='model name')
-parser.add_argument('--model_type','-m', default=0,          type=int, help='model type, 0:set, 1:graph, 2:vel')
-parser.add_argument('--use_theta', '-t', default=0,          type=int, help='if 1, use theta timestep coeff')
-parser.add_argument('--gpu_use',   '-g', default=1,          type=int, help='use gpu if 1, else cpu')
-parser.add_argument('--particles', '-p', default=16,         type=int, help='number of particles, dataset')
-parser.add_argument('--redshifts', '-r', nargs='+',          type=float, help='redshift tuple')
-args = parser.parse_args()
+parser.add_argument('--particles', '-p', default=16,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
+parser.add_argument('--redshifts', '-z', default=[6.0, 0.0], nargs='+', type=float, help='redshift tuple, predict z[1] from z[0]')
+parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
+parser.add_argument('--multi_step','-r', default=False,      type=bool, help='use multi-step redshift model')
+parser.add_argument('--num_iters', '-i', default=5000,       type=int,  help='number of training iterations')
+parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
+parser.add_argument('--model_dir', '-s', default='./Model/', type=str,  help='directory where model parameters are saved')
+parser.add_argument('--model_name','-n', default='',         type=str,  help='model name')
+parser.add_argument('--vel_coeff', '-c', default=False,      type=bool, help='use timestep coefficient on velocity')
+parser.add_argument('--use_gpu',   '-g', default=True,       type=bool, help='use gpu')
+parser.add_argument('--verbose',   '-v', default=False,      type=bool, help='verbose prints training progress')
+args = vars(parser.parse_args())
 start_time = time.time()
-
+print('{}'.format(args))
 #=============================================================================
 # Training and model params, from arg parser
 #=============================================================================
 # backend
-use_gpu = True if args.gpu_use == 1 else False
-xp = cupy if use_gpu == 1 else np
+use_gpu = args['use_gpu']
+xp      = cupy if use_gpu else np
 
 # training vars
-mb_size   = args.batchsize # 8
-num_iters = args.num_iters # 3000
+batch_size = args['batch_size']
+num_iters  = args['num_iters']
 
 # data vars
-num_particles = args.particles
-zX, zY   = args.redshifts
-rs_start, rs_target = RS_IDX[zX], RS_IDX[zY]
+num_particles = args['particles']
+zX, zY = args['redshifts']
+rs_start  = RS_IDX[zX]
+rs_target = RS_IDX[zY]
 
 # Model vars
+vel_coeff = None
+if args['vel_coeff']:
+    
+if args['multi_step']:
+    # if multi_step, then args['model_type'] is to RSModel's constituent layers
+    model_class = models.RSModel
+    child_model = NBODY_MODELS[args['model_type']]
+    child_class = child_model['mclass']
+    channels = child_model['channels'][:-1] + [6]
+    tag = '{}{}'.format('R', child_model['tag'])
+    model = model_class(channels, layer=child_class, rng_seed=RNG_SEED)
 mtype    = NBODY_MODELS[args.model_type]
 print('mtype: {}'.format(mtype))
 channels = CHANNELS[args.model_type]
 mname    = args.model_name
+
+# setup model
+model = mtype(channels, theta=theta)
+if use_gpu: model.to_gpu()
+
+# setup optimizer
+optimizer = optimizers.Adam(alpha=LEARNING_RATE)
+optimizer.setup(model)
+
 
 # timestep coefficient
 theta = None
@@ -136,7 +159,7 @@ for cur_iter in range(num_iters):
     model.zerograds() # must always zero grads before another forward pass!
 
     # create mini-batches for training
-    _x_in, _x_true = data_utils.next_minibatch([X_train, Y_train], mb_size)
+    _x_in, _x_true = data_utils.next_minibatch([X_train, Y_train], batch_size)
     x_in   = chainer.Variable(_x_in)
     x_true = chainer.Variable(_x_true)
 
