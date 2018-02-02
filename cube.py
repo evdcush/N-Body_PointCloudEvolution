@@ -34,7 +34,7 @@ RS_IDX = {6.0:0, 4.0:1, 2.0:2, 1.5:3, 1.2:4, 1.0:5, 0.8:6, 0.6:7, 0.4:8, 0.2:9, 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batchsize', '-b', default=8,          type=int, help='batch size')
 parser.add_argument('--num_iters', '-i', default=3000,       type=int, help='number of training iterations')
-parser.add_argument('--model_dir', '-s', default='./Model/',           help='directory where you can find a file storing model information')
+parser.add_argument('--model_dir', '-s', default='./Model/',           help='directory where model parameters are saved')
 parser.add_argument('--model_name','-n', default='',         type=str, help='model name')
 parser.add_argument('--model_type','-m', default=0,          type=int, help='model type, 0:set, 1:graph, 2:vel')
 parser.add_argument('--use_theta', '-t', default=0,          type=int, help='if 1, use theta timestep coeff')
