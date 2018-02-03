@@ -38,11 +38,11 @@ class DensityNN():
     def __init__(self, X_in, rad):
         self.k = rad
         self.adjacency_list = self.get_adjacency_list(X_in)
-        
+
     def get_adjacency_list(self, X_in):
         #how to deal with variable size neighborhood?
         #gravity clumps will have large neighborhood, while isolated points will have small (possibly a single point)
-        
+
         rad = self.k
         mb_size, N, D = X_in.shape
         #X_out = np.zeros([mb_size, N, N],dtype=np.bool)
@@ -61,15 +61,15 @@ class DensityNN():
         graph = F.batch_matmul(self.adjacency_list, x)
         return graph
 '''
-'''
-class KNN():
+
+class NonPBKNN():
     def __init__(self, X_in, K):
         self.K = K
         self.adjacency_list = self.get_adjacency_list(X_in)
-        
+
     def get_adjacency_list(self, X_in):
         """ search for K nneighbors, and return offsetted indices in adjacency list
-        
+
         Args:
             X_in (numpy ndarray): input data of shape (mb_size, N, 6)
         """
@@ -90,7 +90,7 @@ class KNN():
         xr = F.reshape(x, (-1,D))
         graph = F.reshape(F.get_item(xr, alist), (mb_size, N, self.K, D))
         return F.mean(graph, axis=2)
-'''
+
 
 class KNN(): # Daniele's periodic bounding knn
     def __init__(self, X_in, K, L_box):
@@ -257,7 +257,7 @@ class SetLinear(chainer.Chain):
 #=============================================================================
 class SetLayer(chainer.Chain):
     """ Set layer, interface to SetLinear
-    
+
     Args:
         kdim: channel size tuple (k_in, k_out)
         nobias: if True, no bias weights used
@@ -267,7 +267,7 @@ class SetLayer(chainer.Chain):
         super(SetLayer, self).__init__(
             input_linear = SetLinear(kdim, nobias=nobias),
             )
-        
+
     def __call__(self, x_in, add=True):
         x_out = self.input_linear(x_in, add=add)
         return x_out
@@ -275,9 +275,9 @@ class SetLayer(chainer.Chain):
 #=============================================================================
 class GraphLayer(chainer.Chain):
     """ Graph layer
-    Consists of two sets of weights, one for the data input, the other for the 
+    Consists of two sets of weights, one for the data input, the other for the
     neighborhood graph
-    
+
     Args:
         kdim: channel size tuple (k_in, k_out)
         nobias: if True, no bias weights used
@@ -288,7 +288,7 @@ class GraphLayer(chainer.Chain):
             input_linear = SetLinear(kdim, nobias=nobias),
             graph_linear = SetLinear(kdim, nobias=nobias),
             )
-        
+
     def __call__(self, x_in, graphNN, add=True):
         #graphNN = graph_arg[0]
         x_out     = self.input_linear(x_in, add=False)
