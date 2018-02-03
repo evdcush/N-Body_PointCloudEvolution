@@ -10,30 +10,7 @@ import chainer.functions as F
 #=============================================================================
 # graph ops
 #=============================================================================
-''' # for reference
-def adjacency_list_tf(X_in,k):
-    shape_in = X_in.shape
-    X_out = np.zeros([shape_in[0],shape_in[1],k],dtype=np.int32)
-    for b in range(shape_in[0]):
-        # this returns indices of the nn
-        X_out[b] = kneighbors_graph(X_in[b,:,:3],k,include_self=True).indices.reshape([shape_in[1],k])
-        #print(X_out[b].shape)
-    return X_out
-'''
-
-''' # WORK IN PROGRESS, currently no need for interface, since densityNN too inefficient for use
-class GraphNN():
-    """ Interface for knn and density-based neighbor graphs
-    """
-    def __init__(self, X_in, k):
-        self.k = k
-        neighbor_metric = DensityNN if isinstance(k, float) else KNN
-        self.graph = neighbor_metric(X_in, k)
-
-    def __call__(self, X):
-        return self.graph(X)
-
-
+''' # WIP, consider kdtree and csr solutions
 class DensityNN():
     def __init__(self, X_in, rad):
         self.k = rad
