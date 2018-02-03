@@ -3,7 +3,6 @@ import chainer.links as L
 import chainer.functions as F
 import nn
 import cupy
-from params import PARAMS_SEED, REDSHIFTS, BOUND
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 #=============================================================================
@@ -94,24 +93,22 @@ class VelocityScaled(chainer.Chain):
 #=============================================================================
 # experimental models
 #=============================================================================
-
 class RSModel(chainer.Chain):
-    bound = BOUND
-    redshifts = REDSHIFTS
-    layer_tag = 'Z_'
-
+    redshifts = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
+    ltag = 'Z_{}'
     def __init__(self, channels, layer=SetModel, vel_coeff=None, rng_seed=PARAMS_SEED):
         self.channels    = channels
+        self.num_layers  = len(self.redshifts) - 1
         vel_coeff_weight = None
         super(RSModel, self).__init__()
 
-        for i in range(len(self.redshifts) - 1):
+        for i in range(self.num_layers):
             if vel_coeff is not None:
                 vel_coeff_weight = vel_coeff[(self.redshifts[i], self.redshifts[i+1])]            
             # seed before each layer to ensure same weights used at each redshift
             np.random.seed(rng_seed)
             cupy.random.seed(rng_seed)
-            self.add_link('Z_{}'.format(i), layer(channels, vel_coeff=vel_coeff_weight))
+            self.add_link(self.ltag.format(i), layer(channels, vel_coeff=vel_coeff_weight))
         
     def fwd_target(self, x, rs_tup=(0,10)):
         """ Model makes predictions from rs_tup[0] to rs_tup[-1]
@@ -135,20 +132,20 @@ class RSModel(chainer.Chain):
 
         predictions = self.xp.zeros(((redshift_distance,) + x.shape)).astype(self.xp.float32)
 
-        cur_layer = getattr(self, 'Z_{}'.format(rs_start))
+        cur_layer = getattr(self, self.ltag.format(rs_start))
         hat = cur_layer(x)
         predictions[0] = hat.data
         if redshift_distance == 1:
             return hat, predictions
         else:
             for i in range(rs_start+1, rs_target):
-                cur_layer = getattr(self, 'Z_{}'.format(i))
+                cur_layer = getattr(self, self.ltag.format(i))
                 hat = cur_layer(hat)
                 predictions[i] = hat.data
             return hat, predictions
     
     
-    def fwd_predictions(self, x):
+    def fwd_predictions(self, x, loss_fun=nn.bounded_mean_squared_error):
         """ Forward predictions through network layers
         Each layer receives the previous layer's prediction as input
         The loss is calculated between truth and prediction and summed
@@ -160,9 +157,9 @@ class RSModel(chainer.Chain):
             error (chainer.Variable): summed error of layer predictions against truth
         """
         hat = self.Z_0(x[0])
-        error = nn.get_bounded_MSE(hat, x[1], boundary=self.bound)
-        for i in range(1, len(self.tags)):
-            cur_layer = getattr(self, 'Z_{}'.format(i))
+        error = loss_fun(hat, x[1])
+        for i in range(1, self.num_layers):
+            cur_layer = getattr(self, self.ltag.format(i))
             hat = cur_layer(hat)
-            error += nn.get_bounded_MSE(hat, x[i+1], boundary=self.bound)
+            error += loss_fun(hat, x[i+1])
         return hat, error
