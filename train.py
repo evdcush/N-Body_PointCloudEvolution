@@ -15,11 +15,6 @@ import models
 import nn
 import utils
 
-'''
-Design notes:
-- When training a new model, make sure you save save the py files to a model directory
-'''
-
 parser = argparse.ArgumentParser()
 parser.add_argument('--particles', '-p', default=16,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
 parser.add_argument('--redshifts', '-z', default=[6.0, 0.0], nargs='+', type=float, help='redshift tuple, predict z[1] from z[0]')
@@ -35,6 +30,7 @@ parser.add_argument('--verbose',   '-v', default=False,      type=bool, help='ve
 args = vars(parser.parse_args())
 start_time = time.time()
 print('{}'.format(args))
+
 def seed_rng(s=DATASET_SEED):
     np.random.seed(s)
     xp.random.seed(s)
@@ -59,21 +55,23 @@ if args['vel_coeff']:
     vel_coeffs = utils.load_velocity_coefficients(num_particles)
     vel_tag = 'L'
 
+# multi-model
+multi_step = args['multi_step']
 
 #=============================================================================
 # Model setup
 #=============================================================================
 # Initialize model
-if args['multi_step']:
+if multi_step:
     # if multi_step, then args['model_type'] corresponds to RSModel's constituent layers
-    child_model_params = NBODY_MODELS[args['model_type']]
-    child_class = child_model_params['mclass']
-    channels    = child_model_params['channels'][:-1] + [6] # insure velocity also predicted
-    child_tag   = child_model_params['tag']
+    model_params = NBODY_MODELS[args['model_type']]
+    child_class = model_params['mclass']
+    channels    = model_params['channels'][:-1] + [6] # insure velocity also predicted
+    child_tag   = model_params['tag']
     tag   = '{}{}'.format('R', child_tag)
 
-    model_class = models.RSModel    
-    model = model_class(channels, layer=child_class, vel_coeff=vel_coeffs, rng_seed=PARAMS_SEED)
+    model_class = models.RSModel
+    model = model_class(channels, layer=child_class, vel_coeff=vel_coeffs, rng_seed=PARAMS_SEED, loss)
 else:
     model_params = NBODY_MODELS[args['model_type']]
     model_class = model_params['mclass']
@@ -84,12 +82,15 @@ else:
     seed_rng(PARAMS_SEED)
     model = model_class(channels, vel_coeff=vel_coeffs)
 
-if use_gpu: 
+if use_gpu:
     model.to_gpu()
 
 # Setup optimizer
 optimizer = optimizers.Adam(alpha=LEARNING_RATE)
 optimizer.setup(model)
+
+# Loss function
+loss_fun = model_params['loss']
 
 #=============================================================================
 # Session save parameters
@@ -113,11 +114,11 @@ utils.save_pyfiles(copy_path)
 # Load data, normalize, split
 #=============================================================================
 X = utils.load_npy_data(num_particles) # shape (11, N, D, 6)
-if not args['multi_step']:
+if not multi_step:
     X = X[[rs_start, rs_target]] # shape (2, N, D, 6)
 X = utils.normalize_fullrs(X)
 
-if use_gpu and not args['multi_step']:
+if use_gpu and not multi_step:
     # Since X is small when not multi-step, can just load to GPU here
     # otherwise, only batches should be loaded
     X = cuda.to_gpu(X)
@@ -129,100 +130,85 @@ X_train, X_val = utils.multi_split_data_validation(X, num_val_samples=200)
 # Reduce memory overhead
 X = None
 
-# Save validation input data 
+# Save validation input data
 utils.save_val_cube(X_val, cube_path, (zX, zY), prediction=False)
 
 #=============================================================================
 # Training
 #=============================================================================
-
 # to keep track of loss data
 train_loss_history      = np.zeros((num_iters))
 validation_loss_history = np.zeros((X_val.shape[1]))
-#=============================================================================
-#=============================================================================
-#=============================================================================
-#=============================================================================
-#=============================================================================
-# CURRENT REFACTORING PROCESS HAS STOPPED HERE, CONTINUE FROM BELOW!
-#=============================================================================
-#=============================================================================
-#=============================================================================
-#=============================================================================
-#=============================================================================
 
 # train loop
 for cur_iter in range(num_iters):
+    time_start = time.time()
     model.zerograds() # must always zero grads before another forward pass!
+    _x_in = utils.next_minibatch(X_train, batch_size, data_aug=True)
+    if use_gpu: _x_in = cuda.to_gpu(_x_in)
 
-    # create mini-batches for training
-    _x_in, _x_true = utils.next_minibatch([X_train, Y_train], batch_size)
-    x_in   = chainer.Variable(_x_in)
-    x_true = chainer.Variable(_x_true)
+    # fwd pass
+    if multi_step:
+        x_in = chainer.Variable(_x_in)
+        x_hat, loss = model.fwd_predictions(x_in, loss_fun=loss_fun)
+    else:
+        # need to split data if not multi
+        _x_in, _x_true = _x_in[0], _x_true[1]
+        x_in   = chainer.Variable(_x_in)
+        x_true = chainer.Variable(_x_true)
+        x_hat  = model(x_in)
+        loss   = loss_fun(xhat, x_true)
 
-    # get prediction and loss
-    x_hat = model(x_in, add=True) # prediction
-    loss = nn.mean_squared_error_full(x_hat, x_true)
-        
     # backprop and update
     loss.backward() # this calculates all the gradients (backprop)
     optimizer.update() # this updates the weights
 
     train_loss_history[cur_iter] = cuda.to_cpu(loss.data)
+    if args['verbose']:
+        utils.print_status(cur_iter, train_loss_history[cur_iter], time_start)
     if cur_iter % 10 == 0 and cur_iter != 0:
-        np.save(loss_path + save_label + 'train_loss', train_loss_history)
+        utils.save_loss(loss_path + save_name, train_loss_history)
         if cur_iter % 100 == 0:
-            utils.save_model([model, optimizer], model_dir + save_label)
+            utils.save_model(model, optimizer, model_dir + save_name)
 
-# save loss
-np.save(loss_path + save_label + 'train_loss', train_loss_history)
-print('{}: converged at {}'.format(save_label, np.median(train_loss_history[-150:])))
+# save loss and hyperparameters
+utils.save_loss(loss_path + save_name, train_loss_history)
+utils.save_model(model, optimizer, model_dir + save_name)
+print('{}: converged at {}'.format(save_name, np.median(train_loss_history[-100:])))
 
-# save model, optimizer
-utils.save_model([model, optimizer], model_dir + save_label)
+# reduce memory overhead
 X_train = None
 
 # validation
-rs_distance = rs_target - rs_start
-val_pred_shape = X_val.shape if channels[-1] == X_val.shape[-1] else X_val.shape[:-1] + (3,)
-val_predictions = np.zeros((val_pred_shape)).astype(np.float32)
+val_predictions = utils.init_val_predictions(X_val.shape, channels[-1])
 with chainer.using_config('train', False):
-    for val_iter in range(X_val.shape[0]):
+    for val_iter in range(X_val.shape[1]):
         j,k = val_iter, val_iter+1
-        val_in   = chainer.Variable(X_val[j:k])
-        val_true = chainer.Variable(Y_val[j:k])
-
-        # predict
-        val_hat  = model(val_in, add=True)
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        val_predictions[val_iter] = cuda.to_cpu(val_hat.data)
-        
-        # loss
-        val_loss = nn.mean_squared_error_full(val_hat, val_true)
+        _val_in = X_val[:,j:k]
+        if use_gpu: cuda.to_gpu(_val_in)
+        if multi_step:
+            val_in = chainer.Variable(_val_in)
+            val_hat, predictions = model.fwd_target(val_in, (rs_target, rs_start))
+            val_predictions[:,val_iter] = cuda.to_cpu(predictions[:,0].data)
+            val_loss = loss_fun(val_hat, val_in[-1])
+        else:
+            _val_in, _val_truth = _val_in[0], _val_in[1]
+            val_in   = chainer.Variable(_val_in)
+            val_true = chainer.Variable(_val_truth)
+            val_hat  = model(val_in)
+            val_predictions[val_iter] = cuda.to_cpu(val_hat[0].data)
+            val_loss = loss_fun(val_hat, val_true)
         validation_loss_history[val_iter] = cuda.to_cpu(val_loss.data)
-    
-    # save data
-    pred_save_label ='{}X32_{}-{}_predictions'.format(mname, zX,zY)
-    np.save(cube_path + pred_save_label, val_predictions)
-    np.save(loss_path + save_label + 'val_loss', validation_loss_history)
-    print('{}: validation mode {}'.format(save_label, np.median(validation_loss_history)))
-model = optimizer = None
 
-with open('cube_tags.txt', 'a') as f:
-    f.write(save_label + '\n')
+    # save data
+    utils.save_val_cube(val_predictions, cube_path, (zX, zY), prediction=True)
+    utils.save_loss(loss_path + save_name, validation_loss_history, validation=True)
+    print('{}: validation mode {}'.format(save_name, np.median(validation_loss_history)))
+
 #=============================================================================
-# Plot
+# Plot and save
 #=============================================================================
-plt.clf()
-plt.figure(figsize=(16,8))
-plt.grid()
-plot_title = save_label
-lh = train_loss_history
-plt.plot(lh[150:], c='b', label='train error, {}'.format(np.median(lh[-150:])))
-#plt.plot(lh, c='b', label='train error, {}'.format(np.median(lh)))
-plt.title(plot_title)
-plt.legend()
-plt.savefig(loss_path + save_label + 'train_plot', bbox_inches='tight')
-plt.close('all')
-total_time = (time.time() - start_time) // 60
-print('{} END, elapsed time: {}'.format(save_label, total_time))
+plt.save_loss_curves(loss_path + save_name, train_loss_history, save_name)
+plt.save_loss_curves(loss_path + save_name, validation_loss_history, save_name, val=True)
+
+print('{} Finished'.format(save_name))

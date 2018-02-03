@@ -12,7 +12,6 @@ import chainer.serializers as serializers
 
 from params import *
 
-
 #=============================================================================
 # Loading utils
 #=============================================================================
@@ -217,7 +216,7 @@ def random_augmentation_rotate(batches):
         out.append(tmp)
     return out
 
-def random_augmentation_shift(batches):
+def _deprecated_random_augmentation_shift(batches):
     xp = chainer.cuda.get_array_module(batches[0])
     batch_size = batches[0].shape[0]
     out = []
@@ -248,7 +247,14 @@ def random_augmentation_shift(batches):
         out.append(tmp)
     return out
 
-def multi_random_augmentation_shift(batch):
+def random_augmentation_shift(batch):
+    """ Randomly augment data by shifting indices
+    and symmetrically relocating particles
+    Args:
+        batch (ndarray): (num_rs, batch_size, D, 6)
+    Returns:
+        batch (ndarray): randomly shifted data array
+    """
     xp = chainer.cuda.get_array_module(batch)
     batch_size = batch.shape[1]
     rands = xp.random.rand(6)
@@ -276,16 +282,25 @@ def multi_random_augmentation_shift(batch):
     batch[...,:3] = batch_coo
     return batch
 
-def next_multi_minibatch(X_in, batch_size, data_aug='shift'):
+def next_minibatch(X_in, batch_size, data_aug=True):
+    """ randomly select samples for training batch
+
+    Args:
+        X_in (ndarray): (num_rs, N, D, 6) data input
+        batch_size (int): minibatch size
+        data_aug: if data_aug, randomly shift input data
+    Returns:
+        batches (ndarray): randomly selected and shifted data
+    """
     index_list = np.random.choice(X_in.shape[1], batch_size)
     batches = X_in[:,index_list]
-    if data_aug == 'shift':
+    if data_aug:
         return multi_random_augmentation_shift(batches)
     else:
         return batches
 
 
-def next_minibatch(in_list, batch_size, data_aug='shift'):
+def _deprecated_next_minibatch(in_list, batch_size, data_aug='shift'):
     num_samples, N, D = in_list[0].shape
     index_list = np.random.choice(num_samples, batch_size)
     batches = [in_list[k][index_list] for k in range(len(in_list))]
@@ -296,15 +311,6 @@ def next_minibatch(in_list, batch_size, data_aug='shift'):
         return random_augmentation_rotate(batches)
     else:
         return batches
-    
-    
-def save_data_batches(batch_tuple, save_name):
-    x_in, xt, xh = batch_tuple
-    assert x_in.shape[0] == xt.shape[0] == xh.shape[0]
-    np.save(save_name + 'input', x_in)
-    np.save(save_name + 'truth', xt)
-    np.save(save_name + 'hat'  , xh)
-    print('data saved')
 
 
 
@@ -367,10 +373,26 @@ def save_val_cube(X_val, cube_path, rs_pair, prediction=False):
     np.save(save_path, X_val)
     print('saved {}'.format(save_path))
 
+def save_loss(save_path, data, validation=False):
+    save_name = '_loss_validation' if validation else '_loss_train'
+    np.save(save_path + save_name, data)
 
 #=============================================================================
-# Plotting utils
+# Info and visualization utils
 #=============================================================================
+def print_status(cur_iter, error, start_time):
+    pbody = '{:>5}    {:.8f}    {:.4f}'
+    elapsed_time = time.time() - start_time
+    print(pbody.format(cur_iter, error, elapsed_time))
+
+def init_validation_predictions(val_shape, pdim):
+    if val_shape[0] > 2:
+        pred_shape = val_shape
+    else:
+        pred_shape = val_shape[1:-1] + (pdim,)
+    return np.zeros(pred_shape).astype(np.float32)
+
+
 def plot_3D_pointcloud(xt, xh, j, pt_size=(.9,.9), colors=('b','r'), fsize=(18,18), xin=None):
     xt_x, xt_y, xt_z = np.split(xt[...,:3], 3, axis=-1)
     xh_x, xh_y, xh_z = np.split(xh[...,:3], 3, axis=-1)
@@ -399,6 +421,27 @@ def plot_training_curve(y, cur_iter, yclip=.0004, c='b', fsize=(12,6), title=Non
         title = 'Iteration: {0}, loss: {1:.4}'.format(cur_iter, y[-1])
     ax.set_title(title)
     return fig
+
+def save_loss_curves(save_path, lh, mname, val=False):
+    plt.close('all')
+    plt.figure(figsize=(16,8))
+    plt.grid()
+    if val:
+        pstart = 0
+        color = 'r'
+        title = '{}: {}'.format(mname, 'Validation Error')
+        label = 'median: {}'.format(np.median(lh))
+        spath = save_path + '_plot_train'
+    else:
+        pstart = 200
+        color = 'b'
+        title = '{}: {}'.format(mname, 'Training Error')
+        label = 'median: {}'.format(np.median(lh[-150:]))
+        spath = save_path + '_plot_validation'
+    plt.plot(lh[pstart:], c=color, label=label)
+    plt.legend()
+    plt.savefig(spath, bbox_inches='tight')
+    plt.close('all')
 
 def save_plot(lh, save_path, mname, val=False):
     plt.clf()
