@@ -40,6 +40,9 @@ class DensityNN():
 '''
 
 class NonPBKNN():
+    ''' Naive KNN class, managing search and graph convolution functions
+    *Does not consider periodic boundary conditions*
+    '''
     def __init__(self, X_in, K):
         self.K = K
         self.adjacency_list = self.get_adjacency_list(X_in)
