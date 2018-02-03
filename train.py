@@ -19,14 +19,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--particles', '-p', default=16,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
 parser.add_argument('--redshifts', '-z', default=[6.0, 0.0], nargs='+', type=float, help='redshift tuple, predict z[1] from z[0]')
 parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
-parser.add_argument('--multi_step','-r', default=False,      type=bool, help='use multi-step redshift model')
+parser.add_argument('--multi_step','-r', default=0,          type=int, help='use multi-step redshift model')
 parser.add_argument('--num_iters', '-i', default=5000,       type=int,  help='number of training iterations')
 parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
 parser.add_argument('--model_dir', '-s', default='./Model/', type=str,  help='directory where model parameters are saved')
 parser.add_argument('--save_name', '-n', default='',         type=str,  help='model name')
-parser.add_argument('--vel_coeff', '-c', default=False,      type=bool, help='use timestep coefficient on velocity')
-parser.add_argument('--use_gpu',   '-g', default=True,       type=bool, help='use gpu')
-parser.add_argument('--verbose',   '-v', default=False,      type=bool, help='verbose prints training progress')
+parser.add_argument('--vel_coeff', '-c', default=0,          type=int, help='use timestep coefficient on velocity')
+parser.add_argument('--use_gpu',   '-g', default=1,          type=int, help='use gpu')
+parser.add_argument('--verbose',   '-v', default=0,          type=int, help='verbose prints training progress')
 args = vars(parser.parse_args())
 start_time = time.time()
 print('{}'.format(args))
@@ -50,7 +50,8 @@ num_particles = args['particles']
 zX, zY = args['redshifts']
 rs_start  = REDSHIFTS.index(zX)
 rs_target = REDSHIFTS.index(zY)
-vel_coeffs = vel_tag = None
+vel_coeffs = None
+vel_tag = ''
 if args['vel_coeff']:
     vel_coeffs = utils.load_velocity_coefficients(num_particles)
     vel_tag = 'L'
@@ -71,7 +72,7 @@ if multi_step:
     tag   = '{}{}'.format('R', child_tag)
 
     model_class = models.RSModel
-    model = model_class(channels, layer=child_class, vel_coeff=vel_coeffs, rng_seed=PARAMS_SEED, loss)
+    model = model_class(channels, layer=child_class, vel_coeff=vel_coeffs, rng_seed=PARAMS_SEED)
 else:
     model_params = NBODY_MODELS[args['model_type']]
     model_class = model_params['mclass']
@@ -96,14 +97,14 @@ loss_fun = model_params['loss']
 # Session save parameters
 #=============================================================================
 # save names # eg newknn_GL_32
-model_name = '{}{}_{}'.format(tag, vel_tag, num_particles)
-if args['save_label'] != '':
-    save_name = '{}_{}'.format(args['save_label'], model_name)
+model_name = '{}{}_{}_{}-{}'.format(tag, vel_tag, num_particles, RS_TAGS[zX], RS_TAGS[zY])
+if args['save_name'] != '':
+    save_name = '{}_{}'.format(args['save_name'], model_name)
 else:
     save_name = model_name
 
 # path variables # eg ./Model/newknn_GL_32/
-model_dir = '{}/{}/'.format(args['model_dir'], save_name)
+model_dir = '{}{}/'.format(args['model_dir'], save_name)
 loss_path = model_dir + 'Loss/'
 cube_path = model_dir + 'Cubes/'
 copy_path = model_dir + '.original_files/'
@@ -151,13 +152,14 @@ for cur_iter in range(num_iters):
     if multi_step:
         x_in = chainer.Variable(_x_in)
         x_hat, loss = model.fwd_predictions(x_in, loss_fun=loss_fun)
+        x_in = None
     else:
         # need to split data if not multi
-        _x_in, _x_true = _x_in[0], _x_true[1]
+        _x_in, _x_true = _x_in[0], _x_in[1]
         x_in   = chainer.Variable(_x_in)
         x_true = chainer.Variable(_x_true)
         x_hat  = model(x_in)
-        loss   = loss_fun(xhat, x_true)
+        loss   = loss_fun(x_hat, x_true)
 
     # backprop and update
     loss.backward() # this calculates all the gradients (backprop)
@@ -180,24 +182,25 @@ print('{}: converged at {}'.format(save_name, np.median(train_loss_history[-100:
 X_train = None
 
 # validation
-val_predictions = utils.init_val_predictions(X_val.shape, channels[-1])
+rs_dist = rs_target - rs_start if multi_step else None
+val_predictions = utils.init_validation_predictions(X_val.shape[1:-1], channels[-1], rs_dist)
 with chainer.using_config('train', False):
     for val_iter in range(X_val.shape[1]):
         j,k = val_iter, val_iter+1
-        _val_in = X_val[:,j:k]
-        if use_gpu: cuda.to_gpu(_val_in)
+        x_val = X_val[:,j:k]
+        if use_gpu: x_val = cuda.to_gpu(x_val)
         if multi_step:
-            val_in = chainer.Variable(_val_in)
-            val_hat, predictions = model.fwd_target(val_in, (rs_target, rs_start))
-            val_predictions[:,val_iter] = cuda.to_cpu(predictions[:,0].data)
-            val_loss = loss_fun(val_hat, val_in[-1])
+            val_in    = chainer.Variable(x_val[rs_start])
+            val_truth = chainer.Variable(x_val[rs_target])
+            val_hat, predictions = model.fwd_target(val_in, (rs_start, rs_target))
+            val_predictions[:,val_iter] = cuda.to_cpu(predictions[:,0])
+            val_loss = loss_fun(val_hat, val_truth)
         else:
-            _val_in, _val_truth = _val_in[0], _val_in[1]
-            val_in   = chainer.Variable(_val_in)
-            val_true = chainer.Variable(_val_truth)
+            val_in    = chainer.Variable(x_val[0])
+            val_truth = chainer.Variable(x_val[1])
             val_hat  = model(val_in)
             val_predictions[val_iter] = cuda.to_cpu(val_hat[0].data)
-            val_loss = loss_fun(val_hat, val_true)
+            val_loss = loss_fun(val_hat, val_truth)
         validation_loss_history[val_iter] = cuda.to_cpu(val_loss.data)
 
     # save data
@@ -208,7 +211,7 @@ with chainer.using_config('train', False):
 #=============================================================================
 # Plot and save
 #=============================================================================
-plt.save_loss_curves(loss_path + save_name, train_loss_history, save_name)
-plt.save_loss_curves(loss_path + save_name, validation_loss_history, save_name, val=True)
+utils.save_loss_curves(loss_path + save_name, train_loss_history, save_name)
+utils.save_loss_curves(loss_path + save_name, validation_loss_history, save_name, val=True)
 
 print('{} Finished'.format(save_name))
