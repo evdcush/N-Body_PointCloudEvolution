@@ -151,6 +151,7 @@ for cur_iter in range(num_iters):
     # fwd pass
     if multi_step:
         x_in = chainer.Variable(_x_in)
+        _x_in = None
         x_hat, loss = model.fwd_predictions(x_in, loss_fun=loss_fun)
         x_in = None
     else:
@@ -166,6 +167,7 @@ for cur_iter in range(num_iters):
     optimizer.update() # this updates the weights
 
     train_loss_history[cur_iter] = cuda.to_cpu(loss.data)
+    loss = x_hat = None
     if args['verbose']:
         utils.print_status(cur_iter, train_loss_history[cur_iter], time_start)
     if cur_iter % 10 == 0 and cur_iter != 0:
@@ -186,6 +188,7 @@ rs_dist = rs_target - rs_start if multi_step else None
 val_predictions = utils.init_validation_predictions(X_val.shape[1:-1], channels[-1], rs_dist)
 with chainer.using_config('train', False):
     for val_iter in range(X_val.shape[1]):
+        start_time = time.time()
         j,k = val_iter, val_iter+1
         x_val = X_val[:,j:k]
         if use_gpu: x_val = cuda.to_gpu(x_val)
@@ -202,6 +205,8 @@ with chainer.using_config('train', False):
             val_predictions[val_iter] = cuda.to_cpu(val_hat[0].data)
             val_loss = loss_fun(val_hat, val_truth)
         validation_loss_history[val_iter] = cuda.to_cpu(val_loss.data)
+        if args['verbose']:
+            utils.print_status(val_iter, validation_loss_history[val_iter], start_time)
 
     # save data
     utils.save_val_cube(val_predictions, cube_path, (zX, zY), prediction=True)

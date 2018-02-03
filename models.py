@@ -69,7 +69,8 @@ class GraphModel(Model):
     def __call__(self, x, **kwargs):
         # (bs, n_p, 6)
         L_box_size = 16 if x.shape[-2] == 16**3 else 32
-        graphNN = nn.KNN(chainer.cuda.to_cpu(x.data), self.K, L_box_size)
+        #graphNN = nn.KNN(chainer.cuda.to_cpu(x.data), self.K, L_box_size)
+        graphNN = nn.NonPBKNN(chainer.cuda.to_cpu(x.data), self.K)
         return super(GraphModel, self).__call__(x, graphNN, **kwargs)
 
 #=============================================================================

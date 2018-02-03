@@ -366,9 +366,9 @@ def save_val_cube(X_val, cube_path, rs_pair, prediction=False):
     num_particles = 16 if X_val.shape[-2] == 4096 else 32
     zX, zY = rs_pair
     rs_tag = '{}-{}'.format(zX, zY)
-    ptag = 'prediction' if prediction else 'input'
+    ptag = 'prediction' if prediction else 'data'
     # eg X32_0.6-0.0_val_prediction.npy'
-    val_fname = 'X{}_{}_val_{}'.format(num_particles, rs_tag, ptag)
+    val_fname = 'X{}_{}_{}'.format(num_particles, rs_tag, ptag)
     save_path = '{}{}'.format(cube_path, val_fname)
     np.save(save_path, X_val)
     print('saved {}'.format(save_path))
