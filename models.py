@@ -2,7 +2,9 @@ import chainer
 import chainer.links as L
 import chainer.functions as F
 import nn
+import numpy
 import cupy
+import code
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 #=============================================================================
@@ -14,7 +16,7 @@ class Model(chainer.Chain):
     def __init__(self, channels, layer, vel_coeff=None):
         self.channels = channels
         self.num_layers = len(channels) - 1
-        
+
         super(Model, self).__init__()
 
         if vel_coeff is not None: # scalar for timestep
@@ -94,9 +96,10 @@ class VelocityScaled(chainer.Chain):
 # experimental models
 #=============================================================================
 class RSModel(chainer.Chain):
+    # velocityscaled model not currently supported
     redshifts = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
     ltag = 'Z_{}'
-    def __init__(self, channels, layer=SetModel, vel_coeff=None, rng_seed=PARAMS_SEED):
+    def __init__(self, channels, layer=SetModel, vel_coeff=None, rng_seed=77743196):
         self.channels    = channels
         self.num_layers  = len(self.redshifts) - 1
         vel_coeff_weight = None
@@ -104,12 +107,12 @@ class RSModel(chainer.Chain):
 
         for i in range(self.num_layers):
             if vel_coeff is not None:
-                vel_coeff_weight = vel_coeff[(self.redshifts[i], self.redshifts[i+1])]            
+                vel_coeff_weight = vel_coeff[(self.redshifts[i], self.redshifts[i+1])]
             # seed before each layer to ensure same weights used at each redshift
-            np.random.seed(rng_seed)
+            numpy.random.seed(rng_seed)
             cupy.random.seed(rng_seed)
             self.add_link(self.ltag.format(i), layer(channels, vel_coeff=vel_coeff_weight))
-        
+
     def fwd_target(self, x, rs_tup=(0,10)):
         """ Model makes predictions from rs_tup[0] to rs_tup[-1]
         *Assumed to be used in validation only*
@@ -133,6 +136,7 @@ class RSModel(chainer.Chain):
         predictions = self.xp.zeros(((redshift_distance,) + x.shape)).astype(self.xp.float32)
 
         cur_layer = getattr(self, self.ltag.format(rs_start))
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         hat = cur_layer(x)
         predictions[0] = hat.data
         if redshift_distance == 1:
@@ -141,10 +145,10 @@ class RSModel(chainer.Chain):
             for i in range(rs_start+1, rs_target):
                 cur_layer = getattr(self, self.ltag.format(i))
                 hat = cur_layer(hat)
-                predictions[i] = hat.data
+                predictions[i-rs_start] = hat.data
             return hat, predictions
-    
-    
+
+
     def fwd_predictions(self, x, loss_fun=nn.bounded_mean_squared_error):
         """ Forward predictions through network layers
         Each layer receives the previous layer's prediction as input

@@ -1,4 +1,4 @@
-import os, glob, struct, code, sys
+import os, glob, struct, code, sys, shutil, time
 
 import numpy as np
 import cupy
@@ -31,7 +31,7 @@ def read_sim(file_list, n_P):
                 s = struct.unpack('=f',f.read(4))
                 this_set.append(s[0])
         dataset.append(this_set)
-    dataset = np.array(dataset).reshape([len(file_list),num_particles,6])  
+    dataset = np.array(dataset).reshape([len(file_list),num_particles,6])
     return dataset
 
 def load_datum(n_P, redshift, normalize_data=False):
@@ -85,12 +85,12 @@ def normalize(X_in, scale_range=(0,1)):
     xp = chainer.cuda.get_array_module(X_in)
     x_r = xp.reshape(X_in, [-1,6])
     coo, vel = xp.split(x_r, [3], axis=-1)
-    
+
     coo_min = xp.min(coo, axis=0)
     coo_max = xp.max(coo, axis=0)
     a,b = scale_range
     x_r[:,:3] = (b-a) * (x_r[:,:3] - coo_min) / (coo_max - coo_min) + a
-    
+
     vel_mean = xp.mean(vel, axis=0)
     vel_std  = xp.std( vel, axis=0)
     x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
@@ -112,15 +112,15 @@ def normalize_fullrs(X, scale_range=(0,1)):
         X_z = X[rs_idx]
         x_r = xp.reshape(X_z, [-1, 6])
         coo, vel = xp.split(x_r, [3], axis=-1)
-        
+
         # rescale coordinates
         coo_min = xp.min(coo, axis=0)
         coo_max = xp.max(coo, axis=0)
         a,b = scale_range
         x_r[:,:3] = (b-a) * (x_r[:,:3] - coo_min) / (coo_max - coo_min) + a
-        
+
         # normalize velocities
-        vel_mean = xp.mean(vel, axis=0) 
+        vel_mean = xp.mean(vel, axis=0)
         vel_std  = xp.std( vel, axis=0)
         x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
 
@@ -131,8 +131,8 @@ def normalize_fullrs(X, scale_range=(0,1)):
 
 def split_data_validation(X, Y, num_val_samples=200):
     """ split dataset into training and validation sets
-    
-    Args:        
+
+    Args:
         X, Y (ndarray): data arrays of shape (num_samples, num_particles, 6)
         num_val_samples (int): size of validation set
     """
@@ -145,8 +145,8 @@ def split_data_validation(X, Y, num_val_samples=200):
 
 def multi_split_data_validation(X, num_val_samples=200):
     """ split dataset into training and validation sets
-    
-    Args:        
+
+    Args:
         X (ndarray): data arrays of shape (num_rs, num_samples, num_particles, 6)
         num_val_samples (int): size of validation set
     """
@@ -173,26 +173,26 @@ def rotate_z(sin_t, cos_t, x, y, z):
     out_y = sin_t * x + cos_t * y
     out_z = z
     return out_x, out_y, out_z
-    
+
 def rotate_3D(thetas, input_data):
     """ Rotate data by random theta
     thetas and input_data will be split by D axis, each retaining it's split
     axis dim (1,)
     sin, cos are performed once at the caller level, and the callee rotate
     functions only perform the rotational algebra
-    
+
     Args:
         thetas     (ndarray): (mb_size, 3) random numbers for rotation
         input_data (ndarray): (mb_size, n_P, 3) data to be rotated
     """
     xp = chainer.cuda.get_array_module(input_data) # xp either numpy or cupy, based on GPU usage
     thetas = xp.expand_dims(thetas, -1)
-    
+
     idx = [1,2]
-    xyz = xp.split(input_data, idx, axis=-1) # len 3 list, each of shape (mb_size, n_P, 1)    
+    xyz = xp.split(input_data, idx, axis=-1) # len 3 list, each of shape (mb_size, n_P, 1)
     sin_t = xp.split(xp.sin(thetas), idx, axis=1) # len 3 list, each of shape (mb_size, 1, 1)
     cos_t = xp.split(xp.cos(thetas), idx, axis=1)
-    
+
     rotated_z   = rotate_z(sin_t[0], cos_t[0], *xyz)
     rotated_yz  = rotate_y(sin_t[1], cos_t[1], *rotated_z)
     rotated_xyz = rotate_x(sin_t[2], cos_t[2], *rotated_yz)
@@ -201,7 +201,7 @@ def rotate_3D(thetas, input_data):
 
 def random_augmentation_rotate(batches):
     """ Randomly rotate data by theta
-    This function is redundant. No need to call rotate_3D twice if we 
+    This function is redundant. No need to call rotate_3D twice if we
     spend a little more time on indexing, but for now it stays
     """
     xp = chainer.cuda.get_array_module(batches[0]) # xp either numpy or cupy, based on GPU usage
@@ -238,7 +238,7 @@ def _deprecated_random_augmentation_shift(batches):
         if rands[5] < .5:
             tmp[:,:,2] = 1 - tmp[:,:,2]
             tmp[:,:,5] = -tmp[:,:,5]
-            
+
         tmploc = tmp[:,:,:3]
         tmploc += shift[:,None,:]
         gt1 = tmploc > 1
@@ -295,7 +295,7 @@ def next_minibatch(X_in, batch_size, data_aug=True):
     index_list = np.random.choice(X_in.shape[1], batch_size)
     batches = X_in[:,index_list]
     if data_aug:
-        return multi_random_augmentation_shift(batches)
+        return random_augmentation_shift(batches)
     else:
         return batches
 
@@ -364,8 +364,8 @@ def save_val_cube(X_val, cube_path, rs_pair, prediction=False):
     """
     X_val = cuda.to_cpu(X_val)
     num_particles = 16 if X_val.shape[-2] == 4096 else 32
-    z_start, z_target = rs_pair
-    rs_tag = '{}-{}'.format(REDSHIFTS[z_start], REDSHIFTS[z_target])
+    zX, zY = rs_pair
+    rs_tag = '{}-{}'.format(zX, zY)
     ptag = 'prediction' if prediction else 'input'
     # eg X32_0.6-0.0_val_prediction.npy'
     val_fname = 'X{}_{}_val_{}'.format(num_particles, rs_tag, ptag)
@@ -385,18 +385,18 @@ def print_status(cur_iter, error, start_time):
     elapsed_time = time.time() - start_time
     print(pbody.format(cur_iter, error, elapsed_time))
 
-def init_validation_predictions(val_shape, pdim):
-    if val_shape[0] > 2:
-        pred_shape = val_shape
+def init_validation_predictions(nd_dims, pdim, rs_distance=None):
+    if rs_distance is not None:
+        pred_shape = (rs_distance,) + nd_dims + (6,)
     else:
-        pred_shape = val_shape[1:-1] + (pdim,)
+        pred_shape = nd_dims + (pdim,)
     return np.zeros(pred_shape).astype(np.float32)
 
 
 def plot_3D_pointcloud(xt, xh, j, pt_size=(.9,.9), colors=('b','r'), fsize=(18,18), xin=None):
     xt_x, xt_y, xt_z = np.split(xt[...,:3], 3, axis=-1)
     xh_x, xh_y, xh_z = np.split(xh[...,:3], 3, axis=-1)
-    
+
     fig = plt.figure(figsize=fsize)
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(xt_x[j], xt_y[j], xt_z[j], s=pt_size[0], c=colors[0])
@@ -431,41 +431,16 @@ def save_loss_curves(save_path, lh, mname, val=False):
         color = 'r'
         title = '{}: {}'.format(mname, 'Validation Error')
         label = 'median: {}'.format(np.median(lh))
-        spath = save_path + '_plot_train'
+        spath = save_path + '_plot_validation'
     else:
         pstart = 200
         color = 'b'
         title = '{}: {}'.format(mname, 'Training Error')
         label = 'median: {}'.format(np.median(lh[-150:]))
-        spath = save_path + '_plot_validation'
+        spath = save_path + '_plot_train'
+    plt.title(title)
     plt.plot(lh[pstart:], c=color, label=label)
     plt.legend()
     plt.savefig(spath, bbox_inches='tight')
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     plt.close('all')
-
-def save_plot(lh, save_path, mname, val=False):
-    plt.clf()
-    plt.figure(figsize=(16,8))
-    plt.grid()
-    fig_name = save_path + mname
-    plot_title = mname
-    if val:
-        plot_title = plot_title + 'Validation'
-        fig_name   = fig_name + 'Validation'
-        label = 'mean val error: ' + str(np.mean(lh))
-        color = 'r'        
-    else:
-        plot_title = plot_title + 'Training'
-        fig_name   = fig_name + 'Training'
-        label = 'training error'
-        color = 'b'
-
-        converged_value = np.median(lh[-150:])
-        converge_line   = np.ones((lh.shape[-1])) * converged_value
-        plt.plot(converge_line, c='orange', label='converge: {}'.format(converged_value)) 
-        lh = np.clip(lh, 0, np.median(lh[:500]))
-    plt.title(plot_title)
-    plt.plot(lh, c=color, label=label)
-    plt.legend()
-    plt.savefig(fig_name, bbox_inches='tight')
-    plt.close()
