@@ -299,5 +299,20 @@ def bounded_mean_squared_error(x_hat, x_true, boundary=BOUND):
     btrue = F.get_item(x_true_coo, bidx)
     return mean_squared_error(bhat, btrue)
 
-
+def get_readout(x_hat):
+    """
+    """
+    readout = x_hat[...,:3]
+    gt_one  = (F.sign(readout - 1) + 1) // 2
+    ls_zero = -(F.sign(readout) - 1) // 2
+    rest = 1 - gt_one - ls_zero
+    readout_xhat = rest*readout + gt_one*(readout-1) + ls_zero*(1-readout)
+    return readout_xhat
+def get_min_readout_MSE(x_hat, x_true):
+    readout = get_readout(x_hat)
+    x_true_loc = x_true[...,:3]
+    dist = F.minimum(F.square(readout - x_true_loc), F.square(readout - (1 + x_true_loc)))
+    dist = F.minimum(dist, F.square((1 + readout) - x_true_loc))
+    mse = F.mean(F.sum(dist, axis=-1))
+    return mse
 
