@@ -4,10 +4,10 @@ import numpy as np
 
 """
 Note: this script is in it's own directory because it uses a different
-      virtualenv to manage mayavi/vtk dependencies 
+      virtualenv to manage mayavi/vtk dependencies
 """
 
-def volumize_ptc(data_in, opacity=.5, labels=None, color=(1,0,0),frame=True, 
+def volumize_ptc(data_in, opacity=.5, labels=None, color=(1,0,0),frame=True,
                  row=0, col=0, show=True, figure=None, proj=(False,True,True),
                  shadow=(False,True,True), mode='point', scale_factor=.015,
                  filename=None,):
@@ -30,7 +30,7 @@ def volumize_ptc(data_in, opacity=.5, labels=None, color=(1,0,0),frame=True,
         for l in np.unique(labels):
             color = tuple(list(np.random.rand(3)))
             ind = (labels == l).nonzero()[0]
-            mlab.pipeline.volume(mlab.points3d(data[ind,0], data[ind,1], data[ind,2], 
+            mlab.pipeline.volume(mlab.points3d(data[ind,0], data[ind,1], data[ind,2],
                                                mode=mode, color=color, opacity=opacity))
     if frame:
         r_points = np.array([0,1,1,0,0,1,1,1,1,1,0,0,0,1,1,0,0,0]) + row + .0
@@ -40,9 +40,9 @@ def volumize_ptc(data_in, opacity=.5, labels=None, color=(1,0,0),frame=True,
                     tube_radius=.003, line_width=1, figure=figure, opacity=.7, color=(1,1,1))
 
     #mlab.pipeline.volume(mlab.pipeline.gaussian_splatter(pts, figure=figure))
-    mlab.view(azimuth=20, elevation=70, distance=3, focalpoint=None, roll=None, reset_roll=True, figure=figure)    
+    mlab.view(azimuth=20, elevation=70, distance=3, focalpoint=None, roll=None, reset_roll=True, figure=figure)
     if filename is not None:
-        mlab.savefig(filename, size=(500,500), figure=figure, magnification='auto') 
+        mlab.savefig(filename, size=(500,500), figure=figure, magnification='auto')
         if not show: mlab.clf()
     if show: mlab.show()
 
@@ -90,9 +90,9 @@ def volumize_arrow(datain,# n x 3
 
 
     #mlab.pipeline.volume(mlab.pipeline.gaussian_splatter(pts, figure=figure))
-    mlab.view(azimuth=20, elevation=70, distance=3, focalpoint=None, roll=None, reset_roll=True, figure=figure)    
+    mlab.view(azimuth=20, elevation=70, distance=3, focalpoint=None, roll=None, reset_roll=True, figure=figure)
     if filename is not None:
-        mlab.savefig(filename, size=(500,500), figure=figure, magnification='auto') 
+        mlab.savefig(filename, size=(500,500), figure=figure, magnification='auto')
         if not show:
             mlab.clf()
     if show:
@@ -102,12 +102,15 @@ def volumize_arrow(datain,# n x 3
 j = 6 # sample
 
 #model_name = 'velmodel_16_8_1000_01_'
-model_name = 'graphmodel_1.2-0.0_16_8_2000_01_'
+data_dir = '../Model/RGL_32_60-00/Cubes/X32_6.0-0.0_{}.npy'
 
-data_dir = '../Models/'
-x_input = np.load(data_dir + model_name +'train_input.npy')
-x_truth = np.load(data_dir + model_name + 'train_truth.npy')
-x_pred  = np.load(data_dir + model_name + 'train_hat.npy')
+x_data = np.load(data_dir.format('data'))
+#x_truth = np.load(data_dir.format(''))
+x_preds  = np.load(data_dir.format('prediction_negs'))
+
+x_input = x_data[0]
+x_truth = x_data[-1]
+x_pred  = x_preds[-1]
 
 #data_dir = '../Models/'
 #x_input = np.load(data_dir + model_name + 'train_input.npy')
@@ -117,10 +120,10 @@ x_pred  = np.load(data_dir + model_name + 'train_hat.npy')
 
 xtmp = x_input[j,:,:3]
 bound = 0.1
-lower, upper = bound, 1-bound 
-mask1 = np.logical_and(xtmp[:,0] < upper, xtmp[:,0] > lower) 
-mask2 = np.logical_and(xtmp[:,1] < upper, xtmp[:,1] > lower) 
-mask3 = np.logical_and(xtmp[:,2] < upper, xtmp[:,2] > lower) 
+lower, upper = bound, 1-bound
+mask1 = np.logical_and(xtmp[:,0] < upper, xtmp[:,0] > lower)
+mask2 = np.logical_and(xtmp[:,1] < upper, xtmp[:,1] > lower)
+mask3 = np.logical_and(xtmp[:,2] < upper, xtmp[:,2] > lower)
 mask = mask1 * mask2 * mask3
 mask_nz = np.nonzero(mask)[0]
 
@@ -141,10 +144,10 @@ sfactor = .005
 arrow_true  = (x_input[j,mask_nz,:3], x_truth[j,mask_nz,:3] - x_input[j,mask_nz,:3])
 arrow_input = (x_input[j,mask_nz,:3], x_input[j,mask_nz,3:])
 arrow_pred  = (x_input[j,mask_nz,:3], x_pred[j, mask_nz,:3] - x_input[j,mask_nz,:3])
-volumize_arrow(*arrow_true,  figure=fig, color=red,   opacity=.3, show=False, mode=arrow_mode)
-volumize_arrow(*arrow_input, figure=fig, color=green, opacity=.3, show=False, mode=arrow_mode)
-volumize_arrow(*arrow_pred,  figure=fig, color=blue,  opacity=.3, show=True,  mode=arrow_mode)
-#volumize_ptc(x_truth[j,:,:3], show=False,figure=fig, opacity=.9, color=red,  mode='sphere', scale_factor=sfactor)
-#volumize_ptc(x_input[j,:,:3], show=False,figure=fig, opacity=.9, color=green,mode='sphere', scale_factor=sfactor)
-#volumize_ptc( x_pred[j,:,:3], show=True, figure=fig, opacity=.9, color=blue, mode='sphere', scale_factor=sfactor)
+#volumize_arrow(*arrow_true,  figure=fig, color=red,   opacity=.3, show=False, mode=arrow_mode)
+#volumize_arrow(*arrow_input, figure=fig, color=green, opacity=.3, show=False, mode=arrow_mode)
+#volumize_arrow(*arrow_pred,  figure=fig, color=blue,  opacity=.3, show=True,  mode=arrow_mode)
+volumize_ptc(x_truth[j,mask_nz,:3], show=False,figure=fig, opacity=.5, color=red,  mode='sphere', scale_factor=sfactor)
+#volumize_ptc(x_input[j,mask_nz,:3], show=False,figure=fig, opacity=.9, color=green,mode='sphere', scale_factor=sfactor)
+volumize_ptc( x_pred[j,mask_nz,:3], show=True, figure=fig, opacity=.5, color=blue, mode='sphere', scale_factor=sfactor)
 
