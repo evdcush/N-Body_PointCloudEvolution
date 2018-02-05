@@ -26,6 +26,6 @@ DATASET_SEED = 12345
 GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
 SET_CHANNELS   = [6, 32, 128, 256, 128, 32, 256, 16, 3]
 NBODY_MODELS = {0:{'mclass': models.SetModel,       'channels':   SET_CHANNELS, 'tag': 'S', 'loss':nn.bounded_mean_squared_error},
-                1:{'mclass': models.GraphModel,     'channels': GRAPH_CHANNELS, 'tag': 'G', 'loss':nn.mean_squared_error},
+                1:{'mclass': models.GraphModel,     'channels': GRAPH_CHANNELS, 'tag': 'G', 'loss':nn.get_min_readout_MSE},
                 2:{'mclass': models.VelocityScaled, 'channels': GRAPH_CHANNELS, 'tag': 'V', 'loss':nn.bounded_mean_squared_error}}
 LEARNING_RATE = 0.01

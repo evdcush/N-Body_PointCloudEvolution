@@ -202,8 +202,9 @@ with chainer.using_config('train', False):
             val_in    = chainer.Variable(x_val[0])
             val_truth = chainer.Variable(x_val[1])
             val_hat  = model(val_in)
-            val_predictions[val_iter] = cuda.to_cpu(val_hat[0].data)
+            #val_predictions[val_iter] = cuda.to_cpu(val_hat[0].data)
             val_loss = loss_fun(val_hat, val_truth)
+            val_predictions[val_iter] = cuda.to_cpu(nn.get_readout(val_hat)[0].data)
         validation_loss_history[val_iter] = cuda.to_cpu(val_loss.data)
         if args['verbose']:
             utils.print_status(val_iter, validation_loss_history[val_iter], start_time)

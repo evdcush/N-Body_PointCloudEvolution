@@ -72,6 +72,113 @@ class NonPBKNN():
         return F.mean(graph, axis=2)
 
 
+class KNN_v2():
+    def __init__(self, X_in, K, L_box, shell_fraction=0.1):
+        self.K = K
+        self.L_box = L_box  # Box size
+
+        # Change shell_fraction for tuning the thickness of the shell to be replicated, must be in range 0-1
+        # 0: no replication, 1: entire box is replicated to the 26 neighbouring boxes
+        self.shell_fraction = shell_fraction
+        self.dL = self.L_box * self.shell_fraction
+
+        self.adjacency_list = self.get_adjacency_list_periodic_bc_v2(X_in)
+
+    def _get_status(self, coordinate):
+        """
+        Assign a status to each coordinate (of a particle position inside the box):
+        1 if 0 < coord < dL, 2 if L- dL < coord < L, 0 otherwise
+
+        PARAMS:
+            coordinate(float)
+        RETURNS:
+            status(int). Either 0, 1, or 2
+        """
+        if coordinate < self.dL:
+            return 1
+        elif self.L_box - self.dL < coordinate < self.L_box:
+            return 2
+        else:
+            return 0
+
+    def _get_clone(self, particle, k, s):
+        """
+        Clone a particle otuside of the box.
+
+        PARAMS:
+            particle(np array). 6-dim particle position in phase space
+            k(int). Index of dimension that needs to be projected outside of the box.
+            s(int). Status, either 1 or 2. Determines where should be cloned.
+        RETURNS:
+            clone(np array). 6-dim cloned particle position in phase space.
+        """
+        clone = []
+        for i in range(6):
+            if i == k:
+                if s == 1:
+                    clone.append(particle[i] + self.L_box)
+                elif s == 2:
+                    clone.append(particle[i] - self.L_box)
+            else:
+                clone.append(particle[i])
+        return np.array(clone)
+
+
+    def get_adjacency_list_periodic_bc_v2(self, X_in):
+        """
+        Map inner chunks to outer chunks
+        """
+        K = self.K
+        mb_size, N, D = X_in.shape
+        adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
+
+        for i in range(mb_size):
+            ids_map = {}  # For this batch will map new_id to old_id of cloned particles
+            new_X = [part for part in X_in[i]]  # Start off with original cube
+            for j in range(N):
+                status = [self._get_status(X_in[i, j, k]) for k in range(3)]
+                if sum(status) == 0:  # Not in the shell --skip
+                    continue
+                else:
+                    for k in range(3):
+                        if status[k] > 0:
+                            clone = self._get_clone(particle=X_in[i, j, :], k=k, s=status[k])
+                            new_X.append(clone)
+                            ids_map.update({len(new_X) - 1: j})
+                            for kp in range(k + 1, 3):
+                                if status[kp] > 0:
+                                    bi_clone = self._get_clone(particle=clone, k=kp, s=status[kp])
+                                    new_X.append(bi_clone)
+                                    ids_map.update({len(new_X) - 1: j})
+                                    for kpp in range(kp + 1, 3):
+                                        if status[kpp] > 0:
+                                            tri_clone = self._get_clone(particle=bi_clone, k=kpp, s=status[kpp])
+                                            new_X.append(tri_clone)
+                                            ids_map.update({len(new_X) - 1: j})
+
+            new_X = np.array(new_X)
+            graph_idx = kneighbors_graph(new_X[:, :3], K, include_self=True).indices
+            graph_idx = graph_idx.reshape([-1, K])[:N, :]  # Only care about original box
+            # Remap outbox neighbors to original ids
+            for j in range(N):
+                for k in range(K):
+                    if graph_idx[j, k] > N - 1:  # If outside of the box
+                        graph_idx[j, k] = ids_map.get(graph_idx[j, k])
+
+            graph_idx = graph_idx + (N * i)  # offset idx for batches
+            adj_list[i] = graph_idx
+
+        return adj_list
+
+    def __call__(self, x):
+        alist = np.copy(self.adjacency_list) # loss worse without copying
+        alist = alist.flatten()
+        mb_size, N, D = x.shape
+        xr = F.reshape(x, (-1,D))
+        graph = F.reshape(F.get_item(xr, alist), (mb_size, N, self.K, D))
+        return F.mean(graph, axis=2)
+
+
 class KNN(): # Daniele's periodic bounding knn
     def __init__(self, X_in, K, L_box):
         self.K = K
@@ -303,11 +410,12 @@ def get_readout(x_hat):
     """
     """
     readout = x_hat[...,:3]
-    gt_one  = (F.sign(readout - 1) + 1) // 2
-    ls_zero = -(F.sign(readout) - 1) // 2
+    gt_one  = (F.sign(readout - 1) + 1) / 2
+    ls_zero = -(F.sign(readout) - 1) / 2
     rest = 1 - gt_one - ls_zero
     readout_xhat = rest*readout + gt_one*(readout-1) + ls_zero*(1-readout)
     return readout_xhat
+
 def get_min_readout_MSE(x_hat, x_true):
     readout = get_readout(x_hat)
     x_true_loc = x_true[...,:3]
