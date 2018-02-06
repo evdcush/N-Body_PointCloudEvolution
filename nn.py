@@ -386,6 +386,40 @@ class GraphLayer(chainer.Chain):
         return x_out
 
 #=============================================================================
+class GraphLayer2(chainer.Chain):
+    """ Graph layer
+    Consists of two sets of weights, one for the data input, the other for the
+    neighborhood graph
+
+    Args:
+        kdim: channel size tuple (k_in, k_out)
+        nobias: if True, no bias weights used
+    """
+    def __init__(self, kdim, nobias=True):
+        self.kdim = kdim
+        super(GraphLayer2, self).__init__(
+            input_linear = L.Linear(kdim[0], kdim[1], nobias=nobias),
+            graph_linear = L.Linear(kdim[0], kdim[1], nobias=nobias),
+            )
+
+    def __call__(self, x_in, graphNN, add=True):
+        k_in, k_out = self.kdim
+        mb_size, N = x_in.shape[:2]
+
+        # input op
+        x_r = F.reshape(x_in,(-1,k_in))
+        x_out = F.reshape(self.input_linear(x_in), (mb_size, N, k_out))
+
+        # graph op
+        g_r = F.reshape(graphNN(x_in), (-1,k_in))
+        graph_out = F.reshape(self.graph_linear(g_r), (mb_size, N, k_out))
+
+        layer_out = x_out + graph_out
+        if add and k_in == k_out:
+            layer_out += x_in
+        return layer_out
+
+#=============================================================================
 # Loss ops
 #=============================================================================
 BOUND = (0.095, 1-0.095) # inner-box bound for loss, to be deprecated

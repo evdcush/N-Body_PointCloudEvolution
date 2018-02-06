@@ -75,6 +75,24 @@ class GraphModel(Model):
         return super(GraphModel, self).__call__(x, graphNN, **kwargs)
 
 #=============================================================================
+class GraphModel2(Model):
+    """ GraphModel uses GraphLayer
+     - apparently need to pass the numpy data to nn.KNN
+       since the to_cpu stuff within nn gives significantly worse loss
+    """
+    def __init__(self, channels, K=14, **kwargs):
+        self.K = K
+        super(GraphModel2, self).__init__(channels, nn.GraphLayer, **kwargs)
+
+    def __call__(self, x, **kwargs):
+        # (bs, n_p, 6)
+        L_box_size = 16 if x.shape[-2] == 16**3 else 32
+        graphNN = nn.KNN_v2(chainer.cuda.to_cpu(x.data), self.K, L_box_size)
+        #graphNN = nn.KNN(chainer.cuda.to_cpu(x.data), self.K, L_box_size)
+        #graphNN = nn.NonPBKNN(chainer.cuda.to_cpu(x.data), self.K)
+        return super(GraphModel2, self).__call__(x, graphNN, **kwargs)
+
+#=============================================================================
 class SetModel(Model):
     """ SetModel uses SetLayer
     """
