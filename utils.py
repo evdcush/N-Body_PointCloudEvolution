@@ -104,9 +104,12 @@ def normalize_fullrs(X, scale_range=(0,1)):
     velocities are normalized to zero mean and unit variance
 
     Args:
-        X_in (ndarray): data to be normalized, of shape (N, D, 6)
+        X_in (ndarray): data to be normalized, of shape (rs, N, D, 6)
         scale_range   : range to which coordinate data is rescaled
     """
+    for rs_idx in range(X.shape[0]):
+        X[rs_idx] = normalize(X[rs_idx])
+    '''
     xp = chainer.cuda.get_array_module(X)
     for rs_idx in range(X.shape[0]):
         X_z = X[rs_idx]
@@ -127,6 +130,7 @@ def normalize_fullrs(X, scale_range=(0,1)):
         # reshape current redshift x, and assign
         X_z = xp.reshape(x_r, X_z.shape).astype(xp.float32) # safe redundant cast to float32
         X[rs_idx] = X_z
+    '''
     return X
 
 def split_data_validation(X, Y, num_val_samples=200):
