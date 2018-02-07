@@ -10,13 +10,36 @@ import chainer
 from chainer import cuda
 import chainer.serializers as serializers
 
-from params import *
+#=============================================================================
+# Globals
+#=============================================================================
+# dataset
+DATA_PATH     = '/home/evan/Data/nbody_simulations/N_{0}/DM*/{1}_dm.z=0{2}000'
+DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/nbody_{}.npy'
+REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
+RS_TAGS = {6.0:'60', 4.0:'40', 2.0:'20', 1.5:'15', 1.2:'12', 1.0:'10', 0.8:'08', 0.6:'06', 0.4:'04', 0.2:'02', 0.0:'00'}
+
+# rng seeds
+#RNG_SEEDS     = [98765, 12345, 319, 77743196] # original training seeds for network params
+PARAMS_SEED  = 77743196 # best consistent performance for graph models, set models do better with 98765
+DATASET_SEED = 12345 # for train/validation data splits
+
+# models
+GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
+SET_CHANNELS   = [6, 32, 128, 256, 128, 32, 256, 16, 3]
+NBODY_MODELS = {0:{'mclass': models.SetModel,       'channels':   SET_CHANNELS, 'tag': 'S', 'loss':nn.bounded_mean_squared_error},
+                1:{'mclass': models.GraphModel,     'channels': GRAPH_CHANNELS, 'tag': 'G', 'loss':nn.get_min_readout_MSE},
+                2:{'mclass': models.VelocityScaled, 'channels': GRAPH_CHANNELS, 'tag': 'V', 'loss':nn.bounded_mean_squared_error},}
+LEARNING_RATE = 0.01
+
+
 '''
 refactor notes:
  - util functions duplicated:
     - npy binaries vs struct binaries
         - data is no longer loaded from struct binaries,
           but functions still used
+          - IGNORE: others still load from struct binaries
     - multi-step rs model vs single-step
         - this is really bad in train.py, too many conditionals
           - but unless you make a chainer.Trainer, Updater, and
@@ -385,18 +408,40 @@ def make_dirs(dirs):
     for path in dirs:
         if not os.path.exists(path): os.makedirs(path)
 
-def save_pyfiles(save_path):
+def save_pyfiles(model_dir):
     """ Save project files to save_path
     For backing up files used for a model
     Args:
         save_path (str): path to save files
     """
-    file_names = ['train.py', 'utils.py', 'models.py', 'nn.py', 'params.py']
+    save_path = model_dir + '.original_files/'
+    make_dirs([save_path])
+    file_names = ['train.py', 'utils.py', 'models.py', 'nn.py']
     for fname in file_names:
         src = './{}'.format(fname)
         dst = '{}{}'.format(save_path, fname)
         shutil.copyfile(src, dst)
         print('saved {} to {}'.format(src, dst))
+
+
+def get_model_name(sess_args):
+    """ Consistent model naming format
+    Model name examples:
+        'GL_32_12-04': GraphModel|WithVelCoeff|32**3 Dataset|redshift 1.2->0.4
+        'S_16_04-00': SetModel|16**3 Dataset|redshift 0.4->0.0
+    """
+    tag = NBODY_MODELS[sess_args['model_type']]['tag']
+    vel_tag = 'L' if sess_args['vel_coeff'] else ''
+    n_P = sess_args['particles']
+    zX, zY = sess_args['redshifts']
+    zX = RS_TAGS[zX]
+    zY = RS_TAGS[zY]
+    save_prefix = sess_args['save_prefix']
+
+    model_name = '{}{}_{}_{}-{}'.format(tag, vel_tag, n_P, zX, zY)
+    if save_prefix != '':
+        model_name = '{}_{}'.format(save_prefix, mo del_name)
+    return model_name
 
 def save_model(model, optimizer, save_name):
     """ Save model and optimizer parameters
