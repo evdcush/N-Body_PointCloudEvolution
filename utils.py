@@ -11,7 +11,59 @@ from chainer import cuda
 import chainer.serializers as serializers
 
 from params import *
+'''
+refactor notes:
+ - util functions duplicated:
+    - npy binaries vs struct binaries
+        - data is no longer loaded from struct binaries,
+          but functions still used
+    - multi-step rs model vs single-step
+        - this is really bad in train.py, too many conditionals
+          - but unless you make a chainer.Trainer, Updater, and
+            all that, it's simpler to keep train script consistent
+            between models
+ - Too many calls to cuda.get_array_module
+    - could be two birds one stone here, just make multi-rs funs
+      interface the single-step funs.
+ - should split npy data into redshifts. If you aren't training
+   the multi-rs model, you still end up loading the entire dataset
+   into memory (requires 10gb memory), and then selecting
+   just two redshifts.
+ - similarly, training and validation should be saved, rather than
+   relying on seeds
+ - pyplot cruft. Notebooks no longer used.
+ - 'from params import *' is disgusting, stop
+ - sandbox notebook is messy, undocumented spaghetti. commonly
+   referenced code blocks:
+     - how to display plots in notebook (iPython display module)
+     - validation loop (this should be it's own notebook or .py)
+     - matplotlib mplot3d use
+     - compared error plots
+ - the ugliest code right now is having to split train code
+   for multi-step rs model vs normal model
 
+
+Chainer idiosyncrasies:
+ - like TF, really doesn't like classes that don't inherit
+   from some chainer base class. Models would not converge
+   or learn with custom trainer and dataset management classes.
+   Seems to disrupt the gradient chaining. Stick with explicit
+   train loop and functions for now.
+ - where data is passed as array module (Variable.data), whether
+   it be passed by the caller as an argument, or done within callee
+   scope is not arbitrary. In models.GraphModel, the
+   neighbor the input data MUST be converted back to numpy array
+   before being sent to nn.KNN. Calling cuda.to_cpu(x.data) in
+   nn.KNN broke the model, perhaps because models.GraphModel is
+   a chainer.Chain.
+      - note: maybe remove the *NN classes in nn.py altogether?
+              They were only separated for convenience at the
+              beginning of the project, so that I could evaluate
+              the graphs and search methods apart from having to
+              create a model. It actually might improve performance,
+              considering nn.KNN is not a chainer child class.
+              There's no need for the class, just take the functions out
+'''
 #=============================================================================
 # Loading utils
 #=============================================================================
