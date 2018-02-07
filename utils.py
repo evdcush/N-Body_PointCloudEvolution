@@ -10,6 +10,8 @@ import chainer
 from chainer import cuda
 import chainer.serializers as serializers
 
+import models, nn
+
 #=============================================================================
 # Globals
 #=============================================================================
@@ -440,7 +442,7 @@ def get_model_name(sess_args):
 
     model_name = '{}{}_{}_{}-{}'.format(tag, vel_tag, n_P, zX, zY)
     if save_prefix != '':
-        model_name = '{}_{}'.format(save_prefix, mo del_name)
+        model_name = '{}_{}'.format(save_prefix, model_name)
     return model_name
 
 def save_model(model, optimizer, save_name):

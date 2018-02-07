@@ -365,6 +365,8 @@ class GraphLayer(chainer.Chain):
     Consists of two sets of weights, one for the data input, the other for the
     neighborhood graph
 
+    # try adding bias?
+
     Args:
         kdim: channel size tuple (k_in, k_out)
         nobias: if True, no bias weights used
@@ -374,12 +376,24 @@ class GraphLayer(chainer.Chain):
         super(GraphLayer, self).__init__(
             input_linear = SetLinear(kdim, nobias=nobias),
             graph_linear = SetLinear(kdim, nobias=nobias),
+            #bias         = L.bias(shape=(kdim[-1])),
             )
 
-    def __call__(self, x_in, graphNN, add=True):
+    def graph_conv(self, x_in, adjacency_list):
+        mb_size, N, D = x_in.shape
+        K = adjacency_list.shape[-1]
+
+        alist = np.copy(adjacency_list).flatten()
+        x_r   = F.reshape(x_in, (-1,D))
+        graph = F.reshape(F.get_item(x_r, alist), (mb_size, N, K, D))
+        return F.mean(graph, axis=-2)
+
+    def __call__(self, x_in, adjacency_list, add=True):
         #graphNN = graph_arg[0]
+        mb_size, N, D = x_in.shape
         x_out     = self.input_linear(x_in, add=False)
-        graph_out = self.graph_linear(graphNN(x_in), add=False)
+        gconv     = self.graph_conv(x_in, adjacency_list)
+        graph_out = self.graph_linear(gconv, add=False)
         x_out += graph_out
         if add and x_in.shape == x_out.shape:
             x_out += x_in

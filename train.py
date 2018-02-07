@@ -106,12 +106,11 @@ X = X[[rs_start, rs_target]] # shape (2, N, D, 6), # Need to overhaul data loads
 X = utils.normalize_fullrs(X)
 
 if use_gpu:
-    cuda.to_gpu(X)
+    X = cuda.to_gpu(X)
 
 # Split into train and validation sets
 seed_rng()
 X_train, X_val = utils.multi_split_data_validation(X, num_val_samples=200)
-
 # Reduce memory overhead
 X = None
 
@@ -159,7 +158,7 @@ print('{}: converged at {}'.format(model_name, np.median(train_loss_history[-100
 X_train = None
 
 # validation
-val_predictions = np.zeros((X_val.shape[1:-1] + (channels[-1])))
+val_predictions = np.zeros((X_val.shape[1:-1] + (channels[-1],)))
 with chainer.using_config('train', False):
     for val_iter in range(X_val.shape[1]):
         start_time = time.time()
@@ -186,5 +185,5 @@ with chainer.using_config('train', False):
 #=============================================================================
 utils.save_loss_curves(loss_path + model_name, train_loss_history, model_name)
 utils.save_loss_curves(loss_path + model_name, validation_loss_history, model_name, val=True)
-
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 print('{} Finished'.format(model_name))
