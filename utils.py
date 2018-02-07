@@ -426,19 +426,16 @@ def save_pyfiles(model_dir):
         print('saved {} to {}'.format(src, dst))
 
 
-def get_model_name(sess_args):
+def get_model_name(dparams, tag, vel_coeff, save_prefix):
     """ Consistent model naming format
     Model name examples:
         'GL_32_12-04': GraphModel|WithVelCoeff|32**3 Dataset|redshift 1.2->0.4
         'S_16_04-00': SetModel|16**3 Dataset|redshift 0.4->0.0
     """
-    tag = NBODY_MODELS[sess_args['model_type']]['tag']
-    vel_tag = 'L' if sess_args['vel_coeff'] else ''
-    n_P = sess_args['particles']
-    zX, zY = sess_args['redshifts']
+    n_P, zX, zY = dparams
     zX = RS_TAGS[zX]
     zY = RS_TAGS[zY]
-    save_prefix = sess_args['save_prefix']
+    vel_tag = 'L' if vel_coeff else ''
 
     model_name = '{}{}_{}_{}-{}'.format(tag, vel_tag, n_P, zX, zY)
     if save_prefix != '':

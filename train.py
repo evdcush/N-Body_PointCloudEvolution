@@ -68,7 +68,8 @@ loss_fun     = model_params['loss']
 # Session save parameters
 #=============================================================================
 # model name
-model_name = utils.get_model_name(sess_args)
+model_name = utils.get_model_name((num_particles, zX, zY), model_params['tag'],
+                                  sess_args['vel_coeff'], sess_args['save_prefix'])
 
 # save paths
 model_dir = '{}{}/'.format(sess_args['model_dir'], model_name)
