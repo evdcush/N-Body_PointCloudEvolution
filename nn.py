@@ -388,6 +388,21 @@ class GraphLayer(chainer.Chain):
         graph = F.reshape(F.get_item(x_r, alist), (mb_size, N, K, D))
         return F.mean(graph, axis=-2)
 
+    def radius_graph_conv(self, x_in, csr_list):
+        """ csr_list is mb_size len list of csrs
+        """
+        mb_size, N, D = x_in.shape
+        radius_dense = np.zeros((mb_size, N, N)).astype(np.float32)
+        for idx, csr in enumerate(csr_list):
+            num_neighbors = np.diff(csr.indptr)
+            dense_array = csr.toarray()
+            radius_dense[idx] = dense_array / num_neighbors
+
+
+
+        #X_out = F.scale(X_out, 1/F.sum(X_out, axis=-1),axis=0)
+
+
     def __call__(self, x_in, adjacency_list, add=True):
         #graphNN = graph_arg[0]
         mb_size, N, D = x_in.shape

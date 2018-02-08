@@ -146,10 +146,90 @@ class GraphModel(Model):
                                             ids_map.update({len(new_X) - 1: j})
 
             new_X = numpy.array(new_X)
-            graph_idx = kneighbors_graph(new_X[:, :3], K, include_self=True).indices
+            graph = kneighbors_graph(new_X[:, :3], K, include_self=True)
+            graph_idx = graph.indices
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
             graph_idx = graph_idx.reshape([-1, K])[:N, :]  # Only care about original box
             # Remap outbox neighbors to original ids
             for j in range(N):
+                for k in range(K):
+                    if graph_idx[j, k] > N - 1:  # If outside of the box
+                        graph_idx[j, k] = ids_map.get(graph_idx[j, k])
+            graph_idx = graph_idx + (N * i)  # offset idx for batches
+            adj_list[i] = graph_idx
+        return adj_list
+
+    def get_radius_adjacency_list_periodic_bc_v2(self, X_in):
+        """
+        Map inner chunks to outer chunks
+        """
+        K = self.K
+        mb_size, N, D = X_in.shape
+        adj_list = numpy.zeros([mb_size, N, K], dtype=numpy.int32)
+
+        for i in range(mb_size):
+            ids_map = {}  # For this batch will map new_id to old_id of cloned particles
+            new_X = [part for part in X_in[i]]  # Start off with original cube
+            for j in range(N):
+                status = [self._get_status(X_in[i, j, k]) for k in range(3)]
+                if sum(status) == 0:  # Not in the shell --skip
+                    continue
+                else:
+                    for k in range(3):
+                        if status[k] > 0:
+                            clone = self._get_clone(particle=X_in[i, j, :], k=k, s=status[k])
+                            new_X.append(clone)
+                            ids_map.update({len(new_X) - 1: j})
+                            for kp in range(k + 1, 3):
+                                if status[kp] > 0:
+                                    bi_clone = self._get_clone(particle=clone, k=kp, s=status[kp])
+                                    new_X.append(bi_clone)
+                                    ids_map.update({len(new_X) - 1: j})
+                                    for kpp in range(kp + 1, 3):
+                                        if status[kpp] > 0:
+                                            tri_clone = self._get_clone(particle=bi_clone, k=kpp, s=status[kpp])
+                                            new_X.append(tri_clone)
+                                            ids_map.update({len(new_X) - 1: j})
+
+            new_X = numpy.array(new_X)
+            #graph_idx = kneighbors_graph(new_X[:, :3], K, include_self=True).indices
+
+            '''
+            original_box_idx = graph_idx.reshape([-1, K])[:N, :]
+
+            original_box_idx_flat = graph_idx[:N*K]
+            og_box_flat_reshape = original_box_idx_flat.reshape([N,K])
+            original_box_idx == og_box_flat_reshape is true
+
+            # equivalent operation using indptr
+            original_box_indptr = graph.indptr[:N+1]
+            ptr_to_original_indices = numpy.zeros((N,K))
+            for i in range(N):
+                ptr_to_original_indices[i] = graph.indices[original_box_indptr[i]:original_box_indptr[i+1]]
+            assert numpy.all(ptr_to_original_indices ==  original_box_idx # TRUE
+
+            # SO, adapting for radius neighbors should use indptr
+            original_box_indptr = graph.indptr[:N+1]
+
+            # should only need to mess with indices and indptr
+            '''
+            # try LIL matrix
+            graph = radius_neighbors_graph(new_X[:,:3], self.radius, include_self=True).tolil()
+            rows  = grap.rows()
+            data    = graph.data
+            indices = graph.indices
+            indptr  = graph.indptr
+            original_box_indptr = indptr[:N+1]
+            for i in range(N):
+                cur_indices = indices[original_box_indptr[i]:original_box_indptr[i+1]]
+                if
+
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+            graph_idx = graph_idx.reshape([-1, K])[:N, :]  # Only care about original box
+            # Remap outbox neighbors to original ids
+            for i in range()
+            for j in range(N):
+                if graph_idx_flat
                 for k in range(K):
                     if graph_idx[j, k] > N - 1:  # If outside of the box
                         graph_idx[j, k] = ids_map.get(graph_idx[j, k])
