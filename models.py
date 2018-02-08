@@ -161,10 +161,29 @@ class GraphModel(Model):
             adj_list[i] = graph_idx
         return adj_list
 
-    def get_radius_adjacency_list_periodic_bc_v2(self, X_in):
+    def get_radius_csr_periodic_bc_v2(self, X_in):
         """
         Map inner chunks to outer chunks
         """
+        '''
+        original_box_idx = graph_idx.reshape([-1, K])[:N, :]
+
+        original_box_idx_flat = graph_idx[:N*K]
+        og_box_flat_reshape = original_box_idx_flat.reshape([N,K])
+        original_box_idx == og_box_flat_reshape is true
+
+        # equivalent operation using indptr
+        original_box_indptr = graph.indptr[:N+1]
+        ptr_to_original_indices = numpy.zeros((N,K))
+        for i in range(N):
+            ptr_to_original_indices[i] = graph.indices[original_box_indptr[i]:original_box_indptr[i+1]]
+        assert numpy.all(ptr_to_original_indices ==  original_box_idx # TRUE
+
+        # SO, adapting for radius neighbors should use indptr
+        original_box_indptr = graph.indptr[:N+1]
+
+        # should only need to mess with indices and indptr
+        '''
         K = self.K
         mb_size, N, D = X_in.shape
         #adj_list = numpy.zeros([mb_size, N, K], dtype=numpy.int32)
@@ -197,25 +216,7 @@ class GraphModel(Model):
             new_X = numpy.array(new_X)
             #graph_idx = kneighbors_graph(new_X[:, :3], K, include_self=True).indices
 
-            '''
-            original_box_idx = graph_idx.reshape([-1, K])[:N, :]
 
-            original_box_idx_flat = graph_idx[:N*K]
-            og_box_flat_reshape = original_box_idx_flat.reshape([N,K])
-            original_box_idx == og_box_flat_reshape is true
-
-            # equivalent operation using indptr
-            original_box_indptr = graph.indptr[:N+1]
-            ptr_to_original_indices = numpy.zeros((N,K))
-            for i in range(N):
-                ptr_to_original_indices[i] = graph.indices[original_box_indptr[i]:original_box_indptr[i+1]]
-            assert numpy.all(ptr_to_original_indices ==  original_box_idx # TRUE
-
-            # SO, adapting for radius neighbors should use indptr
-            original_box_indptr = graph.indptr[:N+1]
-
-            # should only need to mess with indices and indptr
-            '''
             # try LIL matrix
             graph = rad_graph(new_X[:,:3], self.radius, include_self=True).tolil()[:N,:]
 
@@ -223,16 +224,16 @@ class GraphModel(Model):
                 graph.rows[j] = [r if r < N else ids_map[r] for r in graph.rows[j]]
             graph_csr = graph[:,:N].tocsr()
             csr_dict[i] = [graph_csr, numpy.diff(graph_csr.indptr)]
-
         return csr_dict
 
     def __call__(self, x, **kwargs):
         # (bs, n_p, 6)
         self.init_periodic_boundary_conds(x.shape[-2])
         x_in = chainer.cuda.to_cpu(x.data)
-        adjacency_list = self.get_adjacency_list_periodic_bc_v2(x_in)
+        #graph = self.get_adjacency_list_periodic_bc_v2(x_in)
+        graph = self.get_radius_csr_periodic_bc_v2(x_in)
         #graphNN = nn.KNN_v2(chainer.cuda.to_cpu(x.data), self.K, L_box_size)
-        return super(GraphModel, self).__call__(x, adjacency_list, **kwargs)
+        return super(GraphModel, self).__call__(x, graph, **kwargs)
 
 #=============================================================================
 class GraphModel2(Model):

@@ -388,26 +388,24 @@ class GraphLayer(chainer.Chain):
         graph = F.reshape(F.get_item(x_r, alist), (mb_size, N, K, D))
         return F.mean(graph, axis=-2)
 
-    def radius_graph_conv(self, x_in, csr_list):
-        """ csr_list is mb_size len list of csrs
+    def radius_graph_conv(self, x_in, csr_dict):
+        """ csr_dict[i] = [ith_csr, ith_num_neighbors]
         """
         mb_size, N, D = x_in.shape
-        radius_dense = np.zeros((mb_size, N, N)).astype(np.float32)
-        for idx, csr in enumerate(csr_list):
-            num_neighbors = np.diff(csr.indptr)
-            dense_array = csr.toarray()
-            radius_dense[idx] = dense_array / num_neighbors
+        radius_dense = self.xp.zeros((mb_size, N, N)).astype(self.xp.float32)
+        for i in range(mb_size):
+            csr, num_neighbors = csr_dict[i]
+            radius_dense[i] = self.xp.array(csr.toarray() / num_neighbors)
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        return F.batch_matmul(radius_dense, x_in)
 
 
-
-        #X_out = F.scale(X_out, 1/F.sum(X_out, axis=-1),axis=0)
-
-
-    def __call__(self, x_in, adjacency_list, add=True):
+    def __call__(self, x_in, graph, add=True):
         #graphNN = graph_arg[0]
         mb_size, N, D = x_in.shape
         x_out     = self.input_linear(x_in, add=False)
-        gconv     = self.graph_conv(x_in, adjacency_list)
+        #gconv     = self.graph_conv(x_in, adjacency_list)
+        gconv = self.radius_graph_conv(x_in, graph)
         graph_out = self.graph_linear(gconv, add=False)
         x_out += graph_out
         if add and x_in.shape == x_out.shape:
