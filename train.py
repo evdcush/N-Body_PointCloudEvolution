@@ -164,10 +164,10 @@ with chainer.using_config('train', False):
     for val_iter in range(X_val.shape[1]):
         start_time = time.time()
         j,k = val_iter, val_iter+1
-        _x_val = X_val[:,j:k]
-        if use_gpu: x_val = cuda.to_gpu(_x_val)
-        val_in    = chainer.Variable(_x_val[0])
-        val_truth = chainer.Variable(_x_val[1])
+        x_val = X_val[:,j:k]
+        if use_gpu: x_val = cuda.to_gpu(x_val)
+        val_in    = chainer.Variable(x_val[0])
+        val_truth = chainer.Variable(x_val[1])
         val_hat   = model(val_in)
         #val_predictions[val_iter] = cuda.to_cpu(val_hat[0].data)
         val_loss = loss_fun(val_hat, val_truth)

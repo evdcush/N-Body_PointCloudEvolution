@@ -422,6 +422,7 @@ class GraphLayer(chainer.Chain):
 
         # THIS DOESN'T WORK BECAUSE IT'S DISGUSTINGLY INEFFICIENT AND SLOW
         # a single iteration with the smaller dataset is 192 seconds
+        # you could probably do it without F.mean, but that won't really change things
         #  this just won't work without better sparse tools
         # This operation is pretty gross, but might be best you can do with chainer
         '''
@@ -446,6 +447,7 @@ class GraphLayer(chainer.Chain):
             x_conv = F.concat((x_conv, F.expand_dims(cur_conv, 0)), axis=0)
         return x_conv
         '''
+
 
 
     def __call__(self, x_in, graph, add=True):
