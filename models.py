@@ -6,6 +6,7 @@ import numpy
 import cupy
 import code
 from sklearn.neighbors import kneighbors_graph
+from sklearn.neighbors import radius_neighbors_graph as rad_graph
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 #=============================================================================
@@ -66,6 +67,7 @@ class GraphModel(Model):
     """
     def __init__(self, channels, K=14, **kwargs):
         self.K = K
+        self.radius = 0.03
         super(GraphModel, self).__init__(channels, nn.GraphLayer, **kwargs)
 
     def init_periodic_boundary_conds(self, box_size, shell_fraction=0.1):
@@ -153,8 +155,8 @@ class GraphModel(Model):
             # Remap outbox neighbors to original ids
             for j in range(N):
                 for k in range(K):
-                    if graph_idx[j, k] > N - 1:  # If outside of the box
-                        graph_idx[j, k] = ids_map.get(graph_idx[j, k])
+                    if graph_idx[j, k] >= N:  # If outside of the box
+                        graph_idx[j, k] = ids_map[graph_idx[j, k]]
             graph_idx = graph_idx + (N * i)  # offset idx for batches
             adj_list[i] = graph_idx
         return adj_list
@@ -165,7 +167,8 @@ class GraphModel(Model):
         """
         K = self.K
         mb_size, N, D = X_in.shape
-        adj_list = numpy.zeros([mb_size, N, K], dtype=numpy.int32)
+        #adj_list = numpy.zeros([mb_size, N, K], dtype=numpy.int32)
+        csr_dict = {}
 
         for i in range(mb_size):
             ids_map = {}  # For this batch will map new_id to old_id of cloned particles
@@ -214,28 +217,14 @@ class GraphModel(Model):
             # should only need to mess with indices and indptr
             '''
             # try LIL matrix
-            graph = radius_neighbors_graph(new_X[:,:3], self.radius, include_self=True).tolil()
-            rows  = grap.rows()
-            data    = graph.data
-            indices = graph.indices
-            indptr  = graph.indptr
-            original_box_indptr = indptr[:N+1]
-            for i in range(N):
-                cur_indices = indices[original_box_indptr[i]:original_box_indptr[i+1]]
-                if
+            graph = rad_graph(new_X[:,:3], self.radius, include_self=True).tolil()[:N,:]
 
-            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-            graph_idx = graph_idx.reshape([-1, K])[:N, :]  # Only care about original box
-            # Remap outbox neighbors to original ids
-            for i in range()
             for j in range(N):
-                if graph_idx_flat
-                for k in range(K):
-                    if graph_idx[j, k] > N - 1:  # If outside of the box
-                        graph_idx[j, k] = ids_map.get(graph_idx[j, k])
-            graph_idx = graph_idx + (N * i)  # offset idx for batches
-            adj_list[i] = graph_idx
-        return adj_list
+                graph.rows[j] = [r if r < N else ids_map[r] for r in graph.rows[j]]
+            graph_csr = graph[:,:N].tocsr()
+            csr_dict[i] = [graph_csr, numpy.diff(graph_csr.indptr)]
+
+        return csr_dict
 
     def __call__(self, x, **kwargs):
         # (bs, n_p, 6)
