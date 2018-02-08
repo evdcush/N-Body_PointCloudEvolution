@@ -391,6 +391,7 @@ class GraphLayer(chainer.Chain):
     def radius_graph_conv(self, x_in, csr_dict):
         """ csr_dict[i] = [ith_csr, ith_num_neighbors]
         """
+
         mb_size, N, D = x_in.shape
         #radius_dense = self.xp.zeros((mb_size, N, N)).astype(self.xp.float32)
         # workaround for being unable to index assign
@@ -417,13 +418,16 @@ class GraphLayer(chainer.Chain):
             #conv = F.concat(conv, F.expand_dims(cur, 0), 0)
         return conv
 
+        mb_size, N, D = x_in.shape
+
+
 
     def __call__(self, x_in, graph, add=True):
         #graphNN = graph_arg[0]
         mb_size, N, D = x_in.shape
         x_out     = self.input_linear(x_in, add=False)
-        #gconv     = self.graph_conv(x_in, adjacency_list)
-        gconv = self.radius_graph_conv(x_in, graph)
+        gconv     = self.graph_conv(x_in, graph)
+        #gconv = self.radius_graph_conv(x_in, graph)
         graph_out = self.graph_linear(gconv, add=False)
         x_out += graph_out
         if add and x_in.shape == x_out.shape:

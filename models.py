@@ -230,8 +230,8 @@ class GraphModel(Model):
         # (bs, n_p, 6)
         self.init_periodic_boundary_conds(x.shape[-2])
         x_in = chainer.cuda.to_cpu(x.data)
-        #graph = self.get_adjacency_list_periodic_bc_v2(x_in)
-        graph = self.get_radius_csr_periodic_bc_v2(x_in)
+        graph = self.get_adjacency_list_periodic_bc_v2(x_in)
+        #graph = self.get_radius_csr_periodic_bc_v2(x_in)
         #graphNN = nn.KNN_v2(chainer.cuda.to_cpu(x.data), self.K, L_box_size)
         return super(GraphModel, self).__call__(x, graph, **kwargs)
 
