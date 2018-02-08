@@ -222,7 +222,7 @@ class GraphModel(Model):
 
             for j in range(N):
                 graph.rows[j] = [r if r < N else ids_map[r] for r in graph.rows[j]]
-            graph_csr = graph[:,:N].tocsr()
+            graph_csr = graph[:,:N].tocsr().astype(numpy.float32)
             csr_dict[i] = [graph_csr, numpy.diff(graph_csr.indptr)]
         return csr_dict
 

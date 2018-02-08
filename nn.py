@@ -392,12 +392,30 @@ class GraphLayer(chainer.Chain):
         """ csr_dict[i] = [ith_csr, ith_num_neighbors]
         """
         mb_size, N, D = x_in.shape
-        radius_dense = self.xp.zeros((mb_size, N, N)).astype(self.xp.float32)
-        for i in range(mb_size):
-            csr, num_neighbors = csr_dict[i]
-            radius_dense[i] = self.xp.array(csr.toarray() / num_neighbors)
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        return F.batch_matmul(radius_dense, x_in)
+        #radius_dense = self.xp.zeros((mb_size, N, N)).astype(self.xp.float32)
+        # workaround for being unable to index assign
+        #x = chainer.cuda.to_cpu(x_in[0].data) # (1,N,D)
+        x = x_in[0]
+        csr, div = csr_dict[0]
+        code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        dense_graph = self.xp.array(csr.toarray() / div).astype(self.xp.float32)
+        conv = F.matmul(dense_graph, x)
+        dense_graph = None
+        #conv =  F.matmul(self.xp.array(csr.toarray() / div), x)
+        conv = F.expand_dims(conv, 0)
+        for i in range(1, mb_size):
+            csr, div = csr_dict[i]
+            #x = chainer.cuda.to_cpu(x_in[i].data)
+            x = x_in[i]
+            dense_graph = self.xp.array(csr.toarray() / div).astype(self.xp.float32)
+            #dense_graph = csr.toarray() / div
+            cur = F.matmul(dense_graph, x)
+            #dense_graph = None
+            conv = F.concat(conv, F.expand_dims(cur, 0), 0)
+
+            #cur = F.matmul(x[i], self.xp.array(csr.toarray() / div))
+            #conv = F.concat(conv, F.expand_dims(cur, 0), 0)
+        return conv
 
 
     def __call__(self, x_in, graph, add=True):

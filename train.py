@@ -106,8 +106,7 @@ X = utils.load_npy_data(num_particles) # shape (11, N, D, 6)
 X = X[[rs_start, rs_target]] # shape (2, N, D, 6), # Need to overhaul data loads
 X = utils.normalize_fullrs(X)
 
-if use_gpu:
-    X = cuda.to_gpu(X)
+#if use_gpu: X = cuda.to_gpu(X)
 
 # Split into train and validation sets
 seed_rng()
@@ -130,7 +129,7 @@ for cur_iter in range(num_iters):
     time_start = time.time()
     model.zerograds() # must always zero grads before another forward pass!
     _x_in = utils.next_minibatch(X_train, batch_size, data_aug=True)
-    #if use_gpu: _x_in = cuda.to_gpu(_x_in)
+    if use_gpu: _x_in = cuda.to_gpu(_x_in)
     _x_in, _x_true = _x_in[0], _x_in[1]
     x_in   = chainer.Variable(_x_in)
     x_true = chainer.Variable(_x_true)
