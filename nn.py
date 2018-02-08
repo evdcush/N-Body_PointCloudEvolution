@@ -391,7 +391,8 @@ class GraphLayer(chainer.Chain):
     def radius_graph_conv(self, x_in, csr_dict):
         """ csr_dict[i] = [ith_csr, ith_num_neighbors]
         """
-
+        '''
+        # THIS DOESNT WORK BECAUSE MEMORY OVERFLOW
         mb_size, N, D = x_in.shape
         #radius_dense = self.xp.zeros((mb_size, N, N)).astype(self.xp.float32)
         # workaround for being unable to index assign
@@ -417,9 +418,34 @@ class GraphLayer(chainer.Chain):
             #cur = F.matmul(x[i], self.xp.array(csr.toarray() / div))
             #conv = F.concat(conv, F.expand_dims(cur, 0), 0)
         return conv
+        '''
 
+        # THIS DOESN'T WORK BECAUSE IT'S DISGUSTINGLY INEFFICIENT AND SLOW
+        # a single iteration with the smaller dataset is 192 seconds
+        #  this just won't work without better sparse tools
+        # This operation is pretty gross, but might be best you can do with chainer
+        '''
         mb_size, N, D = x_in.shape
+        csr = csr_dict[0]
+        cur_x = F.get_item(x_in[0], csr.indices) # (M, D)
+        ptr_split = F.split_axis(cur_x, csr.indptr[1:-1], axis=0) ##
+        x_conv = F.mean(ptr_split[0], axis=0, keepdims=True)
+        for i in range(1, len(ptr_split)):
+            x_conv = F.concat((x_conv, F.mean(ptr_split[i], axis=0, keepdims=True)), axis=0)
+        x_conv = F.expand_dims(x_conv, 0)
 
+
+        for j in range(1, mb_size):
+            csr = csr_dict[j]
+            cur_x = F.get_item(x_in[j], csr.indices)
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+            ptr_split = F.split_axis(cur_x, csr.indptr[1:-1], axis=0)
+            cur_conv = F.mean(ptr_split[0], axis=0, keepdims=True)
+            for k in range(1, len(ptr_split)):
+                cur_conv = F.concat((cur_conv, F.mean(ptr_split[k], axis=0, keepdims=True)), axis=0)
+            x_conv = F.concat((x_conv, F.expand_dims(cur_conv, 0)), axis=0)
+        return x_conv
+        '''
 
 
     def __call__(self, x_in, graph, add=True):

@@ -121,12 +121,12 @@ utils.save_val_cube(X_val, cube_path, (zX, zY), prediction=False)
 # Training
 #=============================================================================
 # to keep track of loss data
-#train_loss_history      = np.zeros((num_iters))
-train_loss_history = np.load(loss_path + model_name + '_loss_train.npy')
+train_loss_history      = np.zeros((num_iters))
+#train_loss_history = np.load(loss_path + model_name + '_loss_train.npy')
 validation_loss_history = np.zeros((X_val.shape[1]))
 
 # train loop
-for cur_iter in range(3600,num_iters):
+for cur_iter in range(num_iters):
     time_start = time.time()
     model.zerograds() # must always zero grads before another forward pass!
     _x_in = utils.next_minibatch(X_train, batch_size, data_aug=True)
