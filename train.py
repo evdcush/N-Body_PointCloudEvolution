@@ -48,6 +48,7 @@ xp      = cupy if use_gpu else np
 batch_size = sess_args['batch_size']
 num_iters  = sess_args['num_iters']
 verbose    = sess_args['verbose']
+tr_start   = 0 # starting iteration
 
 # data vars
 num_particles = sess_args['particles']
@@ -96,8 +97,7 @@ if use_gpu:
 # Setup optimizer
 optimizer = optimizers.Adam(alpha=LEARNING_RATE)
 optimizer.setup(model)
-if sess_args['resume']:
-    load_npz('{}{}.optimizer'.format(model_dir, model_name), optimizer)
+if sess_args['resume']: load_npz('{}{}.optimizer'.format(model_dir, model_name), optimizer)
 
 #=============================================================================
 # Load data, normalize, split
@@ -122,11 +122,29 @@ utils.save_val_cube(X_val, cube_path, (zX, zY), prediction=False)
 #=============================================================================
 # to keep track of loss data
 train_loss_history      = np.zeros((num_iters))
-#train_loss_history = np.load(loss_path + model_name + '_loss_train.npy')
+if sess_args['resume']:
+    """
+    Resume currently used for two different purposes, need to make separate arg?
+    - resume incomplete training of params
+    - do more training on previously 'fully-trained' params
+    """
+    resume_train_loss_history = np.load(loss_path + model_name + '_loss_train.npy')
+    if resume_train_loss_history.shape[0] != num_iters:
+        bkp_path = loss_path + 'bkp/'
+        utils.make_dirs([bkp_path])
+        utils.save_loss(bkp_path, resume_train_loss_history)
+        resume_train_loss_history = None
+        break
+    else:
+        train_loss_history = resume_train_loss_history
+        nonzeros = np.count_nonzero(train_loss_history)
+        params_savepoint = nonzeros % 100
+        tr_train = nonzeros if params_savepoint == 0 else nonzeros - params_savepoint
+
 validation_loss_history = np.zeros((X_val.shape[1]))
 
 # train loop
-for cur_iter in range(num_iters):
+for cur_iter in range(tr_start, num_iters):
     time_start = time.time()
     model.zerograds() # must always zero grads before another forward pass!
     _x_in = utils.next_minibatch(X_train, batch_size, data_aug=True)
