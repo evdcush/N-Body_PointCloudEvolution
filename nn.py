@@ -479,16 +479,36 @@ class GraphLayer2(chainer.Chain):
             graph_linear = L.Linear(kdim[0], kdim[1], nobias=nobias),
             )
 
-    def __call__(self, x_in, graphNN, add=True):
+    def graph_conv(self, x_in, adjacency_list):
+        mb_size, N, D = x_in.shape
+        K = adjacency_list.shape[-1]
+
+        alist = np.copy(adjacency_list).flatten()
+        x_r   = F.reshape(x_in, (-1,D))
+        graph = F.reshape(F.get_item(x_r, alist), (mb_size, N, K, D))
+        return F.mean(graph, axis=-2)
+
+    def __call__(self, x, add=False):
+        mb_size, N, D = x.shape
+        k_in, k_out  = self.kdim
+        x_mean = F.broadcast_to(F.mean(x, axis=1, keepdims=True), x.shape)
+        x_r = F.reshape(x - x_mean, (mb_size*N, k_in))
+        x_out = self.lin(x_r)
+        if add and k_in == k_out:
+            x_out += x_r
+        x_out = F.reshape(x_out, (mb_size,N,k_out))
+        return x_out
+
+    def __call__(self, x_in, graph, add=True):
         k_in, k_out = self.kdim
         mb_size, N = x_in.shape[:2]
 
         # input op
         x_r = F.reshape(x_in,(-1,k_in))
-        x_out = F.reshape(self.input_linear(x_in), (mb_size, N, k_out))
+        x_out = F.reshape(self.input_linear(x_r), (mb_size, N, k_out))
 
         # graph op
-        g_r = F.reshape(graphNN(x_in), (-1,k_in))
+        g_r = F.reshape(self.graph_conv(x_in, graph), (-1,k_in))
         graph_out = F.reshape(self.graph_linear(g_r), (mb_size, N, k_out))
 
         layer_out = x_out + graph_out

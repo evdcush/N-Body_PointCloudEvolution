@@ -134,7 +134,6 @@ if sess_args['resume']:
         utils.make_dirs([bkp_path])
         utils.save_loss(bkp_path, resume_train_loss_history)
         resume_train_loss_history = None
-        break
     else:
         train_loss_history = resume_train_loss_history
         nonzeros = np.count_nonzero(train_loss_history)
