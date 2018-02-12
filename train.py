@@ -98,7 +98,7 @@ if use_gpu:
 # Setup optimizer
 optimizer = optimizers.Adam(alpha=LEARNING_RATE)
 optimizer.setup(model)
-if sess_args['resume']: load_npz('{}{}.optimizer'.format(model_dir, model_name), optimizer)
+#if sess_args['resume']: load_npz('{}{}.optimizer'.format(model_dir, model_name), optimizer)
 
 #=============================================================================
 # Load data, normalize, split
