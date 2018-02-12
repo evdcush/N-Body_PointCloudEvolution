@@ -87,7 +87,8 @@ if vel_coeffs is not None:
 
 # Setup model
 seed_rng(PARAMS_SEED)
-model = model_class(channels, vel_coeff=vel_coeffs)
+#model = model_class(channels, vel_coeff=vel_coeffs)
+model = model_class(channels, K=30, vel_coeff=vel_coeffs)
 if sess_args['resume']:
     load_npz('{}{}.model'.format(model_dir, model_name), model)
 
@@ -122,6 +123,8 @@ utils.save_val_cube(X_val, cube_path, (zX, zY), prediction=False)
 #=============================================================================
 # to keep track of loss data
 train_loss_history      = np.zeros((num_iters))
+#train_loss_history = np.load(loss_path + model_name + '_loss_train.npy')
+'''
 if sess_args['resume']:
     """
     Resume currently used for two different purposes, need to make separate arg?
@@ -138,7 +141,8 @@ if sess_args['resume']:
         train_loss_history = resume_train_loss_history
         nonzeros = np.count_nonzero(train_loss_history)
         params_savepoint = nonzeros % 100
-        tr_train = nonzeros if params_savepoint == 0 else nonzeros - params_savepoint
+        tr_start = nonzeros if params_savepoint == 0 else nonzeros - params_savepoint
+'''
 
 validation_loss_history = np.zeros((X_val.shape[1]))
 
