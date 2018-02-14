@@ -129,7 +129,7 @@ train = tf.train.AdamOptimizer(lr).minimize(loss)
 #=============================================================================
 # wrapped in a function:
 #=============================================================================
-
+'''
 def model(x_in, kdims, activation=tf.nn.relu):
     #============================================================================= H0
     W0 = init_weight(*kdims[0], WEIGHT_TAG.format(0))
@@ -180,6 +180,19 @@ def model(x_in, kdims, activation=tf.nn.relu):
     B11 = init_bias(  *kdims[11],   BIAS_TAG.format(11))
     H11 = tf_nn.linear_layer(H10, W11, B11)
     return H11
+'''
+#=============================================================================
+# wrapped in a function WITH FOR LOOP
+#=============================================================================
+def model(x_in, kdims, activation=tf.nn.relu):
+    H = x_in
+    for idx, ktup in enumerate(kdims):
+        W = init_weight(*ktup, WEIGHT_TAG.format(idx))
+        B = init_bias(  *ktup,   BIAS_TAG.format(idx))
+        H = tf_nn.linear_layer(H, W, B)
+        if idx != len(kdims) - 1:
+            H = activation(H)
+    return H
 
 '''
 Guess you ahve to do training here too?
@@ -218,7 +231,7 @@ X = None # reduce memory overhead
 
 # training params
 batch_size = 32
-num_iters = 1000
+num_iters = 500
 
 
 # Sess
@@ -241,3 +254,4 @@ for i in range(num_iters):
         if i % 10 == 0:
             print('{}: {:.6f}'.format(i, error))
     train.run(feed_dict={X_input: x_in, X_truth: x_true})
+code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
