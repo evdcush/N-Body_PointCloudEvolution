@@ -65,7 +65,7 @@ def init_params(kdims):
         init_weight(*ktup, WEIGHT_TAG.format(idx))
         init_bias(  *ktup,   BIAS_TAG.format(idx))
 
-def get_vars(layer_idx):
+def get_layer_vars(layer_idx):
     """ gets variables for layer
     """
     with tf.variable_scope(VAR_SCOPE, reuse=True):

@@ -5,8 +5,6 @@ import tensorflow as tf
 from sklearn.neighbors import kneighbors_graph
 import utils
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-WEIGHT_TAG = 'W_{}'
-BIAS_TAG   = 'B_{}'
 
 ''' TF nuggets:
  - tf.get_variable only returns an existing variable with name if it was
@@ -35,13 +33,7 @@ def linear_fwd(h_in, W, b):
 def linear_layer(h, layer_idx):
     """ layer gets weights and returns linear transformation
     """
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    '''
-    with tf.variable_scope("params", reuse=True):
-        W = tf.get_variable(WEIGHT_TAG.format(layer_idx))
-        B = tf.get_variable(  BIAS_TAG.format(layer_idx))
-    '''
-    W, B = utils.get_vars(layer_idx)
+    W, B = utils.get_layer_vars(layer_idx)
     return linear_fwd(h, W, B)
 
 #=============================================================================

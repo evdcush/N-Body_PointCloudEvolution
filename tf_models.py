@@ -18,10 +18,6 @@ or whether it can be defined in train script
 #=============================================================================
 # model setup
 #=============================================================================
-# var naming
-#WEIGHT_TAG = 'W_{}'
-#BIAS_TAG   = 'B_{}' # eg 'B_6'
-
 # model params
 channels = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
 kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
@@ -29,237 +25,12 @@ lr = 0.01
 activation = tf.nn.relu
 num_particles = 16
 
-#=============================================================================
-# init stuff
-#=============================================================================
-def init_weight(k_in, k_out, name, scale=1.0):
-    """ initialize weight Variable
-    weight values drawn from He normal distribution
-    Args:
-        k_in, k_out (int): weight sizes
-        name (str): variable name
-    """
-    std = scale * np.sqrt(2. / k_in)
-    henorm = tf.random_normal((k_in, k_out), stddev=std)
-    W = tf.Variable(henorm, name=name, dtype=tf.float32)
-    return W
 
-def init_bias(k_in, k_out, name):
-    """ biases initialized to be near zero
-    """
-    b_val = np.ones((k_out,)) * 1e-6
-    b = tf.Variable(b_val, name=name, dtype=tf.float32)
-    return b
-
-#=============================================================================
-# hardcoded tensorflow boilerplate
-# I mean "graph"
-#=============================================================================
-'''
-# external data
-X_input = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_input')
-X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_truth')
-
-# network layers and hyper params, 12 layers
-#============================================================================= H0
-W0 = init_weight(*kdims[0], WEIGHT_TAG.format(0))
-B0 = init_bias(  *kdims[0],   BIAS_TAG.format(0))
-H0 = activation(tf_nn.linear_layer(X_input, W0, B0))
-
-#============================================================================= H1
-W1 = init_weight(*kdims[1], WEIGHT_TAG.format(1))
-B1 = init_bias(  *kdims[1],   BIAS_TAG.format(1))
-H1 = activation(tf_nn.linear_layer(H0, W1, B1))
-
-#============================================================================= H2
-W2 = init_weight(*kdims[2], WEIGHT_TAG.format(2))
-B2 = init_bias(  *kdims[2],   BIAS_TAG.format(2))
-H2 = activation(tf_nn.linear_layer(H1, W2, B2))
-
-#============================================================================= H3
-W3 = init_weight(*kdims[3], WEIGHT_TAG.format(3))
-B3 = init_bias(  *kdims[3],   BIAS_TAG.format(3))
-H3 = activation(tf_nn.linear_layer(H2, W3, B3))
-
-#============================================================================= H4
-W4 = init_weight(*kdims[4], WEIGHT_TAG.format(4))
-B4 = init_bias(  *kdims[4],   BIAS_TAG.format(4))
-H4 = activation(tf_nn.linear_layer(H3, W4, B4))
-
-#============================================================================= H5
-W5 = init_weight(*kdims[5], WEIGHT_TAG.format(5))
-B5 = init_bias(  *kdims[5],   BIAS_TAG.format(5))
-H5 = activation(tf_nn.linear_layer(H4, W5, B5))
-
-#============================================================================= H6
-W6 = init_weight(*kdims[6], WEIGHT_TAG.format(6))
-B6 = init_bias(  *kdims[6],   BIAS_TAG.format(6))
-H6 = activation(tf_nn.linear_layer(H5, W6, B6))
-
-#============================================================================= H7
-W7 = init_weight(*kdims[7], WEIGHT_TAG.format(7))
-B7 = init_bias(  *kdims[7],   BIAS_TAG.format(7))
-H7 = activation(tf_nn.linear_layer(H6, W7, B7))
-
-#============================================================================= H8
-W8 = init_weight(*kdims[8], WEIGHT_TAG.format(8))
-B8 = init_bias(  *kdims[8],   BIAS_TAG.format(8))
-H8 = activation(tf_nn.linear_layer(H7, W8, B8))
-
-#============================================================================= H9
-W9 = init_weight(*kdims[9], WEIGHT_TAG.format(9))
-B9 = init_bias(  *kdims[9],   BIAS_TAG.format(9))
-H9 = activation(tf_nn.linear_layer(H8, W9, B9))
-
-#============================================================================= H10
-W10 = init_weight(*kdims[10], WEIGHT_TAG.format(10))
-B10 = init_bias(  *kdims[10],   BIAS_TAG.format(10))
-H10 = activation(tf_nn.linear_layer(H9, W10, B10))
-
-#============================================================================= H11
-W11 = init_weight(*kdims[11], WEIGHT_TAG.format(11))
-B11 = init_bias(  *kdims[11],   BIAS_TAG.format(11))
-H11 = tf_nn.linear_layer(H10, W11, B11)
-
-#============================================================================= output
-readout = tf_nn.get_readout(H11)
-loss  = tf_nn.pbc_loss(readout, X_truth)
-train = tf.train.AdamOptimizer(lr).minimize(loss)
-'''
-#=============================================================================
-# wrapped in a function:
-#=============================================================================
-'''
-def model(x_in, kdims, activation=tf.nn.relu):
-    #============================================================================= H0
-    W0 = init_weight(*kdims[0], WEIGHT_TAG.format(0))
-    B0 = init_bias(  *kdims[0],   BIAS_TAG.format(0))
-    H0 = activation(tf_nn.linear_layer(x_in, W0, B0))
-    #============================================================================= H1
-    W1 = init_weight(*kdims[1], WEIGHT_TAG.format(1))
-    B1 = init_bias(  *kdims[1],   BIAS_TAG.format(1))
-    H1 = activation(tf_nn.linear_layer(H0, W1, B1))
-    #============================================================================= H2
-    W2 = init_weight(*kdims[2], WEIGHT_TAG.format(2))
-    B2 = init_bias(  *kdims[2],   BIAS_TAG.format(2))
-    H2 = activation(tf_nn.linear_layer(H1, W2, B2))
-    #============================================================================= H3
-    W3 = init_weight(*kdims[3], WEIGHT_TAG.format(3))
-    B3 = init_bias(  *kdims[3],   BIAS_TAG.format(3))
-    H3 = activation(tf_nn.linear_layer(H2, W3, B3))
-    #============================================================================= H4
-    W4 = init_weight(*kdims[4], WEIGHT_TAG.format(4))
-    B4 = init_bias(  *kdims[4],   BIAS_TAG.format(4))
-    H4 = activation(tf_nn.linear_layer(H3, W4, B4))
-    #============================================================================= H5
-    W5 = init_weight(*kdims[5], WEIGHT_TAG.format(5))
-    B5 = init_bias(  *kdims[5],   BIAS_TAG.format(5))
-    H5 = activation(tf_nn.linear_layer(H4, W5, B5))
-    #============================================================================= H6
-    W6 = init_weight(*kdims[6], WEIGHT_TAG.format(6))
-    B6 = init_bias(  *kdims[6],   BIAS_TAG.format(6))
-    H6 = activation(tf_nn.linear_layer(H5, W6, B6))
-    #============================================================================= H7
-    W7 = init_weight(*kdims[7], WEIGHT_TAG.format(7))
-    B7 = init_bias(  *kdims[7],   BIAS_TAG.format(7))
-    H7 = activation(tf_nn.linear_layer(H6, W7, B7))
-    #============================================================================= H8
-    W8 = init_weight(*kdims[8], WEIGHT_TAG.format(8))
-    B8 = init_bias(  *kdims[8],   BIAS_TAG.format(8))
-    H8 = activation(tf_nn.linear_layer(H7, W8, B8))
-    #============================================================================= H9
-    W9 = init_weight(*kdims[9], WEIGHT_TAG.format(9))
-    B9 = init_bias(  *kdims[9],   BIAS_TAG.format(9))
-    H9 = activation(tf_nn.linear_layer(H8, W9, B9))
-    #============================================================================= H10
-    W10 = init_weight(*kdims[10], WEIGHT_TAG.format(10))
-    B10 = init_bias(  *kdims[10],   BIAS_TAG.format(10))
-    H10 = activation(tf_nn.linear_layer(H9, W10, B10))
-    #============================================================================= H11
-    W11 = init_weight(*kdims[11], WEIGHT_TAG.format(11))
-    B11 = init_bias(  *kdims[11],   BIAS_TAG.format(11))
-    H11 = tf_nn.linear_layer(H10, W11, B11)
-    return H11
-
-#=============================================================================
-# wrapped in a function WITH FOR LOOP
-#=============================================================================
-def model(x_in, kdims, activation=tf.nn.relu):
+def network_fwd(x_in, num_layers, activation=tf.nn.relu):
     H = x_in
-    for idx, ktup in enumerate(kdims):
-        W = init_weight(*ktup, WEIGHT_TAG.format(idx))
-        B = init_bias(  *ktup,   BIAS_TAG.format(idx))
-        H = tf_nn.linear_layer(H, W, B)
-        if idx != len(kdims) - 1:
-            H = activation(H)
-    return H
-
-#=============================================================================
-# init weights and bias prior
-#=============================================================================
-def init_params(kdims):
-    params = {'W':[], 'B':[]}
-    for idx, ktup in enumerate(kdims):
-        params['W'].append(init_weight(*ktup, WEIGHT_TAG.format(idx)))
-        params['B'].append(init_bias(  *ktup,   BIAS_TAG.format(idx)))
-    return params
-
-def model(x_in, params, activation=tf.nn.relu):
-    H = x_in
-    for idx, ktup in enumerate(kdims):
-        W = params['W'][idx]
-        B = params['B'][idx]
-        H = tf_nn.linear_layer(H, W, B)
-        if idx != len(kdims) - 1:
-            H = activation(H)
-    return H
-'''
-
-#=============================================================================
-# init params prior and get_variable in linear layer
-# inits with get_variable instead
-#=============================================================================
-'''
-def init_weight(k_in, k_out, name, scale=1.0, rng_seed=98765):
-    """ initialize weight Variable
-    weight values drawn from He normal distribution
-    Args:
-        k_in, k_out (int): weight sizes
-        name (str): variable name
-    """
-    std = scale * np.sqrt(2. / k_in)
-    henorm = tf.random_normal((k_in, k_out), stddev=std, )#seed=rng_seed)
-    #W = tf.Variable(henorm, name=name, dtype=tf.float32)
-    #W = tf.get_variable(name, shape=(k_in, k_out), dtype=tf.float32, initializer=henorm)
-    with tf.variable_scope("params"):
-        W = tf.get_variable(name, dtype=tf.float32, initializer=henorm)
-        return W
-
-def init_bias(k_in, k_out, name):
-    """ biases initialized to be near zero
-    """
-    #b_val = np.ones((k_out,)) * 1e-6
-    #b = tf.Variable(b_val, name=name, dtype=tf.float32)
-    bval = tf.ones((k_out,), dtype=tf.float32) * 1e-6
-    # 'ValueError: If initializer is a constant, do not specify shape.'
-    #B = tf.get_variable(name, shape=(k_out,), dtype=tf.float32, initializer=bval)
-    with tf.variable_scope("params"):
-        B = tf.get_variable(name, dtype=tf.float32, initializer=bval)
-        return B
-
-def init_params(kdims):
-    params = {'W':[], 'B':[]}
-    for idx, ktup in enumerate(kdims):
-        params['W'].append(init_weight(*ktup, WEIGHT_TAG.format(idx)))
-        params['B'].append(init_bias(  *ktup,   BIAS_TAG.format(idx)))
-    return params
-'''
-
-def model(x_in, activation=tf.nn.relu):
-    H = x_in
-    for idx, ktup in enumerate(kdims):
-        H = tf_nn.linear_layer(H, idx)
-        if idx != len(kdims) - 1:
+    for i in range(num_layers):
+        H = tf_nn.linear_layer(H, i)
+        if i != num_layers - 1:
             H = activation(H)
     return H
 '''
@@ -271,7 +42,9 @@ X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_
 
 #============================================================================= output
 utils.init_params(kdims)
-H_out = model(X_input)
+num_layers = len(kdims)
+H_out = network_fwd(X_input, num_layers)
+#H_out = tf_nn.network_fwd(X_input, num_layers)
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 readout = tf_nn.get_readout(H_out)
 loss  = tf_nn.pbc_loss(readout, X_truth)
