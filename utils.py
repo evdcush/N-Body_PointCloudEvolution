@@ -41,7 +41,7 @@ VAR_SCOPE  = 'params'
 #=============================================================================
 # var inits
 #=============================================================================
-def init_weight(k_in, k_out, name, scale=1.0, rng_seed=98765):
+def init_weight(k_in, k_out, name, scale=1.0, seed=None):
     """ initialize weight Variable
     weight values drawn from He normal distribution
     Args:
@@ -49,7 +49,7 @@ def init_weight(k_in, k_out, name, scale=1.0, rng_seed=98765):
         name (str): variable name
     """
     std = scale * np.sqrt(2. / k_in)
-    henorm = tf.random_normal((k_in, k_out), stddev=std, seed=rng_seed)
+    henorm = tf.random_normal((k_in, k_out), stddev=std, seed=seed)
     with tf.variable_scope(VAR_SCOPE):
         tf.get_variable(name, dtype=tf.float32, initializer=henorm)
 
@@ -60,9 +60,9 @@ def init_bias(k_in, k_out, name):
     with tf.variable_scope(VAR_SCOPE):
         tf.get_variable(name, dtype=tf.float32, initializer=bval)
 
-def init_params(kdims):
+def init_params(kdims, seed=98765):
     for idx, ktup in enumerate(kdims):
-        init_weight(*ktup, WEIGHT_TAG.format(idx))
+        init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed)
         init_bias(  *ktup,   BIAS_TAG.format(idx))
 
 def get_layer_vars(layer_idx):
@@ -178,27 +178,31 @@ def normalize_fullrs(X, scale_range=(0,1)):
         X[rs_idx] = normalize(X[rs_idx])
     return X
 
-def split_data_validation(X, Y, num_val_samples=200):
+
+def split_data_validation(X, Y, num_val_samples=200, seed=None):
     """ split dataset into training and validation sets
 
     Args:
         X, Y (ndarray): data arrays of shape (num_samples, num_particles, 6)
         num_val_samples (int): size of validation set
+    Returns: tuple([X_train, X_val], [Y_train, Y_val])
     """
     num_samples = X.shape[0]
+    if seed is not None: np.random.seed(seed)
     idx_list    = np.random.permutation(num_samples)
-    X, Y = X[idx_list], Y[idx_list]
-    X_input, X_val = X[:-num_val_samples], X[-num_val_samples:]#np.split(X, [-num_val_samples])
-    X_truth, Y_val = Y[:-num_val_samples], Y[-num_val_samples:]#np.split(Y, [-num_val_samples])
-    return [(X_input, X_val), (X_truth, Y_val)]
+    X = np.split(X[idx_list], [-num_val_samples])
+    Y = np.split(Y[idx_list], [-num_val_samples])
+    return X, Y
 
-def multi_split_data_validation(X, num_val_samples=200):
+
+def multi_split_data_validation(X, num_val_samples=200, seed=None):
     """ split dataset into training and validation sets
 
     Args:
         X (ndarray): data arrays of shape (num_rs, num_samples, num_particles, 6)
         num_val_samples (int): size of validation set
     """
+    if seed is not None: np.random.seed(seed)
     idx_list = np.random.permutation(X.shape[1])
     X = X[:,idx_list]
     X_train = X[:, :-num_val_samples]
