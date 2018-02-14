@@ -193,7 +193,7 @@ def model(x_in, kdims, activation=tf.nn.relu):
         if idx != len(kdims) - 1:
             H = activation(H)
     return H
-'''
+
 #=============================================================================
 # init weights and bias prior
 #=============================================================================
@@ -214,6 +214,53 @@ def model(x_in, params, activation=tf.nn.relu):
             H = activation(H)
     return H
 '''
+
+#=============================================================================
+# init params prior and get_variable in linear layer
+# inits with get_variable instead
+#=============================================================================
+def init_weight(k_in, k_out, name, scale=1.0):
+    """ initialize weight Variable
+    weight values drawn from He normal distribution
+    Args:
+        k_in, k_out (int): weight sizes
+        name (str): variable name
+    """
+    std = scale * np.sqrt(2. / k_in)
+    henorm = tf.random_normal((k_in, k_out), stddev=std)
+    #W = tf.Variable(henorm, name=name, dtype=tf.float32)
+    #W = tf.get_variable(name, shape=(k_in, k_out), dtype=tf.float32, initializer=henorm)
+    with tf.variable_scope("params"):
+        W = tf.get_variable(name, dtype=tf.float32, initializer=henorm)
+        return W
+
+def init_bias(k_in, k_out, name):
+    """ biases initialized to be near zero
+    """
+    #b_val = np.ones((k_out,)) * 1e-6
+    #b = tf.Variable(b_val, name=name, dtype=tf.float32)
+    bval = tf.ones((k_out,), dtype=tf.float32) * 1e-6
+    # 'ValueError: If initializer is a constant, do not specify shape.'
+    #B = tf.get_variable(name, shape=(k_out,), dtype=tf.float32, initializer=bval)
+    with tf.variable_scope("params"):
+        B = tf.get_variable(name, dtype=tf.float32, initializer=bval)
+        return B
+
+def init_params(kdims):
+    params = {'W':[], 'B':[]}
+    for idx, ktup in enumerate(kdims):
+        params['W'].append(init_weight(*ktup, WEIGHT_TAG.format(idx)))
+        params['B'].append(init_bias(  *ktup,   BIAS_TAG.format(idx)))
+    return params
+
+def model(x_in, activation=tf.nn.relu):
+    H = x_in
+    for idx, ktup in enumerate(kdims):
+        H = tf_nn.linear_layer_get(H, idx)
+        if idx != len(kdims) - 1:
+            H = activation(H)
+    return H
+'''
 Guess you ahve to do training here too?
 it complains about not knowing X_input in tf_train.py
 '''
@@ -222,7 +269,7 @@ X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_
 
 #============================================================================= output
 params = init_params(kdims)
-H_out = model(X_input, params)
+H_out = model(X_input)
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 readout = tf_nn.get_readout(H_out)
 loss  = tf_nn.pbc_loss(readout, X_truth)
@@ -274,4 +321,6 @@ for i in range(num_iters):
         if i % 10 == 0:
             print('{}: {:.6f}'.format(i, error))
     train.run(feed_dict={X_input: x_in, X_truth: x_true})
+
+gvars = tf.global_variables()
 code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
