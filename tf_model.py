@@ -46,17 +46,6 @@ def init_bias(k_in, k_out, name):
 #=============================================================================
 # nn ops
 #=============================================================================
-def init_weight(k_in, k_out, name, scale=1.0):
-    std = scale * np.sqrt(2. / k_in)
-    henorm = tf.random_normal((k_in, k_out), stddev=std)
-    W = tf.Variable(henorm, name=name, dtype=tf.float32)
-    return W
-
-def init_bias(k_in, k_out, name):
-    b_val = np.ones((k_out,)) * 1e-6
-    b = tf.Variable(b_val, name=name, dtype=tf.float32)
-    return b
-
 def left_mult(h, W):
     return tf.einsum('ijl,lq->ijq', h, W)
 
