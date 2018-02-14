@@ -25,7 +25,7 @@ lr = 0.01
 activation = tf.nn.relu
 num_particles = 16
 
-
+'''
 def network_fwd(x_in, num_layers, activation=tf.nn.relu):
     H = x_in
     for i in range(num_layers):
@@ -33,6 +33,7 @@ def network_fwd(x_in, num_layers, activation=tf.nn.relu):
         if i != num_layers - 1:
             H = activation(H)
     return H
+'''
 '''
 Guess you ahve to do training here too?
 it complains about not knowing X_input in tf_train.py
@@ -43,8 +44,8 @@ X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_
 #============================================================================= output
 utils.init_params(kdims)
 num_layers = len(kdims)
-H_out = network_fwd(X_input, num_layers)
-#H_out = tf_nn.network_fwd(X_input, num_layers)
+#H_out = network_fwd(X_input, num_layers)
+H_out = tf_nn.network_fwd(X_input, num_layers)
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 readout = tf_nn.get_readout(H_out)
 loss  = tf_nn.pbc_loss(readout, X_truth)
