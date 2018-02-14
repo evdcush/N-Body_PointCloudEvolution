@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 import utils
 import tf_nn
-#from utils import REDSHIFTS, NBODY_MODELS, PARAMS_SEED, LEARNING_RATE, RS_TAGS
+from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS
 #from utils import init_weight, init_bias
 
 '''
@@ -219,7 +219,8 @@ def model(x_in, params, activation=tf.nn.relu):
 # init params prior and get_variable in linear layer
 # inits with get_variable instead
 #=============================================================================
-def init_weight(k_in, k_out, name, scale=1.0):
+'''
+def init_weight(k_in, k_out, name, scale=1.0, rng_seed=98765):
     """ initialize weight Variable
     weight values drawn from He normal distribution
     Args:
@@ -227,7 +228,7 @@ def init_weight(k_in, k_out, name, scale=1.0):
         name (str): variable name
     """
     std = scale * np.sqrt(2. / k_in)
-    henorm = tf.random_normal((k_in, k_out), stddev=std)
+    henorm = tf.random_normal((k_in, k_out), stddev=std, )#seed=rng_seed)
     #W = tf.Variable(henorm, name=name, dtype=tf.float32)
     #W = tf.get_variable(name, shape=(k_in, k_out), dtype=tf.float32, initializer=henorm)
     with tf.variable_scope("params"):
@@ -252,6 +253,39 @@ def init_params(kdims):
         params['W'].append(init_weight(*ktup, WEIGHT_TAG.format(idx)))
         params['B'].append(init_bias(  *ktup,   BIAS_TAG.format(idx)))
     return params
+'''
+def init_weight(k_in, k_out, name, scale=1.0, rng_seed=98765):
+    """ initialize weight Variable
+    weight values drawn from He normal distribution
+    Args:
+        k_in, k_out (int): weight sizes
+        name (str): variable name
+    """
+    std = scale * np.sqrt(2. / k_in)
+    henorm = tf.random_normal((k_in, k_out), stddev=std, seed=rng_seed)
+    #W = tf.Variable(henorm, name=name, dtype=tf.float32)
+    #W = tf.get_variable(name, shape=(k_in, k_out), dtype=tf.float32, initializer=henorm)
+    with tf.variable_scope("params"):
+        tf.get_variable(name, dtype=tf.float32, initializer=henorm)
+        #return W
+
+def init_bias(k_in, k_out, name):
+    """ biases initialized to be near zero
+    """
+    #b_val = np.ones((k_out,)) * 1e-6
+    #b = tf.Variable(b_val, name=name, dtype=tf.float32)
+    bval = tf.ones((k_out,), dtype=tf.float32) * 1e-6
+    # 'ValueError: If initializer is a constant, do not specify shape.'
+    #B = tf.get_variable(name, shape=(k_out,), dtype=tf.float32, initializer=bval)
+    with tf.variable_scope("params"):
+        tf.get_variable(name, dtype=tf.float32, initializer=bval)
+        #return B
+
+def init_params(kdims):
+    for idx, ktup in enumerate(kdims):
+        init_weight(*ktup, WEIGHT_TAG.format(idx))
+        init_bias(  *ktup,   BIAS_TAG.format(idx))
+
 
 def model(x_in, activation=tf.nn.relu):
     H = x_in
@@ -268,7 +302,7 @@ X_input = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_
 X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_truth')
 
 #============================================================================= output
-params = init_params(kdims)
+init_params(kdims)
 H_out = model(X_input)
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 readout = tf_nn.get_readout(H_out)
