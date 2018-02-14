@@ -19,8 +19,8 @@ or whether it can be defined in train script
 # model setup
 #=============================================================================
 # var naming
-WEIGHT_TAG = 'W_{}'
-BIAS_TAG   = 'B_{}' # eg 'B_6'
+#WEIGHT_TAG = 'W_{}'
+#BIAS_TAG   = 'B_{}' # eg 'B_6'
 
 # model params
 channels = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
@@ -254,30 +254,6 @@ def init_params(kdims):
         params['B'].append(init_bias(  *ktup,   BIAS_TAG.format(idx)))
     return params
 '''
-def init_weight(k_in, k_out, name, scale=1.0, rng_seed=98765):
-    """ initialize weight Variable
-    weight values drawn from He normal distribution
-    Args:
-        k_in, k_out (int): weight sizes
-        name (str): variable name
-    """
-    std = scale * np.sqrt(2. / k_in)
-    henorm = tf.random_normal((k_in, k_out), stddev=std, seed=rng_seed)
-    with tf.variable_scope("params"):
-        tf.get_variable(name, dtype=tf.float32, initializer=henorm)
-
-def init_bias(k_in, k_out, name):
-    """ biases initialized to be near zero
-    """
-    bval = tf.ones((k_out,), dtype=tf.float32) * 1e-6
-    with tf.variable_scope("params"):
-        tf.get_variable(name, dtype=tf.float32, initializer=bval)
-
-def init_params(kdims):
-    for idx, ktup in enumerate(kdims):
-        init_weight(*ktup, WEIGHT_TAG.format(idx))
-        init_bias(  *ktup,   BIAS_TAG.format(idx))
-
 
 def model(x_in, activation=tf.nn.relu):
     H = x_in
@@ -294,7 +270,7 @@ X_input = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_
 X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_truth')
 
 #============================================================================= output
-init_params(kdims)
+utils.init_params(kdims)
 H_out = model(X_input)
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 readout = tf_nn.get_readout(H_out)

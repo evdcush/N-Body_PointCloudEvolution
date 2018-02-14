@@ -13,6 +13,7 @@ BIAS_TAG   = 'B_{}'
    created earlier by get_variable. It won't return a variable created using
    tf.Variable()
 '''
+
 #=============================================================================
 # layer ops
 #=============================================================================
