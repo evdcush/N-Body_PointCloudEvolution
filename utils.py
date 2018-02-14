@@ -30,13 +30,14 @@ LEARNING_RATE = 0.01
 
 WEIGHT_TAG = 'W_{}'
 BIAS_TAG   = 'B_{}'
+VAR_SCOPE  = 'params'
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 # TF-related utils
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-# NEXT TRY FUNCTION TO GET VAR
+
 #=============================================================================
 # var inits
 #=============================================================================
@@ -49,20 +50,28 @@ def init_weight(k_in, k_out, name, scale=1.0, rng_seed=98765):
     """
     std = scale * np.sqrt(2. / k_in)
     henorm = tf.random_normal((k_in, k_out), stddev=std, seed=rng_seed)
-    with tf.variable_scope("params"):
+    with tf.variable_scope(VAR_SCOPE):
         tf.get_variable(name, dtype=tf.float32, initializer=henorm)
 
 def init_bias(k_in, k_out, name):
     """ biases initialized to be near zero
     """
     bval = tf.ones((k_out,), dtype=tf.float32) * 1e-6
-    with tf.variable_scope("params"):
+    with tf.variable_scope(VAR_SCOPE):
         tf.get_variable(name, dtype=tf.float32, initializer=bval)
 
 def init_params(kdims):
     for idx, ktup in enumerate(kdims):
         init_weight(*ktup, WEIGHT_TAG.format(idx))
         init_bias(  *ktup,   BIAS_TAG.format(idx))
+
+def get_vars(layer_idx):
+    """ gets variables for layer
+    """
+    with tf.variable_scope(VAR_SCOPE, reuse=True):
+        W = tf.get_variable(WEIGHT_TAG.format(layer_idx))
+        B = tf.get_variable(  BIAS_TAG.format(layer_idx))
+    return W, B
 
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><

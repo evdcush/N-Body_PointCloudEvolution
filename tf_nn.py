@@ -36,9 +36,12 @@ def linear_layer(h, layer_idx):
     """ layer gets weights and returns linear transformation
     """
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    '''
     with tf.variable_scope("params", reuse=True):
         W = tf.get_variable(WEIGHT_TAG.format(layer_idx))
         B = tf.get_variable(  BIAS_TAG.format(layer_idx))
+    '''
+    W, B = utils.get_vars(layer_idx)
     return linear_fwd(h, W, B)
 
 #=============================================================================
