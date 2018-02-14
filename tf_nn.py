@@ -36,13 +36,19 @@ def linear_layer(h, layer_idx):
     W, B = utils.get_layer_vars(layer_idx)
     return linear_fwd(h, W, B)
 
-def network_fwd(x_in, num_layers, activation=tf.nn.relu):
+def graph_fwd(x_in, num_layers, activation=tf.nn.relu):
+    return False
+
+def set_fwd(x_in, num_layers, activation=tf.nn.relu):
     H = x_in
     for i in range(num_layers):
         H = linear_layer(H, i)
         if i != num_layers - 1:
             H = activation(H)
     return H
+
+def network_fwd(x_in, num_layers, activation=tf.nn.relu, mtype='set'):
+    return set_fwd(x_in, num_layers, activation)
 
 #=============================================================================
 # periodic boundary conditions, loss

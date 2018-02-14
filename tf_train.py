@@ -20,7 +20,6 @@ num_layers = len(kdims)
 lr = 0.01
 activation = tf.nn.relu
 
-
 #=============================================================================
 # Data params
 #=============================================================================
@@ -83,6 +82,3 @@ for i in range(num_iters):
         if i % 10 == 0:
             print('{}: {:.6f}'.format(i, error))
     train.run(feed_dict={X_input: x_in, X_truth: x_true})
-
-#gvars = tf.global_variables()
-code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
