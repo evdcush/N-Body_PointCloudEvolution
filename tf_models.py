@@ -180,7 +180,7 @@ def model(x_in, kdims, activation=tf.nn.relu):
     B11 = init_bias(  *kdims[11],   BIAS_TAG.format(11))
     H11 = tf_nn.linear_layer(H10, W11, B11)
     return H11
-'''
+
 #=============================================================================
 # wrapped in a function WITH FOR LOOP
 #=============================================================================
@@ -193,7 +193,26 @@ def model(x_in, kdims, activation=tf.nn.relu):
         if idx != len(kdims) - 1:
             H = activation(H)
     return H
+'''
+#=============================================================================
+# init weights and bias prior
+#=============================================================================
+def init_params(kdims):
+    params = {'W':[], 'B':[]}
+    for idx, ktup in enumerate(kdims):
+        params['W'].append(init_weight(*ktup, WEIGHT_TAG.format(idx)))
+        params['B'].append(init_bias(  *ktup,   BIAS_TAG.format(idx)))
+    return params
 
+def model(x_in, params, activation=tf.nn.relu):
+    H = x_in
+    for idx, ktup in enumerate(kdims):
+        W = params['W'][idx]
+        B = params['B'][idx]
+        H = tf_nn.linear_layer(H, W, B)
+        if idx != len(kdims) - 1:
+            H = activation(H)
+    return H
 '''
 Guess you ahve to do training here too?
 it complains about not knowing X_input in tf_train.py
@@ -202,7 +221,8 @@ X_input = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_
 X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_truth')
 
 #============================================================================= output
-H_out = model(X_input, kdims)
+params = init_params(kdims)
+H_out = model(X_input, params)
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 readout = tf_nn.get_readout(H_out)
 loss  = tf_nn.pbc_loss(readout, X_truth)
