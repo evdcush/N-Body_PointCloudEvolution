@@ -3,13 +3,32 @@ import numpy as np
 import tensorflow as tf
 #import chainer.functions as F
 import matplotlib.pyplot as plt
-import tf_utils
-import tf_models
-from tf_models import train
+import utils
+from tf_models import train, loss
+
+# data
+params_seed = 98765
+data_seed   = 12345
+def seed_rng(s=data_seed):
+    np.random.seed(s)
+    tf.set_random_seed(s)
+    print('seeded by {}'.format(s))
+
+num_particles = 16 # defaults 16**3
+zX = 0.6
+zY = 0.0
+rs_start = utils.REDSHIFTS.index(zX)
+rs_target = utils.REDSHIFTS.index(zY)
+X = utils.load_npy_data(num_particles) # (11, N, D, 6)
+X = X[[rs_start, rs_target]] # (2, N, D, 6)
+X = utils.normalize_fullrs(X)
+seed_rng()
+X_train, X_val = utils.multi_split_data_validation(X, num_val_samples=200)
+X = None # reduce memory overhead
 
 # training params
 batch_size = 32
-num_iters = 5000
+num_iters = 1000
 
 
 # Sess

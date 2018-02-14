@@ -10,8 +10,6 @@ import chainer.serializers as serializers
 
 import tensorflow as tf
 
-import tf_models, tf_nn
-
 #=============================================================================
 # Globals
 #=============================================================================
