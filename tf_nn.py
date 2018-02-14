@@ -19,34 +19,26 @@ BIAS_TAG   = 'B_{}'
 def left_mult(h, W):
     return tf.einsum('ijl,lq->ijq', h, W)
 
-def linear_layer(h, W, b):
+def linear_fwd(h_in, W, b):
     """ permutation equivariant linear transformation
     Args:
-        h: external input, of shape (mb_size, n_P, k_in)
+        h_in: external input, of shape (mb_size, n_P, k_in)
         W: layer weight, of shape (k_in, k_out)
         b: bias, of shape (k_out,)
     """
-    mu = tf.reduce_mean(h, axis=1, keepdims=True)
-    h_out = h - mu
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    mu = tf.reduce_mean(h_in, axis=1, keepdims=True)
+    h = h_in - mu
     h_out = left_mult(h, W) + b
     return h_out
 
-def linear_layer_get(h, layer_idx):
-    """ permutation equivariant linear transformation
-    Args:
-        h: external input, of shape (mb_size, n_P, k_in)
-        W: layer weight, of shape (k_in, k_out)
-        b: bias, of shape (k_out,)
+def linear_layer(h, layer_idx):
+    """ layer gets weights and returns linear transformation
     """
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     with tf.variable_scope("params", reuse=True):
         W = tf.get_variable(WEIGHT_TAG.format(layer_idx))
         B = tf.get_variable(  BIAS_TAG.format(layer_idx))
-        # tf.get_tensor_by_name apparently can get variables too
-        #W = tf.get_tensor_by_name(WEIGHT_TAG.format(layer_idx))
-        #B = tf.get_tensor_by_name(  BIAS_TAG.format(layer_idx))
-        return linear_layer(h, W, B)
+    return linear_fwd(h, W, B)
 
 #=============================================================================
 # periodic boundary conditions, loss

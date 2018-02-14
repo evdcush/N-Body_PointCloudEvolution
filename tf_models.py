@@ -263,23 +263,15 @@ def init_weight(k_in, k_out, name, scale=1.0, rng_seed=98765):
     """
     std = scale * np.sqrt(2. / k_in)
     henorm = tf.random_normal((k_in, k_out), stddev=std, seed=rng_seed)
-    #W = tf.Variable(henorm, name=name, dtype=tf.float32)
-    #W = tf.get_variable(name, shape=(k_in, k_out), dtype=tf.float32, initializer=henorm)
     with tf.variable_scope("params"):
         tf.get_variable(name, dtype=tf.float32, initializer=henorm)
-        #return W
 
 def init_bias(k_in, k_out, name):
     """ biases initialized to be near zero
     """
-    #b_val = np.ones((k_out,)) * 1e-6
-    #b = tf.Variable(b_val, name=name, dtype=tf.float32)
     bval = tf.ones((k_out,), dtype=tf.float32) * 1e-6
-    # 'ValueError: If initializer is a constant, do not specify shape.'
-    #B = tf.get_variable(name, shape=(k_out,), dtype=tf.float32, initializer=bval)
     with tf.variable_scope("params"):
         tf.get_variable(name, dtype=tf.float32, initializer=bval)
-        #return B
 
 def init_params(kdims):
     for idx, ktup in enumerate(kdims):
@@ -290,7 +282,7 @@ def init_params(kdims):
 def model(x_in, activation=tf.nn.relu):
     H = x_in
     for idx, ktup in enumerate(kdims):
-        H = tf_nn.linear_layer_get(H, idx)
+        H = tf_nn.linear_layer(H, idx)
         if idx != len(kdims) - 1:
             H = activation(H)
     return H
