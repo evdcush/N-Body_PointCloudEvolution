@@ -12,10 +12,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--particles', '-p', default=16,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
 parser.add_argument('--redshifts', '-z', default=[0.6, 0.0], nargs='+', type=float, help='redshift tuple, predict z[1] from z[0]')
 parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
-parser.add_argument('--resume',    '-r', default=0,          type=int,  help='resume training from serialized params')
+#parser.add_argument('--resume',    '-r', default=0,          type=int,  help='resume training from serialized params')
 #parser.add_argument('--multi_step','-s', default=0,          type=int, help='use multi-step redshift model')
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
-parser.add_argument('--batch_size','-b', default=32,          type=int,  help='training batch size')
+parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
 parser.add_argument('--save_prefix','-n', default='',         type=str,  help='model name prefix')
 parser.add_argument('--vel_coeff', '-c', default=0,          type=int, help='use timestep coefficient on velocity')
@@ -84,7 +84,6 @@ readout = nn.get_readout(X_pred)
 loss    = nn.pbc_loss(readout, X_truth)
 train   = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
-
 #=============================================================================
 # Session and Train setup
 #=============================================================================
@@ -94,14 +93,15 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.8)
+gpu_frac = 0.8
+gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
 
 # Save
 train_loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
-saver.save(sess, model_path)
+saver.save(sess, model_path + model_name)
 save_checkpoint = lambda step: step % 100 == 0 and step != 0
 
 
@@ -114,7 +114,7 @@ for step in range(num_iters):
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in   = _x_batch[0]
     x_true = _x_batch[1]
-
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     if verbose:
         error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true})
         train_loss_history[step] = error
@@ -123,15 +123,15 @@ for step in range(num_iters):
     # cycle through graph
     train.run(feed_dict={X_input: x_in, X_truth: x_true})
     if save_checkpoint(step):
-        saver.save(sess, model_path, global_step=step, write_meta_graph=False)
+        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=False)
 
 print('elapsed time: {}'.format(time.time() - start_time))
 # elapsed time: 55.703558683395386 # for error = sess.run ..., little over 10sec/run
 # elapsed time: 41.57636308670044 # with no sess.run, under 10sec/run
 # save
-saver.save(sess, model_path, global_step=step, write_meta_graph=False)
+saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=False)
 if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
-
+X_train = None # reduce memory overhead
 
 #=============================================================================
 # TESTING
