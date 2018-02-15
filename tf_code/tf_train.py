@@ -1,10 +1,8 @@
-import os, code, sys, time
+import os, code, sys, time, argparse
 import numpy as np
-import tensorflow as tf
-#import chainer.functions as F
 from sklearn.neighbors import kneighbors_graph
 import matplotlib.pyplot as plt
-
+import tensorflow as tf
 import tf_utils as utils
 import tf_nn as nn
 from tf_utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS
@@ -13,7 +11,7 @@ parser = argparse.ArgumentParser()
 # argparse not handle bools well so 0,1 used instead
 parser.add_argument('--particles', '-p', default=16,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
 parser.add_argument('--redshifts', '-z', default=[0.6, 0.0], nargs='+', type=float, help='redshift tuple, predict z[1] from z[0]')
-#parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
+parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
 parser.add_argument('--resume',    '-r', default=0,          type=int,  help='resume training from serialized params')
 #parser.add_argument('--multi_step','-s', default=0,          type=int, help='use multi-step redshift model')
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
@@ -27,38 +25,47 @@ start_time = time.time()
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 #=============================================================================
-# network and model params
-#=============================================================================
-# model params
-channels = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
-kdims    = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
-num_layers = len(kdims)
-lr = 0.01
-activation = tf.nn.relu
-
-# model path
-
-
-#=============================================================================
-# Data params
+# nbody Data
 #=============================================================================
 # nbody data params
 num_particles = 16 # base, actual num_particles**3
-zX = 0.6
-zY = 0.0
+zX, zY = pargs['redshifts']
+nbody_params = (num_particles, (zX, zY))
 
 # Load data
-rs_start  = utils.REDSHIFTS.index(zX)
-rs_target = utils.REDSHIFTS.index(zY)
-X = utils.load_npy_data(num_particles) # (11, N, D, 6)
-X = X[[rs_start, rs_target]] # (2, N, D, 6)
-X = utils.normalize_fullrs(X)
-X_train, X_val = utils.multi_split_data_validation(X, num_val_samples=200)
+X = utils.load_npy_data(*nbody_params, normalize=True)
+X_train, X_val = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 
-# vel_coeff
-#vel_coeff = None
-vel_coeff = utils.load_velocity_coefficients(num_particles)[(zX, zY)]
+# velocity coefficient
+vel_coeff = None
+if pargs['vel_coeff']:
+    vel_coeff = utils.load_velocity_coefficients(num_particles)[(zX, zY)]
+
+
+#=============================================================================
+# network and model params
+#=============================================================================
+# model vars
+model_type = pargs['model_type'] # 0: set, 1: graph, but only set implemented at moment
+channels = utils.NBODY_MODELS[model_type]['channels']
+
+
+#=============================================================================
+# Session save parameters
+#=============================================================================
+# model name
+mname_args = [nbody_params, model_type, vel_coeff, pargs['save_prefix']]
+model_name = utils.get_model_name(*mname_args)
+
+# save paths
+paths = utils.make_save_dirs(pargs['model_dir'], model_name)
+model_path, loss_path, cube_path = paths
+
+num_layers = len(channels) - 1
+learning_rate = LEARNING_RATE # 0.01
+
+"""
 
 #=============================================================================
 # initialize graph
@@ -69,12 +76,14 @@ utils.init_params(kdims)
 # direct graph
 X_input = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_input')
 X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_truth')
-X_pred  = nn.network_fwd(X_input, num_layers, vel_coeff=vel_coeff)
+X_pred  = nn.network_fwd(X_input, num_layers, vel_coeff=vel_coeff, mtype_key=model_type)
 
 # loss and optimizer
 readout = nn.get_readout(X_pred)
 loss    = nn.pbc_loss(readout, X_truth)
-train   = tf.train.AdamOptimizer(lr).minimize(loss)
+train   = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+
+
 
 #=============================================================================
 # Training and Session setup
@@ -113,3 +122,4 @@ for i in range(num_iters):
     if i % 100 == 0 and i != 0:
         #saver.save(sess, model_name, global_step=i)
         saver.save(sess, model_name, global_step=i, write_meta_graph=False)
+"""

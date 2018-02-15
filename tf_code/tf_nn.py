@@ -47,8 +47,8 @@ def set_fwd(x_in, num_layers, activation=tf.nn.relu):
             H = activation(H)
     return H
 
-def network_fwd(x_in, num_layers, activation=tf.nn.relu, mtype='set', add=True, vel_coeff=None):
-    if mtype == 'set':
+def network_fwd(x_in, num_layers, activation=tf.nn.relu, mtype_key=0, add=True, vel_coeff=None):
+    if mtype_key == 0: # set
         h_out = set_fwd(x_in, num_layers, activation)
     if add:
         x_coo = x_in[...,:3]

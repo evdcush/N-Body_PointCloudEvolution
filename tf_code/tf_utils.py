@@ -31,8 +31,8 @@ LEARNING_RATE = 0.01
 
 GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
 SET_CHANNELS   = [6, 32, 128, 256, 128, 32, 256, 16, 3]
-NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S', 'loss':nn.pbc_loss},
-                1:{'channels': GRAPH_CHANNELS, 'tag': 'G', 'loss':nn.pbc_loss},}
+NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S',},
+                1:{'channels': GRAPH_CHANNELS, 'tag': 'G',},}
 LEARNING_RATE = 0.01
 
 WEIGHT_TAG = 'W_{}'
@@ -67,7 +67,8 @@ def init_bias(k_in, k_out, name):
     with tf.variable_scope(VAR_SCOPE):
         tf.get_variable(name, dtype=tf.float32, initializer=bval)
 
-def init_params(kdims, seed=98765):
+def init_params(channels, seed=98765):
+    kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
     for idx, ktup in enumerate(kdims):
         init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed)
         init_bias(  *ktup,   BIAS_TAG.format(idx))
@@ -136,13 +137,22 @@ def load_data(n_P, *args, **kwargs):
         data.append(x)
     return data
 
-def load_npy_data(n_P):
+def load_npy_data(n_P, redshifts=None, normalize=False):
     """ Loads data serialized as numpy array of np.float32
     Args:
         n_P: base number of particles (16 or 32)
+        redshifts (tuple): tuple of redshifts
     """
     assert n_P in [16, 32]
-    return np.load(DATA_PATH_NPY.format(n_P))
+    X = np.load(DATA_PATH_NPY.format(n_P)) # (11, N, n_P, 6)
+    if redshifts is not None:
+        zX, zY = redshifts
+        rs_start  = REDSHIFTS.index(zX)
+        rs_target = REDSHIFTS.index(zY)
+        X = X[[rs_start, rs_target]] # (2, N, n_P, 6)
+    if normalize:
+        X = normalize_fullrs(X)
+    return X
 
 #=============================================================================
 # Data utils
@@ -186,7 +196,7 @@ def normalize_fullrs(X, scale_range=(0,1)):
     return X
 
 
-def split_data_validation(X, Y, num_val_samples=200, seed=None):
+def split_data_validation(X, Y, num_val_samples=200, seed=DATASET_SEED):
     """ split dataset into training and validation sets
 
     Args:
@@ -195,21 +205,20 @@ def split_data_validation(X, Y, num_val_samples=200, seed=None):
     Returns: tuple([X_train, X_val], [Y_train, Y_val])
     """
     num_samples = X.shape[0]
-    if seed is not None: np.random.seed(seed)
+    np.random.seed(seed)
     idx_list    = np.random.permutation(num_samples)
     X = np.split(X[idx_list], [-num_val_samples])
     Y = np.split(Y[idx_list], [-num_val_samples])
     return X, Y
 
-
-def multi_split_data_validation(X, num_val_samples=200, seed=None):
+def split_data_validation_combined(X, num_val_samples=200, seed=DATASET_SEED):
     """ split dataset into training and validation sets
 
     Args:
         X (ndarray): data arrays of shape (num_rs, num_samples, num_particles, 6)
         num_val_samples (int): size of validation set
     """
-    if seed is not None: np.random.seed(seed)
+    np.random.seed(seed)
     idx_list = np.random.permutation(X.shape[1])
     X = X[:,idx_list]
     X_train = X[:, :-num_val_samples]
@@ -283,6 +292,25 @@ def make_dirs(dirs):
     for path in dirs:
         if not os.path.exists(path): os.makedirs(path)
 
+def make_save_dirs(model_dir, model_name):
+    """ Make save directories for saving:
+        - model hyper parameters
+        - loss data
+        - cube data
+    Args:
+        model_dir (str): the root path for saving model
+        model_name (str): name for model
+    Returns: (model_path, loss_path, cube_path)
+    """
+    model_path = '{}{}/'.format(model_dir, model_name)
+    tf_params_save_path = model_path + 'Session/'
+    loss_path  = model_path + 'Loss/'
+    cube_path  = model_path + 'Cubes/'
+    make_dirs([tf_params_save_path, loss_path, cube_path]) # model_dir lower dir, so automatically created
+    save_pyfiles(model_path)
+    return tf_params_save_path, loss_path, cube_path
+
+
 def save_pyfiles(model_dir):
     """ Save project files to save_path
     For backing up files used for a model
@@ -291,7 +319,7 @@ def save_pyfiles(model_dir):
     """
     save_path = model_dir + '.original_files/'
     make_dirs([save_path])
-    file_names = ['train.py', 'utils.py', 'models.py', 'nn.py']
+    file_names = ['tf_train.py', 'tf_utils.py', 'tf_nn.py']
     for fname in file_names:
         src = './{}'.format(fname)
         dst = '{}{}'.format(save_path, fname)
@@ -299,18 +327,20 @@ def save_pyfiles(model_dir):
         print('saved {} to {}'.format(src, dst))
 
 
-def get_model_name(dparams, tag, vel_coeff, save_prefix):
+def get_model_name(dparams, mtype, vel_coeff, save_prefix):
     """ Consistent model naming format
     Model name examples:
         'GL_32_12-04': GraphModel|WithVelCoeff|32**3 Dataset|redshift 1.2->0.4
         'S_16_04-00': SetModel|16**3 Dataset|redshift 0.4->0.0
     """
-    n_P, zX, zY = dparams
-    zX = RS_TAGS[zX]
-    zY = RS_TAGS[zY]
-    vel_tag = 'L' if vel_coeff else ''
+    n_P, rs = dparams
+    zX = RS_TAGS[rs[0]]
+    zY = RS_TAGS[rs[1]]
 
-    model_name = '{}{}_{}_{}-{}'.format(tag, vel_tag, n_P, zX, zY)
+    model_tag = NBODY_MODELS[mtype]['tag']
+    vel_tag = 'L' if vel_coeff is not None else ''
+
+    model_name = '{}{}_{}_{}-{}'.format(model_tag, vel_tag, n_P, zX, zY)
     if save_prefix != '':
         model_name = '{}_{}'.format(save_prefix, model_name)
     return model_name
