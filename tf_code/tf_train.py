@@ -5,9 +5,9 @@ import tensorflow as tf
 from sklearn.neighbors import kneighbors_graph
 import matplotlib.pyplot as plt
 
-import utils
-import tf_nn
-from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS
+import tf_utils as utils
+import tf_nn as nn
+from tf_utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 #=============================================================================
@@ -46,11 +46,11 @@ utils.init_params(kdims)
 # direct graph
 X_input = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_input')
 X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_truth')
-X_pred  = tf_nn.network_fwd(X_input, num_layers)
+X_pred  = nn.network_fwd(X_input, num_layers)
 
 # loss and optimizer
-readout = tf_nn.get_readout(X_pred)
-loss    = tf_nn.pbc_loss(readout, X_truth)
+readout = nn.get_readout(X_pred)
+loss    = nn.pbc_loss(readout, X_truth)
 train   = tf.train.AdamOptimizer(lr).minimize(loss)
 
 #=============================================================================

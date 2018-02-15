@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 #import chainer.functions as F
 from sklearn.neighbors import kneighbors_graph
-import utils
+import tf_utils as utils
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 ''' TF nuggets:
@@ -49,6 +49,12 @@ def set_fwd(x_in, num_layers, activation=tf.nn.relu):
 
 def network_fwd(x_in, num_layers, activation=tf.nn.relu, mtype='set'):
     return set_fwd(x_in, num_layers, activation)
+
+
+#=============================================================================
+# graph model ops
+#=============================================================================
+
 
 #=============================================================================
 # periodic boundary conditions, loss
