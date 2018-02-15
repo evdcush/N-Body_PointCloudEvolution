@@ -11,6 +11,16 @@ import tf_utils as utils
    created earlier by get_variable. It won't return a variable created using
    tf.Variable()
 '''
+#=============================================================================
+''' IMPLEMENTATION LIST
+ X velocity coefficient
+ X save points
+ - restore model
+ - Graph model, kneighbors
+ - Graph model, radius
+
+'''
+#=============================================================================
 
 #=============================================================================
 # layer ops
@@ -38,22 +48,27 @@ def linear_layer(h, layer_idx):
     W, B = utils.get_layer_vars(layer_idx)
     return linear_fwd(h, W, B)
 
-def graph_layer(h, layer_idx, alist):
+def kgraph_layer(h, layer_idx, alist, K):
     """ layer gets weights and returns linear transformation
     """
-    mb_size, N, D = h.shape
-    K = alist.shape[-1]
-    nn_graph = tf.reshape(tf.gather_nd(h, alist), [mb_size, N, K, D])
+    dims = tf.shape(h)
+    mb = dims[0]
+    n  = dims[1]
+    d  = dims[2]
+    #print('graph_layer')
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    nn_graph = tf.reshape(tf.gather_nd(h, alist), [mb, n, K, d])
+    nn_graph = tf.reduce_mean(nn_graph, axis=-2)
     W, Wg, B = utils.get_layer_vars_graph(layer_idx)
     h_w = linear_fwd(h, W)
-    h_g = tf.reduce_mean(linear_fwd(nn_graph, Wg), axis=-2)
+    h_g = linear_fwd(nn_graph, Wg)
     h_out = h_w + h_g + B
     return h_out
 
-def graph_fwd(x_in, num_layers, alist, activation=tf.nn.relu):
+def graph_fwd(x_in, num_layers, alist, K=14, activation=tf.nn.relu):
     H = x_in
     for i in range(num_layers):
-        H = graph_layer(H, i, alist)
+        H = kgraph_layer(H, i, alist, K)
         if i != num_layers - 1:
             H = activation(H)
     return H
@@ -66,11 +81,12 @@ def set_fwd(x_in, num_layers, activation=tf.nn.relu):
             H = activation(H)
     return H
 
-def network_fwd(x_in, num_layers, *args, activation=tf.nn.relu, mtype_key=0, add=True, vel_coeff=None):
+def network_fwd(x_in, num_layers, *args, activation=tf.nn.relu, mtype_key=0, add=True, vel_coeff=None, **kwargs):
     if mtype_key == 0: # set
         h_out = set_fwd(x_in, num_layers, activation)
     else:
-        h_out = graph_fwd(x_in, num_layers, *args, activation=activation)
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        h_out = graph_fwd(x_in, num_layers, *args, activation=activation, **kwargs)
     if add:
         x_coo = x_in[...,:3]
         h_out += x_coo
@@ -83,7 +99,7 @@ def network_fwd(x_in, num_layers, *args, activation=tf.nn.relu, mtype_key=0, add
 #=============================================================================
 def alist_to_indexlist(alist):
     batch_size, N, K = alist.shape
-    id1 = np.reshape(np.arange(B),[B,1])
+    id1 = np.reshape(np.arange(batch_size),[batch_size,1])
     id1 = np.tile(id1,N*K).flatten()
     out = np.stack([id1,alist.flatten()], axis=1).astype(np.int32)
     return out
@@ -128,12 +144,13 @@ def _get_clone(particle, k, s, L_box, dL):
             clone.append(particle[i])
     return np.array(clone)
 
-def get_csr_periodic_bc_kneighbor(X_in, K, shell_fraction=0.1):
+def get_kneighbor_alist(X_in, K=14, shell_fraction=0.1):
     batch_size, N, D = X_in.shape
     csr_list = get_csr_periodic_bc(X_in, K, shell_fraction=shell_fraction)
     adj_list = np.zeros((batch_size, N, K)).astype(np.int32)
     for i in range(batch_size):
-        adj_list[i] = csr_list[i].reshape(N, K)
+        adj_list[i] = csr_list[i].indices.reshape(N, K)
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     return alist_to_indexlist(adj_list)
 
 def get_csr_periodic_bc(X_in, K, shell_fraction=0.1):

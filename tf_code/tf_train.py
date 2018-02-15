@@ -48,11 +48,15 @@ if pargs['vel_coeff']:
 #=============================================================================
 # model vars
 model_type = pargs['model_type'] # 0: set, 1: graph, but only set implemented at moment
+graph_model = model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
-channels = model_vars['channels']
+channels   = model_vars['channels']
 num_layers = len(channels) - 1
-learning_rate = LEARNING_RATE # 0.01
+
+# hyperparameters
 init_params = model_vars['init_params']
+learning_rate = LEARNING_RATE # 0.01
+
 
 
 #=============================================================================
@@ -80,8 +84,11 @@ K = 14
 # direct graph
 X_input = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_input')
 X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_truth')
-graph_nn = tf.placeholder(tf.int32, shape=[None, num_particles**3, K], name='graph_nn')
-X_pred  = nn.network_fwd(X_input, num_layers, graph_nn, vel_coeff=vel_coeff, mtype_key=model_type)
+adj_list = None
+if graph_model: # graph
+    adj_list = tf.placeholder(tf.int32, shape=[None, 2], name='adj_list')
+# network_fwd will dispatch on mtype_key
+X_pred  = nn.network_fwd(X_input, num_layers, adj_list, vel_coeff=vel_coeff, mtype_key=model_type, K=14)
 
 # loss and optimizer
 readout = nn.get_readout(X_pred)
@@ -117,16 +124,19 @@ for step in range(num_iters):
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in   = _x_batch[0]
     x_true = _x_batch[1]
-    adjacency_list = nn.get_csr_periodic_bc_kneighbor(x_in, K)
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    if graph_model:
+        alist = nn.get_kneighbor_alist(x_in, K)
+        fdict = {X_input: x_in, X_truth: x_true, adj_list: alist}
+    else:
+        fdict = {X_input: x_in, X_truth: x_true}
 
     if verbose:
-        error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true, graph_nn:adjacency_list})
+        error = sess.run(loss, feed_dict=fdict)
         train_loss_history[step] = error
         print('{}: {:.6f}'.format(step, error))
 
     # cycle through graph
-    train.run(feed_dict={X_input: x_in, X_truth: x_true, graph_nn:adjacency_list})
+    train.run(feed_dict=fdict)
     if save_checkpoint(step):
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=False, max_to_keep=5)
 
@@ -151,14 +161,21 @@ for j in range(X_test.shape[1]):
     # data
     x_in   = X_test[0, j:j+1] # (1, n_P, 6)
     x_true = X_test[1, j:j+1]
+    if graph_model:
+        alist = nn.get_kneighbor_alist(x_in, K)
+        fdict = {X_input: x_in, X_truth: x_true, adj_list: alist}
+        pdict = {X_input: x_in, adj_list: alist}
+    else:
+        fdict = {X_input: x_in, X_truth: x_true}
+        pdict = {X_input: x_in}
 
     # validation error
-    error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true})
+    error = sess.run(loss, feed_dict=fdict)
     test_loss_history[j] = error
     print('{}: {:.6f}'.format(j, error))
 
     # prediction
-    x_pred = sess.run(X_pred, feed_dict={X_input:x_in})
+    x_pred = sess.run(X_pred, feed_dict=pdict)
     test_predictions[j] = x_pred[0]
 
 # median test error
