@@ -28,7 +28,7 @@ start_time = time.time()
 # nbody Data
 #=============================================================================
 # nbody data params
-num_particles = 16 # base, actual num_particles**3
+num_particles = pargs['particles']
 zX, zY = pargs['redshifts']
 nbody_params = (num_particles, (zX, zY))
 
@@ -49,6 +49,8 @@ if pargs['vel_coeff']:
 # model vars
 model_type = pargs['model_type'] # 0: set, 1: graph, but only set implemented at moment
 channels = utils.NBODY_MODELS[model_type]['channels']
+num_layers = len(channels) - 1
+learning_rate = LEARNING_RATE # 0.01
 
 
 #=============================================================================
@@ -62,16 +64,12 @@ model_name = utils.get_model_name(*mname_args)
 paths = utils.make_save_dirs(pargs['model_dir'], model_name)
 model_path, loss_path, cube_path = paths
 
-num_layers = len(channels) - 1
-learning_rate = LEARNING_RATE # 0.01
-
-"""
 
 #=============================================================================
 # initialize graph
 #=============================================================================
 # init network params
-utils.init_params(kdims)
+utils.init_params(channels)
 
 # direct graph
 X_input = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_input')
@@ -84,15 +82,13 @@ loss    = nn.pbc_loss(readout, X_truth)
 train   = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
 
-
 #=============================================================================
 # Training and Session setup
 #=============================================================================
 # training params
-batch_size = 32
-num_iters = 500
-loss_history = np.zeros((num_iters))
-verbose = True
+batch_size = pargs['batch_size']
+num_iters  = pargs['num_iters']
+verbose    = pargs['verbose']
 
 # Sess
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.8)
@@ -100,26 +96,38 @@ sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
 
 # Save
+loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
-model_save_path = './Models/'
-#utils.make_dirs([model_save_path])
-model_name = model_save_path + 'test_model'
-saver.save(sess, model_name)
+saver.save(sess, model_path)
+save_checkpoint = lambda step: step % 100 == 0 and step != 0
 
 
 #=============================================================================
 # Training
 #=============================================================================
-for i in range(num_iters):
+for step in range(num_iters):
+    # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in   = _x_batch[0]
     x_true = _x_batch[1]
+
+    # save error
     error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true})
-    loss_history[i] = error
-    if verbose:
-        print('{}: {:.6f}'.format(i, error))
+    loss_history[step] = error
+    if verbose: print('{}: {:.6f}'.format(step, error))
+
+    # cycle through graph
     train.run(feed_dict={X_input: x_in, X_truth: x_true})
-    if i % 100 == 0 and i != 0:
-        #saver.save(sess, model_name, global_step=i)
-        saver.save(sess, model_name, global_step=i, write_meta_graph=False)
-"""
+    if save_checkpoint(step):
+        saver.save(sess, model_path, global_step=step, write_meta_graph=False)
+
+'''
+>>> _y_batch = X_val[:, :8]
+>>> y_in = _y_batch[0]
+>>> y_true = _y_batch[1]
+>>> y_pred = sess.run(X_pred, feed_dict={X_input:y_in})
+>>> y_pred.shape
+(8, 4096, 3)
+'''
+
+code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
