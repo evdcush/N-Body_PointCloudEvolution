@@ -123,10 +123,10 @@ for step in range(num_iters):
     # cycle through graph
     train.run(feed_dict={X_input: x_in, X_truth: x_true})
     if save_checkpoint(step):
-        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=False)
+        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=False, max_to_keep=5)
 
 print('elapsed time: {}'.format(time.time() - start_time))
-# elapsed time: 55.703558683395386 # for error = sess.run ..., little over 10sec/run
+# elapsed time: 55.703558683395386 #  'error = sess.run()' on each iter: little over 10sec/run
 # elapsed time: 41.57636308670044 # with no sess.run, under 10sec/run
 # save
 saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=False)
