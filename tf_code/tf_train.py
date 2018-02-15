@@ -48,9 +48,11 @@ if pargs['vel_coeff']:
 #=============================================================================
 # model vars
 model_type = pargs['model_type'] # 0: set, 1: graph, but only set implemented at moment
-channels = utils.NBODY_MODELS[model_type]['channels']
+model_vars = utils.NBODY_MODELS[model_type]
+channels = model_vars['channels']
 num_layers = len(channels) - 1
 learning_rate = LEARNING_RATE # 0.01
+init_params = model_vars['init_params']
 
 
 #=============================================================================
@@ -72,12 +74,14 @@ utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 # initialize graph
 #=============================================================================
 # init network params
-utils.init_params(channels)
+init_params(channels)
+K = 14
 
 # direct graph
 X_input = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_input')
 X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_truth')
-X_pred  = nn.network_fwd(X_input, num_layers, vel_coeff=vel_coeff, mtype_key=model_type)
+graph_nn = tf.placeholder(tf.int32, shape=[None, num_particles**3, K], name='graph_nn')
+X_pred  = nn.network_fwd(X_input, num_layers, graph_nn, vel_coeff=vel_coeff, mtype_key=model_type)
 
 # loss and optimizer
 readout = nn.get_readout(X_pred)
@@ -104,7 +108,6 @@ saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
 save_checkpoint = lambda step: step % 100 == 0 and step != 0
 
-
 #=============================================================================
 # TRAINING
 #=============================================================================
@@ -114,14 +117,16 @@ for step in range(num_iters):
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in   = _x_batch[0]
     x_true = _x_batch[1]
+    adjacency_list = nn.get_csr_periodic_bc_kneighbor(x_in, K)
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+
     if verbose:
-        error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true})
+        error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true, graph_nn:adjacency_list})
         train_loss_history[step] = error
         print('{}: {:.6f}'.format(step, error))
 
     # cycle through graph
-    train.run(feed_dict={X_input: x_in, X_truth: x_true})
+    train.run(feed_dict={X_input: x_in, X_truth: x_true, graph_nn:adjacency_list})
     if save_checkpoint(step):
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=False, max_to_keep=5)
 

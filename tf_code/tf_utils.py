@@ -31,11 +31,11 @@ LEARNING_RATE = 0.01
 
 GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
 SET_CHANNELS   = [6, 32, 128, 256, 128, 32, 256, 16, 3]
-NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S',},
-                1:{'channels': GRAPH_CHANNELS, 'tag': 'G',},}
+
 LEARNING_RATE = 0.01
 
 WEIGHT_TAG = 'W_{}'
+GRAPH_TAG  = 'Wg_{}'
 BIAS_TAG   = 'B_{}'
 VAR_SCOPE  = 'params'
 
@@ -81,7 +81,24 @@ def get_layer_vars(layer_idx):
         B = tf.get_variable(  BIAS_TAG.format(layer_idx))
     return W, B
 
+def init_params_graph(channels, seed=PARAMS_SEED):
+    kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
+    for idx, ktup in enumerate(kdims):
+        init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed)
+        init_weight(*ktup,  GRAPH_TAG.format(idx), seed=seed)
+        init_bias(  *ktup,   BIAS_TAG.format(idx))
 
+def get_layer_vars_graph(layer_idx):
+    """ gets variables for layer
+    """
+    with tf.variable_scope(VAR_SCOPE, reuse=True):
+        W  = tf.get_variable(WEIGHT_TAG.format(layer_idx))
+        Wg = tf.get_variable(GRAPH_TAG.format(layer_idx))
+        B  = tf.get_variable(  BIAS_TAG.format(layer_idx))
+    return W, Wg, B
+
+NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S', 'init_params': init_params,},
+                1:{'channels': GRAPH_CHANNELS, 'tag': 'G', 'init_params': init_params_graph,},}
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 # END TF-related utils

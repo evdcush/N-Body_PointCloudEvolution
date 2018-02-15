@@ -18,7 +18,7 @@ import tf_utils as utils
 def left_mult(h, W):
     return tf.einsum('ijl,lq->ijq', h, W)
 
-def linear_fwd(h_in, W, b):
+def linear_fwd(h_in, W, b=None):
     """ permutation equivariant linear transformation
     Args:
         h_in: external input, of shape (mb_size, n_P, k_in)
@@ -27,7 +27,9 @@ def linear_fwd(h_in, W, b):
     """
     mu = tf.reduce_mean(h_in, axis=1, keepdims=True)
     h = h_in - mu
-    h_out = left_mult(h, W) + b
+    h_out = left_mult(h, W)
+    if b is not None:
+        h_out += b
     return h_out
 
 def linear_layer(h, layer_idx):
@@ -36,8 +38,25 @@ def linear_layer(h, layer_idx):
     W, B = utils.get_layer_vars(layer_idx)
     return linear_fwd(h, W, B)
 
-def graph_fwd(x_in, num_layers, activation=tf.nn.relu):
-    return False
+def graph_layer(h, layer_idx, alist):
+    """ layer gets weights and returns linear transformation
+    """
+    mb_size, N, D = h.shape
+    K = alist.shape[-1]
+    nn_graph = tf.reshape(tf.gather_nd(h, alist), [mb_size, N, K, D])
+    W, Wg, B = utils.get_layer_vars_graph(layer_idx)
+    h_w = linear_fwd(h, W)
+    h_g = tf.reduce_mean(linear_fwd(nn_graph, Wg), axis=-2)
+    h_out = h_w + h_g + B
+    return h_out
+
+def graph_fwd(x_in, num_layers, alist, activation=tf.nn.relu):
+    H = x_in
+    for i in range(num_layers):
+        H = graph_layer(H, i, alist)
+        if i != num_layers - 1:
+            H = activation(H)
+    return H
 
 def set_fwd(x_in, num_layers, activation=tf.nn.relu):
     H = x_in
@@ -47,9 +66,11 @@ def set_fwd(x_in, num_layers, activation=tf.nn.relu):
             H = activation(H)
     return H
 
-def network_fwd(x_in, num_layers, activation=tf.nn.relu, mtype_key=0, add=True, vel_coeff=None):
+def network_fwd(x_in, num_layers, *args, activation=tf.nn.relu, mtype_key=0, add=True, vel_coeff=None):
     if mtype_key == 0: # set
         h_out = set_fwd(x_in, num_layers, activation)
+    else:
+        h_out = graph_fwd(x_in, num_layers, *args, activation=activation)
     if add:
         x_coo = x_in[...,:3]
         h_out += x_coo
@@ -60,8 +81,12 @@ def network_fwd(x_in, num_layers, activation=tf.nn.relu, mtype_key=0, add=True, 
 #=============================================================================
 # graph ops
 #=============================================================================
-
-
+def alist_to_indexlist(alist):
+    batch_size, N, K = alist.shape
+    id1 = np.reshape(np.arange(B),[B,1])
+    id1 = np.tile(id1,N*K).flatten()
+    out = np.stack([id1,alist.flatten()], axis=1).astype(np.int32)
+    return out
 
 #=============================================================================
 # periodic boundary condition neighbor graph stuff
@@ -101,9 +126,17 @@ def _get_clone(particle, k, s, L_box, dL):
                 clone.append(particle[i] - L_box)
         else:
             clone.append(particle[i])
-    return numpy.array(clone)
+    return np.array(clone)
 
-def get_csr_periodic_bc(X_in, shell_fraction=0.1):
+def get_csr_periodic_bc_kneighbor(X_in, K, shell_fraction=0.1):
+    batch_size, N, D = X_in.shape
+    csr_list = get_csr_periodic_bc(X_in, K, shell_fraction=shell_fraction)
+    adj_list = np.zeros((batch_size, N, K)).astype(np.int32)
+    for i in range(batch_size):
+        adj_list[i] = csr_list[i].reshape(N, K)
+    return alist_to_indexlist(adj_list)
+
+def get_csr_periodic_bc(X_in, K, shell_fraction=0.1):
     """
     Map inner chunks to outer chunks
     cant black box this anymore
@@ -114,7 +147,7 @@ def get_csr_periodic_bc(X_in, shell_fraction=0.1):
     L_box = 16 if N == 16**3 else 32
     dL = L_box * shell_fraction
     box_size = (L_box, dL)
-    #adj_list = numpy.zeros([mb_size, N, K], dtype=np.int32)
+    #adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
     csr_list = []
     for i in range(mb_size):
         ids_map = {}  # For this batch will map new_id to old_id of cloned particles
@@ -141,8 +174,8 @@ def get_csr_periodic_bc(X_in, shell_fraction=0.1):
                                         ids_map.update({len(new_X) - 1: j})
         new_X = np.array(new_X)
         # try LIL matrix
-        #graph = rad_graph(new_X[:,:3], radius, include_True).tolil()[:N,:]
-        graph = kneighbors_graph(new_X[:,:3], K, include_True).tolil()[:N,:]
+        #graph = rad_graph(new_X[:,:3], K, include_self=True).tolil()[:N,:]
+        graph = kneighbors_graph(new_X[:,:3], K, include_self=True).tolil()[:N,:]
         for j in range(N):
             graph.rows[j] = [r if r < N else ids_map[r] for r in graph.rows[j]]
         graph_csr = graph[:,:N].tocsr()
