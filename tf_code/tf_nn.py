@@ -47,8 +47,15 @@ def set_fwd(x_in, num_layers, activation=tf.nn.relu):
             H = activation(H)
     return H
 
-def network_fwd(x_in, num_layers, activation=tf.nn.relu, mtype='set'):
-    return set_fwd(x_in, num_layers, activation)
+def network_fwd(x_in, num_layers, activation=tf.nn.relu, mtype='set', add=True, vel_coeff=None):
+    if mtype == 'set':
+        h_out = set_fwd(x_in, num_layers, activation)
+    if add:
+        x_coo = x_in[...,:3]
+        h_out += x_coo
+    if vel_coeff is not None:
+        h_out += vel_coeff * x_in[...,3:]
+    return h_out
 
 
 #=============================================================================

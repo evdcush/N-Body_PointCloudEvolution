@@ -9,6 +9,7 @@ import chainer
 import chainer.serializers as serializers
 
 import tensorflow as tf
+import tf_nn as nn
 
 #=============================================================================
 # Globals
@@ -26,6 +27,12 @@ DATASET_SEED = 12345 # for train/validation data splits
 # models
 GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
 SET_CHANNELS   = [6, 32, 128, 256, 128, 32, 256, 16, 3]
+LEARNING_RATE = 0.01
+
+GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
+SET_CHANNELS   = [6, 32, 128, 256, 128, 32, 256, 16, 3]
+NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S', 'loss':nn.pbc_loss},
+                1:{'channels': GRAPH_CHANNELS, 'tag': 'G', 'loss':nn.pbc_loss},}
 LEARNING_RATE = 0.01
 
 WEIGHT_TAG = 'W_{}'
@@ -261,7 +268,7 @@ def next_minibatch(X_in, batch_size, data_aug=True):
         return batches
 
 def load_velocity_coefficients(num_particles):
-    vel_coeffs = np.load('./Data/velocity_coefficients_{}.npy'.format(num_particles)).item()
+    vel_coeffs = np.load('../Data/velocity_coefficients_{}.npy'.format(num_particles)).item()
     return vel_coeffs
 
 
