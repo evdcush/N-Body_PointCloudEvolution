@@ -357,23 +357,25 @@ def save_model(model, optimizer, save_name):
     serializers.save_npz('{}{}'.format(save_name, '.optimizer'), optimizer)
     print('Saved model and optimizer at {}'.format(save_name))
 
-def save_val_cube(X_val, cube_path, rs_pair, prediction=False):
+def save_test_cube(x, cube_path, rs, prediction=False):
+    if prediction:
+        rs_tag = '{}-{}'.format(*rs) # (zX, zY)
+        ptag   = 'prediction'
+        save_cube(x, cube_path, rs_tag, ptag)
+    else:
+        for i in range(x.shape[0]): # 2
+            rs_tag = '{}'.format(rs[i])
+            ptag   = 'data'
+            save_cube(x[i], cube_path, rs_tag, ptag)
+
+def save_cube(x, cube_path, rs_tag, ptag):
     """ Save validation data
-    Args:
-        X_val (ndarray): either input or prediction validation data
-        cube_path (str): path to save
-        rs_pair (int): tuple of redshift index from which the data is based
-        prediction   : whether data being saved is prediction or input
     """
-    X_val = cuda.to_cpu(X_val)
-    num_particles = 16 if X_val.shape[-2] == 4096 else 32
-    zX, zY = rs_pair
-    rs_tag = '{}-{}'.format(zX, zY)
-    ptag = 'prediction' if prediction else 'data'
+    num_particles = 16 if x.shape[-2] == 4096 else 32
     # eg X32_0.6-0.0_val_prediction.npy'
     val_fname = 'X{}_{}_{}'.format(num_particles, rs_tag, ptag)
     save_path = '{}{}'.format(cube_path, val_fname)
-    np.save(save_path, X_val)
+    np.save(save_path, x)
     print('saved {}'.format(save_path))
 
 def save_loss(save_path, data, validation=False):

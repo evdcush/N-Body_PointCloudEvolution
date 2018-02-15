@@ -34,7 +34,7 @@ nbody_params = (num_particles, (zX, zY))
 
 # Load data
 X = utils.load_npy_data(*nbody_params, normalize=True)
-X_train, X_val = utils.split_data_validation_combined(X, num_val_samples=200)
+X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 
 # velocity coefficient
@@ -64,6 +64,9 @@ model_name = utils.get_model_name(*mname_args)
 paths = utils.make_save_dirs(pargs['model_dir'], model_name)
 model_path, loss_path, cube_path = paths
 
+# save test data
+utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
+
 
 #=============================================================================
 # initialize graph
@@ -83,7 +86,7 @@ train   = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
 
 #=============================================================================
-# Training and Session setup
+# Session and Train setup
 #=============================================================================
 # training params
 batch_size = pargs['batch_size']
@@ -96,38 +99,69 @@ sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
 
 # Save
-loss_history = np.zeros((num_iters)).astype(np.float32)
+train_loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
 saver.save(sess, model_path)
 save_checkpoint = lambda step: step % 100 == 0 and step != 0
 
 
 #=============================================================================
-# Training
+# TRAINING
 #=============================================================================
+start_time = time.time()
 for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in   = _x_batch[0]
     x_true = _x_batch[1]
 
-    # save error
-    error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true})
-    loss_history[step] = error
-    if verbose: print('{}: {:.6f}'.format(step, error))
+    if verbose:
+        error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true})
+        train_loss_history[step] = error
+        print('{}: {:.6f}'.format(step, error))
 
     # cycle through graph
     train.run(feed_dict={X_input: x_in, X_truth: x_true})
     if save_checkpoint(step):
         saver.save(sess, model_path, global_step=step, write_meta_graph=False)
 
-'''
->>> _y_batch = X_val[:, :8]
->>> y_in = _y_batch[0]
->>> y_true = _y_batch[1]
->>> y_pred = sess.run(X_pred, feed_dict={X_input:y_in})
->>> y_pred.shape
-(8, 4096, 3)
-'''
+print('elapsed time: {}'.format(time.time() - start_time))
+# elapsed time: 55.703558683395386 # for error = sess.run ..., little over 10sec/run
+# elapsed time: 41.57636308670044 # with no sess.run, under 10sec/run
+# save
+saver.save(sess, model_path, global_step=step, write_meta_graph=False)
+if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
 
-code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+
+#=============================================================================
+# TESTING
+#=============================================================================
+# data containers
+num_test_samples = X_test.shape[1]
+test_predictions  = np.zeros((X_test.shape[1:-1] + (channels[-1],))).astype(np.float32)
+test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
+
+print('\nTesting:\n==============================================================================')
+for j in range(X_test.shape[1]):
+    # data
+    x_in   = X_test[0, j:j+1] # (1, n_P, 6)
+    x_true = X_test[1, j:j+1]
+
+    # validation error
+    error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true})
+    test_loss_history[j] = error
+    print('{}: {:.6f}'.format(j, error))
+
+    # prediction
+    x_pred = sess.run(X_pred, feed_dict={X_input:x_in})
+    test_predictions[j] = x_pred[0]
+
+# median test error
+test_median = np.median(test_loss_history)
+print('test median: {}'.format(test_median))
+
+# save loss and predictions
+utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
+utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
+
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
