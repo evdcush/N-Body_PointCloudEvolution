@@ -203,8 +203,11 @@ def _truncateLIL(csr, N, K, ids_map):
     return graph_idx
 
 
-alist_og = get_pbc_adjacency_list(np.copy(x), K, shell_fraction=0.1)
-alist_2 = get_pbc_adjacency_list2(np.copy(x), K, shell_fraction=0.1)
-#alist_2  = get_csr_periodic_bc2(np.copy(x), K, shell_fraction=0.1)
-
+mb_size = 10
+for i in range(0, 1000 - mb_size, mb_size):
+    x_in = X_data[i:i+mb_size]
+    print('{}: {}'.format(i, x_in.shape))
+    alist_og = get_pbc_adjacency_list(np.copy(x_in), K, shell_fraction=0.1)
+    alist_2 = get_pbc_adjacency_list2(np.copy(x_in), K, shell_fraction=0.1)
+    assert np.all(alist_og == alist_2)
 
