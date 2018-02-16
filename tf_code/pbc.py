@@ -440,9 +440,9 @@ class KNN():
 
 alist_og    = get_pbc_adjacency_list(np.copy(x), K, shell_fraction=0.1)#0.3)
 alist_nopbc = get_adjacency_list(np.copy(x))
-alist_dan2   = KNN_v2(np.copy(x), K, 16).adjacency_list_periodic_bc
-alist_dan1   = KNN(np.copy(x), K, 16).adjacency_list
-assert np.all(alist_og == alist_nopbc) and np.all(alist_og == alist_dan2) and np.all(alist_dan1 == alist_dan2)# this should cause assertion error
+alist_pbc2   = KNN_v2(np.copy(x), K, 16).adjacency_list_periodic_bc
+alist_pbc1   = KNN(np.copy(x), K, 16).adjacency_list
+assert np.all(alist_og == alist_nopbc) and np.all(alist_og == alist_pbc2) and np.all(alist_pbc1 == alist_pbc2)# this should cause assertion error
 
 '''
 Well, the periodic boundary conditions not changing anything.
