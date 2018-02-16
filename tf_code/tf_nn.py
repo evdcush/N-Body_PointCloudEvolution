@@ -263,12 +263,14 @@ def get_pbc_adjacency_list(X_in, K, shell_fraction=0.1):
         new_X = np.array(new_X)
         graph_idx = kneighbors_graph(new_X[:, :3], K, include_self=True).indices
         graph_idx = graph_idx.reshape([-1, K])[:N, :]  # Only care about original box
+        """ # THIS CHANGES NOTHING, EVER. It's already truncated to original by doing [:N, :]
         # Remap outbox neighbors to original ids
         for j in range(N):
             for k in range(K):
                 if graph_idx[j, k] > N - 1:  # If outside of the box
                     graph_idx[j, k] = ids_map.get(graph_idx[j, k])
         graph_idx = graph_idx #+ (N * i)  # offset idx for batches
+        """
         adj_list[i] = graph_idx
     return adj_list
 
