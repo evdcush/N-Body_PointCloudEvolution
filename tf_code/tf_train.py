@@ -9,7 +9,7 @@ from tf_utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS
 
 parser = argparse.ArgumentParser()
 # argparse not handle bools well so 0,1 used instead
-parser.add_argument('--particles', '-p', default=16,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
+parser.add_argument('--particles', '-p', default=32,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
 parser.add_argument('--redshifts', '-z', default=[0.6, 0.0], nargs='+', type=float, help='redshift tuple, predict z[1] from z[0]')
 parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
 #parser.add_argument('--resume',    '-r', default=0,          type=int,  help='resume training from serialized params')
@@ -113,7 +113,8 @@ sess.run(tf.global_variables_initializer())
 train_loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
-save_checkpoint = lambda step: step % 100 == 0 and step != 0
+save_checkpoint = lambda step: step % 500 == 0 and step != 0
+num_checkpoints_saved = 0
 
 #=============================================================================
 # TRAINING
@@ -138,7 +139,9 @@ for step in range(num_iters):
     # cycle through graph
     train.run(feed_dict=fdict)
     if save_checkpoint(step):
-        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=False, max_to_keep=5)
+        wr_meta = num_checkpoints_saved == 0
+        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=wr_meta)
+        num_checkpoints_saved += 1
 
 print('elapsed time: {}'.format(time.time() - start_time))
 # elapsed time: 55.703558683395386 #  'error = sess.run()' on each iter: little over 10sec/run

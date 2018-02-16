@@ -58,7 +58,7 @@ def kgraph_layer(h, layer_idx, alist, K):
     #print('graph_layer')
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     nn_graph = tf.reshape(tf.gather_nd(h, alist), [mb, n, K, d])
-    nn_graph = tf.reduce_mean(nn_graph, axis=-2)
+    nn_graph = tf.reduce_mean(nn_graph, axis=2)
     W, Wg, B = utils.get_layer_vars_graph(layer_idx)
     h_w = linear_fwd(h, W)
     h_g = linear_fwd(nn_graph, Wg)
