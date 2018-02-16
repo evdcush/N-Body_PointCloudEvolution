@@ -129,13 +129,27 @@ def get_kneighbor_alist2(X_in, K=14, shell_fraction=0.1):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     return alist_to_indexlist(adj_list)
 '''
-
+'''
 def get_kneighbor_alist(X_in, K=14, shell_fraction=0.1):
     batch_size, N, D = X_in.shape
     adj_list = get_pbc_adjacency_list(X_in, K, shell_fraction=shell_fraction)
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     return alist_to_indexlist(adj_list)
+'''
+def get_kneighbor_alist(X_in, K=14):
+        """ search for K nneighbors, and return offsetted indices in adjacency list
 
+        Args:
+            X_in (numpy ndarray): input data of shape (mb_size, N, 6)
+        """
+        mb_size, N, D = X_in.shape
+        adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
+        for i in range(mb_size):
+            # this returns indices of the nn
+            graph_idx = kneighbors_graph(X_in[i, :, :3], K, include_self=True).indices
+            graph_idx = graph_idx.reshape([N, K]) #+ (N * i)  # offset idx for batches
+            adj_list[i] = graph_idx
+        return adj_list
 
 #=============================================================================
 # periodic boundary condition neighbor graph stuff

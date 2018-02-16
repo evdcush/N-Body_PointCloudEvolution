@@ -129,7 +129,7 @@ for step in range(num_iters):
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in   = _x_batch[0]
     x_true = _x_batch[1]
-    alist = nn.get_kneighbor_alist(x_in, K)
+    alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
 
     if verbose:
         error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true, adj_list: alist})
@@ -164,7 +164,8 @@ for j in range(X_test.shape[1]):
     # data
     x_in   = X_test[0, j:j+1] # (1, n_P, 6)
     x_true = X_test[1, j:j+1]
-    alist = nn.get_kneighbor_alist(x_in, K)
+    alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
     # validation error
     error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true, adj_list: alist})
@@ -172,7 +173,7 @@ for j in range(X_test.shape[1]):
     print('{}: {:.6f}'.format(j, error))
 
     # prediction
-    x_pred = sess.run(X_pred, feed_dict={X_input: x_in, adj_list: alist})
+    x_pred = sess.run(readout, feed_dict={X_input: x_in, adj_list: alist})
     test_predictions[j] = x_pred[0]
 
 # median test error
