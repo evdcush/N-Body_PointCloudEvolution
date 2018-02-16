@@ -10,6 +10,9 @@ import tf_utils as utils
  - tf.get_variable only returns an existing variable with name if it was
    created earlier by get_variable. It won't return a variable created using
    tf.Variable()
+ - EXTREMELY sensitive to random seed? I made the seed none for weight init
+   and the error per iteration went from 770000.0 to 0.22 ??
+ -
 '''
 #=============================================================================
 ''' IMPLEMENTATION LIST
@@ -23,7 +26,7 @@ import tf_utils as utils
 #=============================================================================
 
 #=============================================================================
-# layer ops
+# LAYER OPS
 #=============================================================================
 def left_mult(h, W):
     return tf.einsum('ijl,lq->ijq', h, W)
@@ -48,6 +51,14 @@ def linear_layer(h, layer_idx):
     W, B = utils.get_layer_vars(layer_idx)
     return linear_fwd(h, W, B)
 
+def set_fwd(x_in, num_layers, activation=tf.nn.relu):
+    H = x_in
+    for i in range(num_layers):
+        H = linear_layer(H, i)
+        if i != num_layers - 1:
+            H = activation(H)
+    return H
+#=============================================================================
 def kgraph_select(h, adj, K):
     dims = tf.shape(h)
     mb = dims[0]; n  = dims[1]; d  = dims[2];
@@ -73,14 +84,8 @@ def graph_fwd(x_in, num_layers, alist, K=14, activation=tf.nn.relu):
         if i != num_layers - 1:
             H = activation(H)
     return H
+#=============================================================================
 
-def set_fwd(x_in, num_layers, activation=tf.nn.relu):
-    H = x_in
-    for i in range(num_layers):
-        H = linear_layer(H, i)
-        if i != num_layers - 1:
-            H = activation(H)
-    return H
 
 def network_graph_fwd(x_in, num_layers, alist, activation=tf.nn.relu, add=True, vel_coeff=None, K=14):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use

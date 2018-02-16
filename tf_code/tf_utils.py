@@ -55,10 +55,12 @@ def init_weight(k_in, k_out, name, scale=1.0, seed=None):
         k_in, k_out (int): weight sizes
         name (str): variable name
     """
-    std = scale * np.sqrt(2. / k_in)
-    henorm = tf.random_normal((k_in, k_out), stddev=std, seed=seed)
+    #std = scale * np.sqrt(2. / k_in)
+    #henorm = tf.random_normal((k_in, k_out), stddev=std, seed=seed)
+    norm = tf.glorot_normal_initializer(seed=seed)
     with tf.variable_scope(VAR_SCOPE):
-        tf.get_variable(name, dtype=tf.float32, initializer=henorm)
+        #tf.get_variable(name, dtype=tf.float32, initializer=henorm)
+        tf.get_variable(name, shape=(k_in, k_out), dtype=tf.float32, initializer=norm)
 
 def init_bias(k_in, k_out, name):
     """ biases initialized to be near zero
