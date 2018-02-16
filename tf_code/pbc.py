@@ -3,8 +3,15 @@ import os, code, sys, time
 from sklearn.neighbors import kneighbors_graph
 import tensorflow as tf
 import chainer.functions as F
+import tf_utils as utils
 
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+#=============================================================================
+# load data
+#=============================================================================
+X_data = utils.load_datum(16, 0.6, normalize_data=True)
 K = 14
+x = X_data[:8]
 
 
 
@@ -78,6 +85,54 @@ def _get_clone(particle, k, s, L_box, dL):
     return np.array(clone)
 
 
+def get_csr_periodic_bc(X_in, K, shell_fraction=0.1):
+    """
+    Map inner chunks to outer chunks
+    cant black box this anymore
+    NEED TO CLEAN THIS UP, at least var names
+    """
+    K = K
+    mb_size, N, D = X_in.shape
+    L_box = 16 if N == 16**3 else 32
+    dL = L_box * shell_fraction
+    box_size = (L_box, dL)
+    adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
+    csr_list = []
+    for i in range(mb_size):
+        ids_map = {}  # For this batch will map new_id to old_id of cloned particles
+        new_X = [part for part in X_in[i]]  # Start off with original cube
+        for j in range(N):
+            status = [_get_status(X_in[i, j, k], *box_size) for k in range(3)]
+            if sum(status) == 0:  # Not in the shell --skip
+                continue
+            else:
+                for k in range(3):
+                    if status[k] > 0:
+                        clone = _get_clone(X_in[i, j, :], k, status[k], *box_size)
+                        new_X.append(clone)
+                        ids_map.update({len(new_X) - 1: j})
+                        for kp in range(k + 1, 3):
+                            if status[kp] > 0:
+                                bi_clone = _get_clone(clone, kp, status[kp], *box_size)
+                                new_X.append(bi_clone)
+                                ids_map.update({len(new_X) - 1: j})
+                                for kpp in range(kp + 1, 3):
+                                    if status[kpp] > 0:
+                                        tri_clone = _get_clone(bi_clone, kpp, status[kpp], *box_size)
+                                        new_X.append(tri_clone)
+                                        ids_map.update({len(new_X) - 1: j})
+        new_X = np.array(new_X)
+        graph_idx = kneighbors_graph(new_X[:, :3], K, include_self=True).indices
+        graph_idx = graph_idx.reshape([-1, K])[:N, :]  # Only care about original box
+        # Remap outbox neighbors to original ids
+        for j in range(N):
+            for k in range(K):
+                if graph_idx[j, k] > N - 1:  # If outside of the box
+                    graph_idx[j, k] = ids_map.get(graph_idx[j, k])
+        graph_idx = graph_idx #+ (N * i)  # offset idx for batches
+        adj_list[i] = graph_idx
+    return adj_list
+
 def get_csr_periodic_bc2(X_in, K, shell_fraction=0.1):
     """
     Map inner chunks to outer chunks
@@ -89,8 +144,8 @@ def get_csr_periodic_bc2(X_in, K, shell_fraction=0.1):
     L_box = 16 if N == 16**3 else 32
     dL = L_box * shell_fraction
     box_size = (L_box, dL)
-    #adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
-    csr_list = []
+    adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
+    #csr_list = []
     for i in range(mb_size):
         ids_map = {}  # For this batch will map new_id to old_id of cloned particles
         new_X = [part for part in X_in[i]]  # Start off with original cube
@@ -120,6 +175,12 @@ def get_csr_periodic_bc2(X_in, K, shell_fraction=0.1):
         graph = kneighbors_graph(new_X[:,:3], K, include_self=True).tolil()[:N,:]
         for j in range(N):
             graph.rows[j] = [r if r < N else ids_map[r] for r in graph.rows[j]]
-        graph_csr = graph[:,:N].tocsr()
-        csr_list.append(graph_csr)#, np.diff(graph_csr.indptr)]
-    return csr_list
+        graph_idx = np.reshape(graph[:,:N].tocsr().indices, (N, K))
+        adj_list[i] = graph_idx
+        #csr_list.append(graph_csr)#, np.diff(graph_csr.indptr)]
+    return adj_list
+
+alist_og = get_csr_periodic_bc(x, K, shell_fraction=0.1)
+alist_2  = get_csr_periodic_bc2(x, K, shell_fraction=0.1)
+
+

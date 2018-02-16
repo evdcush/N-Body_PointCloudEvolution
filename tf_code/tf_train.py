@@ -127,6 +127,7 @@ for step in range(num_iters):
     x_true = _x_batch[1]
     if graph_model:
         alist = nn.get_kneighbor_alist(x_in, K)
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         fdict = {X_input: x_in, X_truth: x_true, adj_list: alist}
     else:
         fdict = {X_input: x_in, X_truth: x_true}

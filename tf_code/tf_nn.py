@@ -48,18 +48,19 @@ def linear_layer(h, layer_idx):
     W, B = utils.get_layer_vars(layer_idx)
     return linear_fwd(h, W, B)
 
+def kgraph_select(h, adj, K):
+    dims = tf.shape(h)
+    mb = dims[0]; n  = dims[1]; d  = dims[2];
+    rdim = [mb,n,K,d]
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    nn_graph = tf.reduce_mean(tf.reshape(tf.gather_nd(h, adj), rdim), axis=2)
+    return nn_graph
+
 def kgraph_layer(h, layer_idx, alist, K):
     """ layer gets weights and returns linear transformation
     """
-    dims = tf.shape(h)
-    mb = dims[0]
-    n  = dims[1]
-    d  = dims[2]
-    #print('graph_layer')
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    nn_graph = tf.reshape(tf.gather_nd(h, alist), [mb, n, K, d])
-    nn_graph = tf.reduce_mean(nn_graph, axis=2)
     W, Wg, B = utils.get_layer_vars_graph(layer_idx)
+    nn_graph = kgraph_select(h, alist, K)
     h_w = linear_fwd(h, W)
     h_g = linear_fwd(nn_graph, Wg)
     h_out = h_w + h_g + B
@@ -80,6 +81,16 @@ def set_fwd(x_in, num_layers, activation=tf.nn.relu):
         if i != num_layers - 1:
             H = activation(H)
     return H
+
+def network_graph_fwd(x_in, num_layers, alist, activation=tf.nn.relu, add=True, vel_coeff=None, K=14):
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    h_out = graph_fwd(x_in, num_layers, alist, activation=activation, K=K)
+    if add:
+        x_coo = x_in[...,:3]
+        h_out += x_coo
+    if vel_coeff is not None:
+        h_out += vel_coeff * x_in[...,3:]
+    return h_out
 
 def network_fwd(x_in, num_layers, *args, activation=tf.nn.relu, mtype_key=0, add=True, vel_coeff=None, **kwargs):
     if mtype_key == 0: # set
@@ -103,6 +114,23 @@ def alist_to_indexlist(alist):
     id1 = np.tile(id1,N*K).flatten()
     out = np.stack([id1,alist.flatten()], axis=1).astype(np.int32)
     return out
+'''
+def get_kneighbor_alist2(X_in, K=14, shell_fraction=0.1):
+    batch_size, N, D = X_in.shape
+    csr_list = get_csr_periodic_bc(X_in, K, shell_fraction=shell_fraction)
+    adj_list = np.zeros((batch_size, N, K)).astype(np.int32)
+    for i in range(batch_size):
+        adj_list[i] = csr_list[i].indices.reshape(N, K)
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    return alist_to_indexlist(adj_list)
+'''
+
+def get_kneighbor_alist(X_in, K=14, shell_fraction=0.1):
+    batch_size, N, D = X_in.shape
+    adj_list = get_pbc_adjacency_list(X_in, K, shell_fraction=shell_fraction)
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    return alist_to_indexlist(adj_list)
+
 
 #=============================================================================
 # periodic boundary condition neighbor graph stuff
@@ -144,16 +172,8 @@ def _get_clone(particle, k, s, L_box, dL):
             clone.append(particle[i])
     return np.array(clone)
 
-def get_kneighbor_alist(X_in, K=14, shell_fraction=0.1):
-    batch_size, N, D = X_in.shape
-    csr_list = get_csr_periodic_bc(X_in, K, shell_fraction=shell_fraction)
-    adj_list = np.zeros((batch_size, N, K)).astype(np.int32)
-    for i in range(batch_size):
-        adj_list[i] = csr_list[i].indices.reshape(N, K)
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    return alist_to_indexlist(adj_list)
-
-def get_csr_periodic_bc(X_in, K, shell_fraction=0.1):
+'''
+def get_csr_periodic_bc2(X_in, K, shell_fraction=0.1):
     """
     Map inner chunks to outer chunks
     cant black box this anymore
@@ -198,6 +218,54 @@ def get_csr_periodic_bc(X_in, K, shell_fraction=0.1):
         graph_csr = graph[:,:N].tocsr()
         csr_list.append(graph_csr)#, np.diff(graph_csr.indptr)]
     return csr_list
+'''
+
+def get_pbc_adjacency_list(X_in, K, shell_fraction=0.1):
+    """
+    Map inner chunks to outer chunks
+    cant black box this anymore
+    NEED TO CLEAN THIS UP, at least var names
+    """
+    K = K
+    mb_size, N, D = X_in.shape
+    L_box = 16 if N == 16**3 else 32
+    dL = L_box * shell_fraction
+    box_size = (L_box, dL)
+    adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
+    for i in range(mb_size):
+        ids_map = {}  # For this batch will map new_id to old_id of cloned particles
+        new_X = [part for part in X_in[i]]  # Start off with original cube
+        for j in range(N):
+            status = [_get_status(X_in[i, j, k], *box_size) for k in range(3)]
+            if sum(status) == 0:  # Not in the shell --skip
+                continue
+            else:
+                for k in range(3):
+                    if status[k] > 0:
+                        clone = _get_clone(X_in[i, j, :], k, status[k], *box_size)
+                        new_X.append(clone)
+                        ids_map.update({len(new_X) - 1: j})
+                        for kp in range(k + 1, 3):
+                            if status[kp] > 0:
+                                bi_clone = _get_clone(clone, kp, status[kp], *box_size)
+                                new_X.append(bi_clone)
+                                ids_map.update({len(new_X) - 1: j})
+                                for kpp in range(kp + 1, 3):
+                                    if status[kpp] > 0:
+                                        tri_clone = _get_clone(bi_clone, kpp, status[kpp], *box_size)
+                                        new_X.append(tri_clone)
+                                        ids_map.update({len(new_X) - 1: j})
+        new_X = np.array(new_X)
+        graph_idx = kneighbors_graph(new_X[:, :3], K, include_self=True).indices
+        graph_idx = graph_idx.reshape([-1, K])[:N, :]  # Only care about original box
+        # Remap outbox neighbors to original ids
+        for j in range(N):
+            for k in range(K):
+                if graph_idx[j, k] > N - 1:  # If outside of the box
+                    graph_idx[j, k] = ids_map.get(graph_idx[j, k])
+        graph_idx = graph_idx #+ (N * i)  # offset idx for batches
+        adj_list[i] = graph_idx
+    return adj_list
 
 #=============================================================================
 # periodic boundary conditions, loss

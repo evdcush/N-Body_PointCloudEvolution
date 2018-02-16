@@ -63,7 +63,7 @@ def init_weight(k_in, k_out, name, scale=1.0, seed=None):
 def init_bias(k_in, k_out, name):
     """ biases initialized to be near zero
     """
-    bval = tf.ones((k_out,), dtype=tf.float32) * 1e-6
+    bval = tf.ones((k_out,), dtype=tf.float32) * 1e-8
     with tf.variable_scope(VAR_SCOPE):
         tf.get_variable(name, dtype=tf.float32, initializer=bval)
 
@@ -81,7 +81,7 @@ def get_layer_vars(layer_idx):
         B = tf.get_variable(  BIAS_TAG.format(layer_idx))
     return W, B
 
-def init_params_graph(channels, seed=PARAMS_SEED):
+def init_params_graph(channels, seed=None):#PARAMS_SEED): THIS MADE HUGE DIFFERENCE. Extremely sensitive to weight init??
     kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
     for idx, ktup in enumerate(kdims):
         init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed)
