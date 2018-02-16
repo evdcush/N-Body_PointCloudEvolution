@@ -36,6 +36,7 @@ nbody_params = (num_particles, (zX, zY))
 X = utils.load_npy_data(*nbody_params, normalize=True)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
+print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
 
 # velocity coefficient
 vel_coeff = None
@@ -139,6 +140,8 @@ for step in range(num_iters):
     # cycle through graph
     train.run(feed_dict={X_input: x_in, X_truth: x_true, adj_list: alist})
     if save_checkpoint(step):
+        error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true, adj_list: alist})
+        print('checkpoint {:>5}: {}'.format(step, error))
         wr_meta = num_checkpoints_saved == 0
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=wr_meta)
         num_checkpoints_saved += 1

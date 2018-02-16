@@ -74,7 +74,7 @@ def kgraph_layer(h, layer_idx, alist, K):
     nn_graph = kgraph_select(h, alist, K)
     h_w = linear_fwd(h, W)
     h_g = linear_fwd(nn_graph, Wg)
-    h_out = h_w + h_g + B
+    h_out = h_w + h_g #+ B
     return h_out
 
 def graph_fwd(x_in, num_layers, alist, K=14, activation=tf.nn.relu):
