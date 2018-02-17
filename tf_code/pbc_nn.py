@@ -90,10 +90,12 @@ The computation flow:
  - original cube is cloned, all original indices preserved
  - for each particle original cube, if particle is boundary:
      - add particle to cloned cube for as many dimensions as it needs to be
-        + corner particle: readjusted and added 5 times
+        + corner particle: readjusted and added 7 times
           eg (Top-front-left)
            - opposite corner cube: (Top-front-left) to (Bottom-rear-right)
-           - opposite edge cube:  (Front-left) to (Rear-right)
+           - opposite edge1 cube:  (Front-left) to (Rear-right)
+           - opposite edge2 cube:  (Top-left) to (Bottom-right)
+           - opposite edge3 cube:  (Top-front) to (Bottom-rear)
            - opposite face1 cube: (Top) to (Bottom)
            - opposite face2 cube: (Left) to (Right)
            - opposite face3 cube: (Front) to (Rear)
@@ -110,6 +112,107 @@ The computation flow:
  - kneighbors graph on expanded clone cube
  - for each particle within clone_cube[:N], if neighbors outside N, remap
 '''
+
+
+def shift(p):
+    """ p is (3,) coordinate vector, x, y, z
+    corner: all 3 coordinates in threshold
+    edge: 2 coordinates in threshold
+    face: 1 coord in threshold
+    """
+    x, y, z = p
+
+
+
+
+def build_boundary_dict(boundary_threshold):
+    """ Note: all cube location names, like 'Top' or 'right' are arbitrary
+    """
+    # get boundary range
+    lower = boundary_threshold
+    upper = 1 - boundary_threshold
+
+    # X Y Z
+    left_bottom_rear = (lower, lower, upper)
+
+def shift(_p, boundary_threshold):
+    """ p is (3,) coordinate vector, x, y, z
+    corner: all 3 coordinates in threshold
+    edge: 2 coordinates in threshold
+    face: 1 coord in threshold
+Just do the entire array at once for x<lower x>upper
+
+    """
+    p = np.copy(_p)
+    lower = boundary_threshold
+    upper = 1 - boundary_threshold
+
+    # get boundaries
+    boundary_upper = p >= upper
+    boundary_lower = p <= lower
+    b_upper_count = np.sum(boundary_upper)
+    b_lower_count = np.sum(boundary_lower)
+    num_boundary_dims = b_upper_count + b_lower_count
+
+    # ret
+    shifted = []
+    wrap = {()}
+
+    #if num_boundary_dims == 0: # not boundary particle
+    if num_boundary_dims > 0:
+        lower_wrap = np.where(boundary_lower, 1, 0)
+        upper_wrap = np.where(boundary_upper, -1, 0)
+        wrap = lower_wrap + upper_wrap
+        if num_boundary_dims == 1:
+            face = p + wrap
+            shifted.append(face)
+        elif num_boundary_dims == 2:
+            for i in range(b_lower_count):
+                face =
+
+            face1 = p + lower_wrap
+            face2 = p + upper_wrap
+            edge  = p + wrap
+
+
+
+
+        # corner: all coords change
+        # (.05, .05, .95) -> (1.05, 1.05, -0.05): (+1, +1, -1)
+        wrapped_upper = np.copy(p) + np.where(boundary_upper, -1, 0)
+        wrapped_lower = np.copy(p) + np.where(boundary_lower, 1, 0)
+        wrapped_corner = np.where(boundary_upper, wrapped_upper, wrapped_lower)
+
+        # edge: 2 coords change per
+        # (.05, .05, .95) -> (1.05, 1.05, .95): (+1, +1, 0)
+        wrapped_edge1 = np.copy(p) +
+        if b_upper_count > b_lower_count:
+            wrapped_edge = np.where(boundary_upper, wrapped_upper, p)
+
+        # faces: 1 coord change per
+
+
+
+    return shifted
+
+
+def pad_cube_boundaries(x, boundary_threshold=0.1):
+    """
+    """
+    # get boundary range
+    lower = boundary_threshold
+    upper = 1 - boundary_threshold
+
+    # clone original array
+    N, D = x.shape
+    clone = np.copy(x[...,:3])
+    idx_map = np.arange(N)
+
+    # iterate through array and add boundary particles to clone
+    for i in range(N):
+        p = clone[i:i+1] # (1, 3)
+
+
 
 
 def add_particle_to_cube(particle, cube):
