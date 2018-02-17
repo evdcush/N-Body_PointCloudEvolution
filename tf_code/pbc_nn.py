@@ -10,10 +10,9 @@ import tf_utils as utils
 # load data
 #=============================================================================
 n_P = 32
-X_data = utils.load_datum(n_P, 0.6, normalize_data=True)
-#X_data = np.load('X16_06.npy')
-K = 14
-x = X_data[:8]
+#X_data = utils.load_datum(n_P, 0.6, normalize_data=True)
+X_data = np.load('X16_06.npy')
+X = X_data
 
 '''
 FULL CUBE
@@ -91,7 +90,6 @@ def get_outer(particle, bound, num_boundary):
     else:
         return corner_outer(particle, bound)
 
-
 def pad_cube_boundaries(x, boundary_threshold):
     """ check all particles for boundary conditions and
     relocate boundary particles
@@ -122,7 +120,6 @@ def pad_cube_boundaries(x, boundary_threshold):
             outer_particles = get_outer(x[idx], bound_x[idx], num_boundary)
             # add indices
             idx_list = np.append(idx_list, [idx] * outer_particles.shape[0])
-            idx_list.extend(idx_to_add)
             # concat to clone
             x = np.concatenate((x, outer_particles), axis=0)
     return x, idx_list
@@ -141,7 +138,10 @@ def get_kneighbors_pcube(x, idx_map, N, K):
     kgraph_outer = kgraph >= N
     for k_idx, is_outer in enumerate(kgraph_outer):
         if is_outer:
-            kgraph[k_idx] = idx_map[k_idx - N]
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+            outer_idx = kgraph[k_idx]
+            kgraph[k_idx] = idx_map[outer_idx - N]
+            #kgraph[k_idx] = idx_map[k_idx - N]
     return kgraph.reshape(N,K)
 
 
@@ -162,7 +162,7 @@ def pbc_kneighbors(X, K, boundary_threshold=0.1):
         padded_cube, idx_map = pad_cube_boundaries(clone, boundary_threshold)
 
         # get neighbors from padded_cube
-        kgraph_idx = get_kneighbors_pcube(padded_cube, idx_map)
+        kgraph_idx = get_kneighbors_pcube(padded_cube, idx_map, N, K)
         adjacency_list[b] = kgraph_idx
     return adjacency_list
 
@@ -188,3 +188,20 @@ def get_adjacency_list(X_in, K):
 
 
 #=============================================================================
+# sample data
+mb_size = 8
+x = X[:mb_size]
+K = 14
+
+threshold = 0.1
+alist_pbc = pbc_kneighbors(x, K, boundary_threshold=threshold)
+alist_pbc2 = pbc_kneighbors(x, K, boundary_threshold=0.05)
+alist_pbc_0 = pbc_kneighbors(x, K, boundary_threshold=0)
+alist = get_adjacency_list(x, K)
+
+
+total = np.prod(alist.shape)
+larger = np.sum(alist_pbc == alist)
+tigher = np.sum(alist_pbc2 == alist)
+test = np.sum(alist == alist_pbc_0)
+
