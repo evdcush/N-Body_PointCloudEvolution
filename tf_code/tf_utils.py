@@ -88,7 +88,7 @@ def init_params_graph(channels, seed=None):#PARAMS_SEED): THIS MADE HUGE DIFFERE
     for idx, ktup in enumerate(kdims):
         init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed)
         init_weight(*ktup,  GRAPH_TAG.format(idx), seed=seed)
-        init_bias(  *ktup,   BIAS_TAG.format(idx))
+        #init_bias(  *ktup,   BIAS_TAG.format(idx))
 
 def get_layer_vars_graph(layer_idx):
     """ gets variables for layer
@@ -96,8 +96,8 @@ def get_layer_vars_graph(layer_idx):
     with tf.variable_scope(VAR_SCOPE, reuse=True):
         W  = tf.get_variable(WEIGHT_TAG.format(layer_idx))
         Wg = tf.get_variable(GRAPH_TAG.format(layer_idx))
-        B  = tf.get_variable(  BIAS_TAG.format(layer_idx))
-    return W, Wg, B
+        #B  = tf.get_variable(  BIAS_TAG.format(layer_idx))
+    return W, Wg#, B
 
 NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S', 'init_params': init_params,},
                 1:{'channels': GRAPH_CHANNELS, 'tag': 'G', 'init_params': init_params_graph,},}

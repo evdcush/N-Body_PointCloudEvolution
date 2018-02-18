@@ -70,7 +70,8 @@ def kgraph_select(h, adj, K):
 def kgraph_layer(h, layer_idx, alist, K):
     """ layer gets weights and returns linear transformation
     """
-    W, Wg, B = utils.get_layer_vars_graph(layer_idx)
+    #W, Wg, B = utils.get_layer_vars_graph(layer_idx)
+    W, Wg = utils.get_layer_vars_graph(layer_idx)
     nn_graph = kgraph_select(h, alist, K)
     h_w = linear_fwd(h, W)
     h_g = linear_fwd(nn_graph, Wg)
@@ -154,139 +155,105 @@ def get_kneighbor_alist(X_in, K=14):
 #=============================================================================
 # periodic boundary condition neighbor graph stuff
 #=============================================================================
-def _get_status(coordinate, L_box, dL):
-    """
-    Assign a status to each coordinate (of a particle position inside the box):
-    1 if 0 < coord < dL, 2 if L- dL < coord < L, 0 otherwise
-    PARAMS:
-        coordinate(float)
-    RETURNS:
-        status(int). Either 0, 1, or 2
-    """
-    if coordinate < dL:
-        return 1
-    elif L_box - dL < coordinate < L_box:
-        return 2
+#=============================================================================
+# boundary utils
+#=============================================================================
+def face_outer(particle, bound): # ret shape (1,3)
+    # face only has one coordinate in boundary, so only one relocation
+    ret = bound + particle
+    return ret[None,:]
+
+def edge_outer(particle, bound):
+    # edge has two coordinates in boundary, so 3 relocations (edge, face, face)
+    zero_idx = list(bound).index(0)
+    edge = np.roll(np.array([[0,1,1],[0,1,0],[0,0,1]]), zero_idx, 1)
+    return (edge * bound) + particle
+
+def corner_outer(particle, bound): # ret shape (7, 3)
+    # corner has 3 coordinates in boundary, so 7 relocations:
+    # (corner, edge, edge, edge, face, face, face)
+    corner = np.array([[1,1,1],[1,1,0],[1,0,1],[1,0,0],[0,1,1],[0,1,0],[0,0,1]])
+    return (corner * bound) + particle
+
+def get_outer(particle, bound, num_boundary):
+    assert num_boundary > 0
+    if num_boundary == 1:
+        return face_outer(particle, bound)
+    elif num_boundary == 2:
+        return edge_outer(particle, bound)
     else:
-        return 0
+        return corner_outer(particle, bound)
 
-def _get_clone(particle, k, s, L_box, dL):
+def pad_cube_boundaries(x, boundary_threshold):
+    """ check all particles for boundary conditions and
+    relocate boundary particles
+    I wonder if you could just do one corner_outer over the extracted corners
+    in x, edge_outer on extracted edges, and so forth, while saving indices?
+    Args:
+        x (ndarray): data array, shape (n_P, 3)
+    Returns: expanded x, index_list
     """
-    Clone a particle otuside of the box.
-    PARAMS:
-        particle(np array). 6-dim particle position in phase space
-        k(int). Index of dimension that needs to be projected outside of the box.
-        s(int). Status, either 1 or 2. Determines where should be cloned.
-    RETURNS:
-        clone(np array). 6-dim cloned particle position in phase space.
-    """
-    clone = []
-    for i in range(6):
-        if i == k:
-            if s == 1:
-                clone.append(particle[i] + L_box)
-            elif s == 2:
-                clone.append(particle[i] - L_box)
-        else:
-            clone.append(particle[i])
-    return np.array(clone)
+    N, D = x.shape
+    idx_list = np.array([], dtype=np.int32) # keep in mind idx need to be offset by N
 
-'''
-def get_csr_periodic_bc2(X_in, K, shell_fraction=0.1):
-    """
-    Map inner chunks to outer chunks
-    cant black box this anymore
-    NEED TO CLEAN THIS UP, at least var names
-    """
-    K = K
-    mb_size, N, D = X_in.shape
-    L_box = 16 if N == 16**3 else 32
-    dL = L_box * shell_fraction
-    box_size = (L_box, dL)
-    #adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
-    csr_list = []
-    for i in range(mb_size):
-        ids_map = {}  # For this batch will map new_id to old_id of cloned particles
-        new_X = [part for part in X_in[i]]  # Start off with original cube
-        for j in range(N):
-            status = [_get_status(X_in[i, j, k], *box_size) for k in range(3)]
-            if sum(status) == 0:  # Not in the shell --skip
-                continue
-            else:
-                for k in range(3):
-                    if status[k] > 0:
-                        clone = _get_clone(X_in[i, j, :], k, status[k], *box_size)
-                        new_X.append(clone)
-                        ids_map.update({len(new_X) - 1: j})
-                        for kp in range(k + 1, 3):
-                            if status[kp] > 0:
-                                bi_clone = _get_clone(clone, kp, status[kp], *box_size)
-                                new_X.append(bi_clone)
-                                ids_map.update({len(new_X) - 1: j})
-                                for kpp in range(kp + 1, 3):
-                                    if status[kpp] > 0:
-                                        tri_clone = _get_clone(bi_clone, kpp, status[kpp], *box_size)
-                                        new_X.append(tri_clone)
-                                        ids_map.update({len(new_X) - 1: j})
-        new_X = np.array(new_X)
-        # try LIL matrix
-        #graph = rad_graph(new_X[:,:3], K, include_self=True).tolil()[:N,:]
-        graph = kneighbors_graph(new_X[:,:3], K, include_self=True).tolil()[:N,:]
-        for j in range(N):
-            graph.rows[j] = [r if r < N else ids_map[r] for r in graph.rows[j]]
-        graph_csr = graph[:,:N].tocsr()
-        csr_list.append(graph_csr)#, np.diff(graph_csr.indptr)]
-    return csr_list
-'''
+    # boundary
+    lower = boundary_threshold
+    upper = 1 - boundary_threshold
+    bound_x = np.where(x >= upper, -1, np.where(x <= lower, 1, 0))
+    bound_x_count = np.count_nonzero(bound_x, axis=-1)
 
-def get_pbc_adjacency_list(X_in, K, shell_fraction=0.1):
+    # get bound and add to clone
+    for idx in range(N):
+        num_boundary = bound_x_count[idx]
+        if num_boundary > 0:
+            # get particles to add to clone
+            outer_particles = get_outer(x[idx], bound_x[idx], num_boundary)
+            # add indices
+            idx_list = np.append(idx_list, [idx] * outer_particles.shape[0])
+            # concat to clone
+            x = np.concatenate((x, outer_particles), axis=0)
+    return x, idx_list
+
+def get_pcube_adjacency_list(x, idx_map, N, K):
+    """ get kneighbor graph from padded cube
+    x is padded cube of shape (M, 3),
+    where M == (N + number of added boundary particles)
+    Args:
+        x (ndarray): padded cube, of shape (M, 3)
+        idx_map (ndarray): shape (M-N,) indices
+        N: number of particles in original cube
+        K: number of nearest neighbors
     """
-    Map inner chunks to outer chunks
-    cant black box this anymore
-    NEED TO CLEAN THIS UP, at least var names
+    kgraph = kneighbors_graph(x, K, include_self=True)[:N].indices
+    kgraph_outer = kgraph >= N
+    for k_idx, is_outer in enumerate(kgraph_outer):
+        if is_outer:
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+            outer_idx = kgraph[k_idx]
+            kgraph[k_idx] = idx_map[outer_idx - N]
+            #kgraph[k_idx] = idx_map[k_idx - N]
+    return kgraph.reshape(N,K)
+
+def get_pbc_kneighbors(X, K, boundary_threshold=0.1):
     """
-    K = K
-    mb_size, N, D = X_in.shape
-    L_box = 16 if N == 16**3 else 32
-    dL = L_box * shell_fraction
-    box_size = (L_box, dL)
-    adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
-    for i in range(mb_size):
-        ids_map = {}  # For this batch will map new_id to old_id of cloned particles
-        new_X = [part for part in X_in[i]]  # Start off with original cube
-        for j in range(N):
-            status = [_get_status(X_in[i, j, k], *box_size) for k in range(3)]
-            if sum(status) == 0:  # Not in the shell --skip
-                continue
-            else:
-                for k in range(3):
-                    if status[k] > 0:
-                        clone = _get_clone(X_in[i, j, :], k, status[k], *box_size)
-                        new_X.append(clone)
-                        ids_map.update({len(new_X) - 1: j})
-                        for kp in range(k + 1, 3):
-                            if status[kp] > 0:
-                                bi_clone = _get_clone(clone, kp, status[kp], *box_size)
-                                new_X.append(bi_clone)
-                                ids_map.update({len(new_X) - 1: j})
-                                for kpp in range(kp + 1, 3):
-                                    if status[kpp] > 0:
-                                        tri_clone = _get_clone(bi_clone, kpp, status[kpp], *box_size)
-                                        new_X.append(tri_clone)
-                                        ids_map.update({len(new_X) - 1: j})
-        new_X = np.array(new_X)
-        graph_idx = kneighbors_graph(new_X[:, :3], K, include_self=True).indices
-        graph_idx = graph_idx.reshape([-1, K])[:N, :]  # Only care about original box
-        """ # THIS CHANGES NOTHING, EVER. It's already truncated to original by doing [:N, :]
-        # Remap outbox neighbors to original ids
-        for j in range(N):
-            for k in range(K):
-                if graph_idx[j, k] > N - 1:  # If outside of the box
-                    graph_idx[j, k] = ids_map.get(graph_idx[j, k])
-        graph_idx = graph_idx #+ (N * i)  # offset idx for batches
-        """
-        adj_list[i] = graph_idx
-    return adj_list
+    """
+    # get boundary range
+    lower = boundary_threshold
+    upper = 1 - boundary_threshold
+    mb_size, N, D = X.shape
+
+    # graph init
+    adjacency_list = np.zeros((mb_size, N, K), dtype=np.int32)
+
+    for b in range(mb_size):
+        # get expanded cube
+        clone = np.copy(X[b,:,:3])
+        padded_cube, idx_map = pad_cube_boundaries(clone, boundary_threshold)
+
+        # get neighbors from padded_cube
+        kgraph_idx = get_pcube_adjacency_list(padded_cube, idx_map, N, K)
+        adjacency_list[b] = kgraph_idx
+    return adjacency_list
 
 #=============================================================================
 # periodic boundary conditions, loss
