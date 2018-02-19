@@ -278,7 +278,43 @@ def random_augmentation_shift(batch):
     batch[...,:3] = batch_coo
     return batch
 
-def next_minibatch(X_in, batch_size, data_aug=True):
+def random_augmentation_shift_noreflect(batch):
+    """ Randomly augment data by shifting indices
+    and symmetrically relocating particles
+    Args:
+        batch (ndarray): (num_rs, batch_size, D, 6)
+    Returns:
+        batch (ndarray): randomly shifted data array
+    """
+    batch_size = batch.shape[1]
+    rands = np.random.rand(3)
+    shift = np.random.rand(1,batch_size,1,3)
+    # shape (11, bs, n_P, 6)
+    if rands[0] < .5:
+        batch = batch[...,[1,0,2,4,3,5]]
+    if rands[1] < .5:
+        batch = batch[...,[0,2,1,3,5,4]]
+    if rands[2] < .5:
+        batch = batch[...,[2,1,0,5,4,3]]
+    '''
+    if rands[3] < .5:
+        batch[...,0] = 1 - batch[...,0]
+        batch[...,3] = -batch[...,3]
+    if rands[4] < .5:
+        batch[...,1] = 1 - batch[...,1]
+        batch[...,4] = -batch[...,4]
+    if rands[5] < .5:
+        batch[...,2] = 1 - batch[...,2]
+        batch[...,5] = -batch[...,5]
+    '''
+    batch_coo = batch[...,:3]
+    batch_coo += shift
+    gt1 = batch_coo > 1
+    batch_coo[gt1] = batch_coo[gt1] - 1
+    batch[...,:3] = batch_coo
+    return batch
+
+def next_minibatch(X_in, batch_size, data_aug=True, noreflect=False):
     """ randomly select samples for training batch
 
     Args:
@@ -291,7 +327,11 @@ def next_minibatch(X_in, batch_size, data_aug=True):
     index_list = np.random.choice(X_in.shape[1], batch_size)
     batches = X_in[:,index_list]
     if data_aug:
-        return random_augmentation_shift(batches)
+        if noreflect:
+            return random_augmentation_shift_noreflect(batches)
+        else:
+            return random_augmentation_shift(batches)
+
     else:
         return batches
 

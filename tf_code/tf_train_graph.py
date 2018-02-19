@@ -128,7 +128,8 @@ num_checkpoints_saved = 0
 start_time = time.time()
 for step in range(num_iters):
     # data
-    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
+    #_x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
+    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True, )#noreflect=True)
     x_in   = _x_batch[0]
     x_true = _x_batch[1]
     alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, boundary_threshold=0.05))
