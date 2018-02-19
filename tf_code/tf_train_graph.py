@@ -90,16 +90,13 @@ X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_
 #adj_list = None
 #if graph_model: # graph
 adj_list = tf.placeholder(tf.int32, shape=[None, 2], name='adj_list')
-X_pred = nn.network_graph_fwd(X_input, num_layers, adj_list, activation=tf.nn.relu, add=True, vel_coeff=None, K=14)
-# network_fwd will dispatch on mtype_key
-#X_pred  = nn.network_fwd(X_input, num_layers, adj_list, vel_coeff=vel_coeff, mtype_key=model_type, K=14)
-
-
+X_pred = nn.model_fwd(X_input, num_layers, adj_list, K, activation=tf.nn.relu, add=True, vel_coeff=None)
 
 # loss and optimizer
 readout = nn.get_readout(X_pred)
 loss    = nn.pbc_loss(readout, X_truth)
 train   = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+boundary_threshold = 0.08
 
 #=============================================================================
 # Session and Train setup
@@ -132,7 +129,7 @@ for step in range(num_iters):
     x_in   = _x_batch[0]
     x_true = _x_batch[1]
     alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
-    #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, boundary_threshold=0.05))
+    #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, boundary_threshold=boundary_threshold))
 
     if verbose:
         error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true, adj_list: alist})
@@ -169,7 +166,7 @@ for j in range(X_test.shape[1]):
     x_in   = X_test[0, j:j+1] # (1, n_P, 6)
     x_true = X_test[1, j:j+1]
     alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
-    #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, boundary_threshold=0.05))
+    #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, boundary_threshold=boundary_threshold))
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
     # validation error

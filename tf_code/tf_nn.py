@@ -31,7 +31,7 @@ import tf_utils as utils
 def left_mult(h, W):
     return tf.einsum('ijl,lq->ijq', h, W)
 
-def linear_fwd(h_in, W, b=None):
+def linear(h_in, W, b=None):
     """ permutation equivariant linear transformation
     Args:
         h_in: external input, of shape (mb_size, n_P, k_in)
@@ -45,20 +45,12 @@ def linear_fwd(h_in, W, b=None):
         h_out += b
     return h_out
 
-def linear_layer(h, layer_idx):
+def set_layer(h, layer_idx, *args):
     """ layer gets weights and returns linear transformation
     """
     W, B = utils.get_layer_vars(layer_idx)
-    return linear_fwd(h, W, B)
+    return linear(h, W, B)
 
-def set_fwd(x_in, num_layers, activation=tf.nn.relu):
-    H = x_in
-    for i in range(num_layers):
-        H = linear_layer(H, i)
-        if i != num_layers - 1:
-            H = activation(H)
-    return H
-#=============================================================================
 def kgraph_select(h, adj, K):
     dims = tf.shape(h)
     mb = dims[0]; n  = dims[1]; d  = dims[2];
@@ -73,37 +65,23 @@ def kgraph_layer(h, layer_idx, alist, K):
     #W, Wg, B = utils.get_layer_vars_graph(layer_idx)
     W, Wg = utils.get_layer_vars_graph(layer_idx)
     nn_graph = kgraph_select(h, alist, K)
-    h_w = linear_fwd(h, W)
-    h_g = linear_fwd(nn_graph, Wg)
+    h_w = linear(h, W)
+    h_g = linear(nn_graph, Wg)
     h_out = h_w + h_g #+ B
     return h_out
 
-def graph_fwd(x_in, num_layers, alist, K=14, activation=tf.nn.relu):
+def network_fwd(x_in, num_layers, *args, activation=tf.nn.relu):
+    layer = kgraph_layer if len(args) > 0 else set_layer
     H = x_in
     for i in range(num_layers):
-        H = kgraph_layer(H, i, alist, K)
+        H = layer(H, i, *args)
         if i != num_layers - 1:
             H = activation(H)
     return H
+
 #=============================================================================
-
-
-def network_graph_fwd(x_in, num_layers, alist, activation=tf.nn.relu, add=True, vel_coeff=None, K=14):
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    h_out = graph_fwd(x_in, num_layers, alist, activation=activation, K=K)
-    if add:
-        x_coo = x_in[...,:3]
-        h_out += x_coo
-    if vel_coeff is not None:
-        h_out += vel_coeff * x_in[...,3:]
-    return h_out
-
-def network_fwd(x_in, num_layers, *args, activation=tf.nn.relu, mtype_key=0, add=True, vel_coeff=None, **kwargs):
-    if mtype_key == 0: # set
-        h_out = set_fwd(x_in, num_layers, activation)
-    else:
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        h_out = graph_fwd(x_in, num_layers, *args, activation=activation, **kwargs)
+def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=None):
+    h_out = network_fwd(x_in, num_layers, *args)
     if add:
         x_coo = x_in[...,:3]
         h_out += x_coo
