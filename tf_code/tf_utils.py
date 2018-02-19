@@ -28,9 +28,8 @@ DATASET_SEED = 12345 # for train/validation data splits
 GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
 SET_CHANNELS   = [6, 32, 128, 256, 128, 32, 256, 16, 3]
 LEARNING_RATE = 0.01
-
-GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
-SET_CHANNELS   = [6, 32, 128, 256, 128, 32, 256, 16, 3]
+NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S'},
+                1:{'channels': GRAPH_CHANNELS, 'tag': 'G'},}
 
 LEARNING_RATE = 0.01
 
@@ -48,9 +47,8 @@ VAR_SCOPE  = 'params'
 #=============================================================================
 # var inits
 #=============================================================================
-def init_weight(k_in, k_out, name, scale=1.0, seed=None):
+def init_weight(k_in, k_out, name,  seed=None):
     """ initialize weight Variable
-    weight values drawn from He normal distribution
     Args:
         k_in, k_out (int): weight sizes
         name (str): variable name
@@ -58,49 +56,49 @@ def init_weight(k_in, k_out, name, scale=1.0, seed=None):
     #std = scale * np.sqrt(2. / k_in)
     #henorm = tf.random_normal((k_in, k_out), stddev=std, seed=seed)
     norm = tf.glorot_normal_initializer(seed=seed)
-    with tf.variable_scope(VAR_SCOPE):
-        #tf.get_variable(name, dtype=tf.float32, initializer=henorm)
-        tf.get_variable(name, shape=(k_in, k_out), dtype=tf.float32, initializer=norm)
+    tf.get_variable(name, shape=(k_in, k_out), dtype=tf.float32, initializer=norm)
 
-def init_bias(k_in, k_out, name):
+def init_bias(k_in, k_out, name,):
     """ biases initialized to be near zero
     """
     bval = tf.ones((k_out,), dtype=tf.float32) * 1e-8
-    with tf.variable_scope(VAR_SCOPE):
-        tf.get_variable(name, dtype=tf.float32, initializer=bval)
+    tf.get_variable(name, dtype=tf.float32, initializer=bval)
 
-def init_params(channels, seed=98765):
+#=============================================================================
+# Wrappers
+def init_params(channels, graph_model=False, seed=None, var_scope=VAR_SCOPE):
+    """ Initialize network parameters
+    graph model has extra weight, no bias
+    set model has bias
+    """
     kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
-    for idx, ktup in enumerate(kdims):
-        init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed)
-        init_bias(  *ktup,   BIAS_TAG.format(idx))
+    with tf.variable_scope(var_scope):
+        for idx, ktup in enumerate(kdims):
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+            init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed)
+            if graph_model: # graph
+                init_weight(*ktup,  GRAPH_TAG.format(idx), seed=seed)
+            else: # set
+                init_bias(*ktup, BIAS_TAG.format(idx))
 
-def get_layer_vars(layer_idx):
+#=============================================================================
+# get layer params
+def get_layer_vars(layer_idx, var_scope=VAR_SCOPE):
     """ gets variables for layer
     """
-    with tf.variable_scope(VAR_SCOPE, reuse=True):
+    with tf.variable_scope(var_scope, reuse=True):
         W = tf.get_variable(WEIGHT_TAG.format(layer_idx))
         B = tf.get_variable(  BIAS_TAG.format(layer_idx))
     return W, B
 
-def init_params_graph(channels, seed=None):#PARAMS_SEED): THIS MADE HUGE DIFFERENCE. Extremely sensitive to weight init??
-    kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
-    for idx, ktup in enumerate(kdims):
-        init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed)
-        init_weight(*ktup,  GRAPH_TAG.format(idx), seed=seed)
-        #init_bias(  *ktup,   BIAS_TAG.format(idx))
-
-def get_layer_vars_graph(layer_idx):
-    """ gets variables for layer
+def get_layer_vars_graph(layer_idx, var_scope=VAR_SCOPE):
+    """ gets variables for graph layer
     """
-    with tf.variable_scope(VAR_SCOPE, reuse=True):
+    with tf.variable_scope(var_scope, reuse=True):
         W  = tf.get_variable(WEIGHT_TAG.format(layer_idx))
         Wg = tf.get_variable(GRAPH_TAG.format(layer_idx))
-        #B  = tf.get_variable(  BIAS_TAG.format(layer_idx))
-    return W, Wg#, B
+    return W, Wg
 
-NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S', 'init_params': init_params,},
-                1:{'channels': GRAPH_CHANNELS, 'tag': 'G', 'init_params': init_params_graph,},}
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 # END TF-related utils

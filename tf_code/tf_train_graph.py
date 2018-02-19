@@ -56,7 +56,6 @@ num_layers = len(channels) - 1
 
 # hyperparameters
 #init_params = model_vars['init_params']
-init_params = utils.init_params_graph
 learning_rate = LEARNING_RATE # 0.01
 
 
@@ -81,7 +80,8 @@ utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 #=============================================================================
 # init network params
 tf.set_random_seed(utils.PARAMS_SEED)
-init_params(channels)
+utils.init_params(channels, graph_model=graph_model)
+#init_params(channels)
 K = 14
 
 # direct graph
@@ -131,7 +131,8 @@ for step in range(num_iters):
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in   = _x_batch[0]
     x_true = _x_batch[1]
-    alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, boundary_threshold=0.05))
+    alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+    #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, boundary_threshold=0.05))
 
     if verbose:
         error = sess.run(loss, feed_dict={X_input: x_in, X_truth: x_true, adj_list: alist})
@@ -167,7 +168,8 @@ for j in range(X_test.shape[1]):
     # data
     x_in   = X_test[0, j:j+1] # (1, n_P, 6)
     x_true = X_test[1, j:j+1]
-    alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, boundary_threshold=0.05))
+    alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+    #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, boundary_threshold=0.05))
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
     # validation error
