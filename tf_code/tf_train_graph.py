@@ -148,8 +148,7 @@ for step in range(num_iters):
         num_checkpoints_saved += 1
 
 print('elapsed time: {}'.format(time.time() - start_time))
-# elapsed time: 55.703558683395386 #  'error = sess.run()' on each iter: little over 10sec/run
-# elapsed time: 41.57636308670044 # with no sess.run, under 10sec/run
+
 # save
 saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=False)
 if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
@@ -168,7 +167,6 @@ for j in range(X_test.shape[1]):
     # data
     x_in   = X_test[0, j:j+1] # (1, n_P, 6)
     x_true = X_test[1, j:j+1]
-    #alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
     alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, boundary_threshold=0.05))
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
