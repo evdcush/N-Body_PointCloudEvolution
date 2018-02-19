@@ -19,7 +19,7 @@ import tf_utils as utils
  X velocity coefficient
  X save points
  - restore model
- - Graph model, kneighbors
+ X Graph model, kneighbors
  - Graph model, radius
 
 '''
@@ -98,23 +98,7 @@ def alist_to_indexlist(alist):
     id1 = np.tile(id1,N*K).flatten()
     out = np.stack([id1,alist.flatten()], axis=1).astype(np.int32)
     return out
-'''
-def get_kneighbor_alist2(X_in, K=14, shell_fraction=0.1):
-    batch_size, N, D = X_in.shape
-    csr_list = get_csr_periodic_bc(X_in, K, shell_fraction=shell_fraction)
-    adj_list = np.zeros((batch_size, N, K)).astype(np.int32)
-    for i in range(batch_size):
-        adj_list[i] = csr_list[i].indices.reshape(N, K)
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    return alist_to_indexlist(adj_list)
-'''
-'''
-def get_kneighbor_alist(X_in, K=14, shell_fraction=0.1):
-    batch_size, N, D = X_in.shape
-    adj_list = get_pbc_adjacency_list(X_in, K, shell_fraction=shell_fraction)
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    return alist_to_indexlist(adj_list)
-'''
+
 def get_kneighbor_alist(X_in, K=14):
         """ search for K nneighbors, and return offsetted indices in adjacency list
 
