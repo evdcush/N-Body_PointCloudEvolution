@@ -286,7 +286,18 @@ def get_readout(h_out):
     readout = rest*h_out + gt_one*(h_out - 1) + ls_zero*(1 + h_out)
     return readout
 
-def periodic_boundary_dist(readout, x_truth):
+def get_readout_vel(h_out):
+    h_out_coo = h_out[...,:3]
+    h_out_vel = h_out[...,3:]
+    gt_one  = (tf.sign(h_out_coo - 1) + 1) / 2
+    ls_zero = -(tf.sign(h_out_coo) - 1) / 2
+    rest = 1 - gt_one - ls_zero
+    readout_coo = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo)
+    readout = tf.concat([readout_coo, h_out_vel], -1)
+    return readout
+
+def periodic_boundary_dist(readout_full, x_truth):
+    readout = readout_full[...,:3]
     x_truth_coo = x_truth[...,:3]
     dist = tf.minimum(tf.square(readout - x_truth_coo), tf.square(readout - (1 + x_truth_coo)))
     dist = tf.minimum(dist, tf.square((1 + readout) - x_truth_coo))

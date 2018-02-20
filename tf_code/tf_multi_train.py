@@ -32,7 +32,8 @@ start_time = time.time()
 num_particles = pargs['particles']
 zX, zY = pargs['redshifts']
 nbody_params = (num_particles, (zX, zY))
-num_rs = len(utils.REDSHIFTS) - 1
+num_rs = len(utils.REDSHIFTS)
+num_rs_layers = num_rs - 1
 
 # Load data
 X = utils.load_npy_data(num_particles, normalize=True)
@@ -52,7 +53,7 @@ if pargs['vel_coeff']:
 model_type = pargs['model_type'] # 0: set, 1: graph
 use_graph  = model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
-channels   = model_vars['channels']
+channels   = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 6]#model_vars['channels']
 num_layers = len(channels) - 1
 #print('model_type: {}\nuse_graph: {}\nchannels:{}'.format(model_type, use_graph, channels))
 
@@ -80,7 +81,7 @@ model_path, loss_path, cube_path = paths
 #=============================================================================
 # init network params
 #tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params_multi(channels, num_rs, graph_model=use_graph, seed=utils.PARAMS_SEED)
+utils.init_params_multi(channels, num_rs_layers, graph_model=use_graph, seed=utils.PARAMS_SEED)
 
 
 
@@ -89,6 +90,18 @@ It would not be necessary to have all these placeholders if you were able to
 use tf ops for neighbor search instead of sklearn
 '''
 # direct graph
+X60 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X60')
+X40 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X40')
+X20 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X20')
+X15 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X15')
+X12 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X12')
+X10 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X10')
+X08 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X08')
+X06 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X06')
+X04 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X04')
+X02 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X02')
+X00 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X00')
+'''
 X_input = tf.placeholder(tf.float32, shape=[num_rs, None, num_particles**3, 6], name='X_input')
 X60 = X_input[0]
 X40 = X_input[1]
@@ -101,6 +114,7 @@ X06 = X_input[7]
 X04 = X_input[8]
 X02 = X_input[9]
 X00 = X_input[10]
+'''
 
 X60_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X60_alist')
 X40_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X40_alist')
@@ -112,18 +126,18 @@ X08_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X08_alist')
 X06_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X06_alist')
 X04_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X04_alist')
 X02_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X02_alist')
+K = 14
+X40_hat = nn.get_readout_vel(nn.model_fwd(X60,     num_layers, X60_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(0)))
+X20_hat = nn.get_readout_vel(nn.model_fwd(X40_hat, num_layers, X40_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(1)))
+X15_hat = nn.get_readout_vel(nn.model_fwd(X20_hat, num_layers, X20_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(2)))
+X12_hat = nn.get_readout_vel(nn.model_fwd(X15_hat, num_layers, X15_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(3)))
+X10_hat = nn.get_readout_vel(nn.model_fwd(X12_hat, num_layers, X12_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(4)))
+X08_hat = nn.get_readout_vel(nn.model_fwd(X10_hat, num_layers, X10_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(5)))
+X06_hat = nn.get_readout_vel(nn.model_fwd(X08_hat, num_layers, X08_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(6)))
+X04_hat = nn.get_readout_vel(nn.model_fwd(X06_hat, num_layers, X06_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(7)))
+X02_hat = nn.get_readout_vel(nn.model_fwd(X04_hat, num_layers, X04_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(8)))
+X00_hat = nn.get_readout_vel(nn.model_fwd(X02_hat, num_layers, X02_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(9)))
 
-
-X40_hat = nn.get_readout(model_fwd(X60,     num_layers, X60_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(0)))
-X20_hat = nn.get_readout(model_fwd(X40_hat, num_layers, X40_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(1)))
-X15_hat = nn.get_readout(model_fwd(X20_hat, num_layers, X20_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(2)))
-X12_hat = nn.get_readout(model_fwd(X15_hat, num_layers, X15_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(3)))
-X10_hat = nn.get_readout(model_fwd(X12_hat, num_layers, X12_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(4)))
-X08_hat = nn.get_readout(model_fwd(X10_hat, num_layers, X10_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(5)))
-X06_hat = nn.get_readout(model_fwd(X08_hat, num_layers, X08_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(6)))
-X04_hat = nn.get_readout(model_fwd(X06_hat, num_layers, X06_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(7)))
-X02_hat = nn.get_readout(model_fwd(X04_hat, num_layers, X04_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(8)))
-X00_hat = nn.get_readout(model_fwd(X02_hat, num_layers, X02_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(9)))
 
 # losses
 loss = nn.pbc_loss(X40_hat, X40)
@@ -173,14 +187,58 @@ for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in   = _x_batch
-    #x_true = _x_batch[1]
-    fdict = {X_input: x_in}
-    sess.run(loss, feed_dict=fdict)
-    if use_graph:
-        #neighbors = nn.get_kneighbor_alist(x_in, K)
-        #neighbors = nn.get_pbc_kneighbors(x_in, K, boundary_threshold)
-        #alist = nn.alist_to_indexlist(neighbors)
-        #fdict[adj_list] = alist
+    x60 = x_in[0]
+
+
+    #using non pbc neighbor for now
+    nn_fn = nn.get_kneighbor_alist
+    '''
+    I'm almost certain you can use lists of placeholders, but I guess lets just
+    see if this would even work for now
+    '''
+
+    # pred
+    alist60 = nn.alist_to_indexlist(nn_fn(x60, K))
+    fdict   = {X60: x60, X60_alist: alist60}
+    #=====================================
+    x40_hat = sess.run(X40_hat, feed_dict=fdict)
+    fdict[X40_alist] = nn.alist_to_indexlist(nn_fn(x40_hat, K))
+    #=====================================
+    x20_hat = sess.run(X20_hat, feed_dict=fdict)
+    fdict[X20_alist] = nn.alist_to_indexlist(nn_fn(x20_hat, K))
+    #=====================================
+    x15_hat = sess.run(X15_hat, feed_dict=fdict)
+    fdict[X15_alist] = nn.alist_to_indexlist(nn_fn(x15_hat, K))
+    #=====================================
+    x12_hat = sess.run(X12_hat, feed_dict=fdict)
+    fdict[X12_alist] = nn.alist_to_indexlist(nn_fn(x12_hat, K))
+    #=====================================
+    x10_hat = sess.run(X10_hat, feed_dict=fdict)
+    fdict[X10_alist] = nn.alist_to_indexlist(nn_fn(x10_hat, K))
+    #=====================================
+    x08_hat = sess.run(X08_hat, feed_dict=fdict)
+    fdict[X08_alist] = nn.alist_to_indexlist(nn_fn(x08_hat, K))
+    #=====================================
+    x06_hat = sess.run(X06_hat, feed_dict=fdict)
+    fdict[X06_alist] = nn.alist_to_indexlist(nn_fn(x06_hat, K))
+    #=====================================
+    x04_hat = sess.run(X04_hat, feed_dict=fdict)
+    fdict[X04_alist] = nn.alist_to_indexlist(nn_fn(x04_hat, K))
+    #=====================================
+    x02_hat = sess.run(X02_hat, feed_dict=fdict)
+    fdict[X02_alist] = nn.alist_to_indexlist(nn_fn(x02_hat, K))
+    #=====================================
+    #x00_hat = sess.run(X00_hat, feed_dict=fdict)
+    fdict[X40] = x_in[1]
+    fdict[X20] = x_in[2]
+    fdict[X15] = x_in[3]
+    fdict[X12] = x_in[4]
+    fdict[X10] = x_in[5]
+    fdict[X08] = x_in[6]
+    fdict[X06] = x_in[7]
+    fdict[X04] = x_in[8]
+    fdict[X02] = x_in[9]
+    fdict[X00] = x_in[10]
 
     if verbose:
         error = sess.run(loss, feed_dict=fdict)
