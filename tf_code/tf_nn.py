@@ -46,10 +46,10 @@ def linear(h_in, W, b=None):
         h_out += b
     return h_out
 
-def set_layer(h, layer_idx, *args, var_scope=VAR_SCOPE):
+def set_layer(h, layer_idx, var_scope, *args):
     """ layer gets weights and returns linear transformation
     """
-    W, B = utils.get_layer_vars(layer_idx, var_scope)
+    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
     return linear(h, W, B)
 
 #=============================================================================
@@ -62,7 +62,7 @@ def kgraph_select(h, adj, K):
     nn_graph = tf.reduce_mean(tf.reshape(tf.gather_nd(h, adj), rdim), axis=2)
     return nn_graph
 
-def kgraph_layer(h, layer_idx, alist, K, var_scope=VAR_SCOPE):
+def kgraph_layer(h, layer_idx, var_scope, alist, K):
     """ layer gets weights and returns linear transformation
     """
     #W, Wg, B = utils.get_layer_vars_graph(layer_idx)
@@ -74,18 +74,18 @@ def kgraph_layer(h, layer_idx, alist, K, var_scope=VAR_SCOPE):
     return h_out
 
 #=============================================================================
-def network_fwd(x_in, num_layers, *args, activation=tf.nn.relu, var_scope=VAR_SCOPE):
+def network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
     layer = kgraph_layer if args[0] is not None else set_layer
     H = x_in
     for i in range(num_layers):
-        H = layer(H, i, *args, var_scope=var_scope)
+        H = layer(H, i, var_scope, *args)
         if i != num_layers - 1:
             H = activation(H)
     return H
 
 #=============================================================================
 def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=None, var_scope=VAR_SCOPE):
-    h_out = network_fwd(x_in, num_layers, *args, var_scope=var_scope)
+    h_out = network_fwd(x_in, num_layers, var_scope, *args)
     if add:
         if x_in.shape[-1] == h_out.shape[-1]: # when predicting velocity
             h_out += x_in
@@ -100,29 +100,32 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
 #=============================================================================
 # multi stuff
 #=============================================================================
-def multi_model_fwd(x_in, num_layers, alist, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+def multi_model_fwd(x_in, num_layers, xshape, alist, K,
+                    activation=tf.nn.relu, add=True, vel_coeff=None,
+                    boundary_threshold=0.08, validation=False):
     """ assume graph for now
     Args:
         x_in (tensor): (11, mb_size, n_P, 6)
     """
-    readout = x_in[0]
-    var_scope = utils.VAR_SCOPE_MULTI.format(0)
-    model_out = model_fwd(readout, num_layers, alist, K, var_scope=var_scope)
-    readout = nn.get_readout(model_out)
-    loss    = nn.pbc_loss(readout, x_in[z+1])
+    num_rs, mb_size, n_P, D = xshape
+    assert num_rs > 2
+    var_scope = VAR_SCOPE_MULTI.format(0)
+    model_out = model_fwd(x_in[0], num_layers, alist, K, var_scope=var_scope)
+    readout = get_readout(model_out)
+    loss    = pbc_loss(readout, x_in[1])
 
-    for z in range(x_in.shape[0] - 1):
+    # forward through rest layers, only receiving previous prediction as input
+    for z in range(1, num_rs - 1):
         var_scope = utils.VAR_SCOPE_MULTI.format(z)
+        with tf.Session() as sess:
+            x_pred = readout.eval()
+            neighbors = get_pbc_kneighbors(x_pred, K, boundary_threshold)
+            alist = tf.constant(alist_to_indexlist(neighbors))
         model_out = model_fwd(readout, num_layers, alist, K, var_scope=var_scope)
-        readout = nn.get_readout(model_out)
-        loss    = nn.pbc_loss(readout, x_in[z+1])
-        h_out = network_fwd(x_in, num_layers, *args)
-        if add:
-            x_coo = x_in[...,:3]
-            h_out += x_coo
-        if vel_coeff is not None:
-            h_out += vel_coeff * x_in[...,3:]
-        return h_out
+        readout = get_readout(model_out)
+        loss += pbc_loss(readout, x_in[z+1])
+    ret = (readout, loss) if validation else loss
+    return ret
 
 
 #=============================================================================
@@ -232,7 +235,7 @@ def get_pcube_adjacency_list(x, idx_map, N, K):
             #kgraph[k_idx] = idx_map[k_idx - N]
     return kgraph.reshape(N,K)
 
-def get_pbc_kneighbors(X, K, boundary_threshold=0.1):
+def get_pbc_kneighbors(X, K, boundary_threshold):
     """
     """
     # get boundary range

@@ -131,7 +131,7 @@ for step in range(num_iters):
     fdict = {X_input: x_in, X_truth: x_true}
     if use_graph:
         #neighbors = nn.get_kneighbor_alist(x_in, K)
-        neighbors = nn.get_pbc_kneighbors(x_in, K, boundary_threshold=boundary_threshold)
+        neighbors = nn.get_pbc_kneighbors(x_in, K, boundary_threshold)
         alist = nn.alist_to_indexlist(neighbors)
         fdict[adj_list] = alist
 
@@ -170,7 +170,7 @@ for j in range(X_test.shape[1]):
     x_true = X_test[1, j:j+1]
     fdict = {X_input: x_in, X_truth: x_true}
     if use_graph:
-        neighbors = nn.get_pbc_kneighbors(x_in, K, boundary_threshold=boundary_threshold)
+        neighbors = nn.get_pbc_kneighbors(x_in, K, boundary_threshold)
         alist = nn.alist_to_indexlist(neighbors)
         fdict[adj_list] = alist
 
