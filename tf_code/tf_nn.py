@@ -71,7 +71,7 @@ def kgraph_layer(h, layer_idx, alist, K):
     return h_out
 
 def network_fwd(x_in, num_layers, *args, activation=tf.nn.relu):
-    layer = kgraph_layer if len(args) > 0 else set_layer
+    layer = kgraph_layer if args[0] is not None else set_layer
     H = x_in
     for i in range(num_layers):
         H = layer(H, i, *args)

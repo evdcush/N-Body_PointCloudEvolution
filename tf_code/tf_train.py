@@ -12,6 +12,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--particles', '-p', default=32,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
 parser.add_argument('--redshifts', '-z', default=[0.6, 0.0], nargs='+', type=float, help='redshift tuple, predict z[1] from z[0]')
 parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
+parser.add_argument('--knn',       '-k', default=14,          type=int, help='number of nearest neighbors for graph model')
 #parser.add_argument('--resume',    '-r', default=0,          type=int,  help='resume training from serialized params')
 #parser.add_argument('--multi_step','-s', default=0,          type=int, help='use multi-step redshift model')
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
@@ -36,27 +37,26 @@ nbody_params = (num_particles, (zX, zY))
 X = utils.load_npy_data(*nbody_params, normalize=True)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
+print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
 
 # velocity coefficient
 vel_coeff = None
 if pargs['vel_coeff']:
     vel_coeff = utils.load_velocity_coefficients(num_particles)[(zX, zY)]
 
-
 #=============================================================================
 # network and model params
 #=============================================================================
 # model vars
-model_type = pargs['model_type'] # 0: set, 1: graph, but only set implemented at moment
-graph_model = model_type == 1
+model_type = pargs['model_type'] # 0: set, 1: graph
+use_graph  = model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
 channels   = model_vars['channels']
 num_layers = len(channels) - 1
+print('model_type: {}\nuse_graph: {}\nchannels:{}'.format(model_type, use_graph, channels))
 
 # hyperparameters
-init_params = model_vars['init_params']
 learning_rate = LEARNING_RATE # 0.01
-
 
 
 #=============================================================================
@@ -78,22 +78,25 @@ utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 # initialize graph
 #=============================================================================
 # init network params
-init_params(channels)
-K = 14
+tf.set_random_seed(utils.PARAMS_SEED)
+utils.init_params(channels, graph_model=use_graph)
 
 # direct graph
 X_input = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_input')
 X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_truth')
-adj_list = None
-if graph_model: # graph
+adj_list = K = None
+if use_graph:
     adj_list = tf.placeholder(tf.int32, shape=[None, 2], name='adj_list')
-# network_fwd will dispatch on mtype_key
-X_pred  = nn.network_fwd(X_input, num_layers, adj_list, vel_coeff=vel_coeff, mtype_key=model_type, K=14)
+    boundary_threshold = 0.08
+    K = pargs['knn'] # default 14
+    print('\n\ngraph model: {} {}\n\n'.format(K, boundary_threshold))
+X_pred = nn.model_fwd(X_input, num_layers, adj_list, K, activation=tf.nn.relu, add=True, vel_coeff=None)
 
 # loss and optimizer
 readout = nn.get_readout(X_pred)
 loss    = nn.pbc_loss(readout, X_truth)
 train   = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+
 
 #=============================================================================
 # Session and Train setup
@@ -113,8 +116,8 @@ sess.run(tf.global_variables_initializer())
 train_loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
-save_checkpoint = lambda step: step % 500 == 0 and step != 0
-num_checkpoints_saved = 0
+checkpoint = 500
+save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
 
 #=============================================================================
 # TRAINING
@@ -125,28 +128,28 @@ for step in range(num_iters):
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in   = _x_batch[0]
     x_true = _x_batch[1]
-    if graph_model:
-        alist = nn.get_kneighbor_alist(x_in, K)
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        fdict = {X_input: x_in, X_truth: x_true, adj_list: alist}
-    else:
-        fdict = {X_input: x_in, X_truth: x_true}
+    fdict = {X_input: x_in, X_truth: x_true}
+    if use_graph:
+        #neighbors = nn.get_kneighbor_alist(x_in, K)
+        neighbors = nn.get_pbc_kneighbors(x_in, K, boundary_threshold=boundary_threshold)
+        alist = nn.alist_to_indexlist(neighbors)
+        fdict[adj_list] = alist
 
     if verbose:
         error = sess.run(loss, feed_dict=fdict)
         train_loss_history[step] = error
-        print('{}: {:.6f}'.format(step, error))
+        print('{}: {:.8f}'.format(step, error))
 
     # cycle through graph
     train.run(feed_dict=fdict)
     if save_checkpoint(step):
-        wr_meta = num_checkpoints_saved == 0
+        error = sess.run(loss, feed_dict=fdict)
+        print('checkpoint {:>5}: {}'.format(step, error))
+        wr_meta = step == checkpoint # only write on first checkpoint
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=wr_meta)
-        num_checkpoints_saved += 1
 
 print('elapsed time: {}'.format(time.time() - start_time))
-# elapsed time: 55.703558683395386 #  'error = sess.run()' on each iter: little over 10sec/run
-# elapsed time: 41.57636308670044 # with no sess.run, under 10sec/run
+
 # save
 saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=False)
 if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
@@ -165,13 +168,11 @@ for j in range(X_test.shape[1]):
     # data
     x_in   = X_test[0, j:j+1] # (1, n_P, 6)
     x_true = X_test[1, j:j+1]
-    if graph_model:
-        alist = nn.get_kneighbor_alist(x_in, K)
-        fdict = {X_input: x_in, X_truth: x_true, adj_list: alist}
-        pdict = {X_input: x_in, adj_list: alist}
-    else:
-        fdict = {X_input: x_in, X_truth: x_true}
-        pdict = {X_input: x_in}
+    fdict = {X_input: x_in, X_truth: x_true}
+    if use_graph:
+        neighbors = nn.get_pbc_kneighbors(x_in, K, boundary_threshold=boundary_threshold)
+        alist = nn.alist_to_indexlist(neighbors)
+        fdict[adj_list] = alist
 
     # validation error
     error = sess.run(loss, feed_dict=fdict)
@@ -179,7 +180,7 @@ for j in range(X_test.shape[1]):
     print('{}: {:.6f}'.format(j, error))
 
     # prediction
-    x_pred = sess.run(X_pred, feed_dict=pdict)
+    x_pred = sess.run(readout, feed_dict=fdict)
     test_predictions[j] = x_pred[0]
 
 # median test error
