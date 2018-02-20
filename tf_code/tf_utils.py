@@ -9,7 +9,6 @@ import chainer
 import chainer.serializers as serializers
 
 import tensorflow as tf
-import tf_nn as nn
 
 #=============================================================================
 # Globals
@@ -37,6 +36,7 @@ WEIGHT_TAG = 'W_{}'
 GRAPH_TAG  = 'Wg_{}'
 BIAS_TAG   = 'B_{}'
 VAR_SCOPE  = 'params'
+VAR_SCOPE_MULTI = 'params_{}'
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><

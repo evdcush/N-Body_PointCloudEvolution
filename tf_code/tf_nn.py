@@ -4,6 +4,7 @@ import tensorflow as tf
 #import chainer.functions as F
 from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
 import tf_utils as utils
+from tf_utils import VAR_SCOPE, VAR_SCOPE_MULTI
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 ''' TF nuggets:
@@ -45,12 +46,14 @@ def linear(h_in, W, b=None):
         h_out += b
     return h_out
 
-def set_layer(h, layer_idx, *args):
+def set_layer(h, layer_idx, *args, var_scope=VAR_SCOPE):
     """ layer gets weights and returns linear transformation
     """
-    W, B = utils.get_layer_vars(layer_idx)
+    W, B = utils.get_layer_vars(layer_idx, var_scope)
     return linear(h, W, B)
 
+#=============================================================================
+# graph
 def kgraph_select(h, adj, K):
     dims = tf.shape(h)
     mb = dims[0]; n  = dims[1]; d  = dims[2];
@@ -59,35 +62,68 @@ def kgraph_select(h, adj, K):
     nn_graph = tf.reduce_mean(tf.reshape(tf.gather_nd(h, adj), rdim), axis=2)
     return nn_graph
 
-def kgraph_layer(h, layer_idx, alist, K):
+def kgraph_layer(h, layer_idx, alist, K, var_scope=VAR_SCOPE):
     """ layer gets weights and returns linear transformation
     """
     #W, Wg, B = utils.get_layer_vars_graph(layer_idx)
-    W, Wg = utils.get_layer_vars_graph(layer_idx)
+    W, Wg = utils.get_layer_vars_graph(layer_idx, var_scope=var_scope)
     nn_graph = kgraph_select(h, alist, K)
     h_w = linear(h, W)
     h_g = linear(nn_graph, Wg)
     h_out = h_w + h_g #+ B
     return h_out
 
-def network_fwd(x_in, num_layers, *args, activation=tf.nn.relu):
+#=============================================================================
+def network_fwd(x_in, num_layers, *args, activation=tf.nn.relu, var_scope=VAR_SCOPE):
     layer = kgraph_layer if args[0] is not None else set_layer
     H = x_in
     for i in range(num_layers):
-        H = layer(H, i, *args)
+        H = layer(H, i, *args, var_scope=var_scope)
         if i != num_layers - 1:
             H = activation(H)
     return H
 
 #=============================================================================
-def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=None):
-    h_out = network_fwd(x_in, num_layers, *args)
+def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=None, var_scope=VAR_SCOPE):
+    h_out = network_fwd(x_in, num_layers, *args, var_scope=var_scope)
     if add:
-        x_coo = x_in[...,:3]
-        h_out += x_coo
+        if x_in.shape[-1] == h_out.shape[-1]: # when predicting velocity
+            h_out += x_in
+        else:
+            #x_coo = x_in[...,:3]
+            h_out += x_in[...,:3]
     if vel_coeff is not None:
         h_out += vel_coeff * x_in[...,3:]
     return h_out
+
+
+#=============================================================================
+# multi stuff
+#=============================================================================
+def multi_model_fwd(x_in, num_layers, alist, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+    """ assume graph for now
+    Args:
+        x_in (tensor): (11, mb_size, n_P, 6)
+    """
+    readout = x_in[0]
+    var_scope = utils.VAR_SCOPE_MULTI.format(0)
+    model_out = model_fwd(readout, num_layers, alist, K, var_scope=var_scope)
+    readout = nn.get_readout(model_out)
+    loss    = nn.pbc_loss(readout, x_in[z+1])
+
+    for z in range(x_in.shape[0] - 1):
+        var_scope = utils.VAR_SCOPE_MULTI.format(z)
+        model_out = model_fwd(readout, num_layers, alist, K, var_scope=var_scope)
+        readout = nn.get_readout(model_out)
+        loss    = nn.pbc_loss(readout, x_in[z+1])
+        h_out = network_fwd(x_in, num_layers, *args)
+        if add:
+            x_coo = x_in[...,:3]
+            h_out += x_coo
+        if vel_coeff is not None:
+            h_out += vel_coeff * x_in[...,3:]
+        return h_out
+
 
 #=============================================================================
 # graph ops
@@ -100,19 +136,19 @@ def alist_to_indexlist(alist):
     return out
 
 def get_kneighbor_alist(X_in, K=14):
-        """ search for K nneighbors, and return offsetted indices in adjacency list
+    """ search for K nneighbors, and return offsetted indices in adjacency list
 
-        Args:
-            X_in (numpy ndarray): input data of shape (mb_size, N, 6)
-        """
-        mb_size, N, D = X_in.shape
-        adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
-        for i in range(mb_size):
-            # this returns indices of the nn
-            graph_idx = kneighbors_graph(X_in[i, :, :3], K, include_self=True).indices
-            graph_idx = graph_idx.reshape([N, K]) #+ (N * i)  # offset idx for batches
-            adj_list[i] = graph_idx
-        return adj_list
+    Args:
+        X_in (numpy ndarray): input data of shape (mb_size, N, 6)
+    """
+    mb_size, N, D = X_in.shape
+    adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
+    for i in range(mb_size):
+        # this returns indices of the nn
+        graph_idx = kneighbors_graph(X_in[i, :, :3], K, include_self=True).indices
+        graph_idx = graph_idx.reshape([N, K]) #+ (N * i)  # offset idx for batches
+        adj_list[i] = graph_idx
+    return adj_list
 
 #=============================================================================
 # periodic boundary condition neighbor graph stuff
