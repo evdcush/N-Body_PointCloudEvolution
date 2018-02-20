@@ -195,6 +195,17 @@ for step in range(num_iters):
     '''
     I'm almost certain you can use lists of placeholders, but I guess lets just
     see if this would even work for now
+    The current training routine with the progressive additions of adj lists
+    literally sounds bad. My machine makes bad noises, sounds like a seeking
+    hard disk (ttttttTa tttttttTa ...), which is suspiciously similar to this
+    routine.
+    WHAT IS THE SOLUTION?
+    is there any way around this ridiculous recursive alist thing?
+    - we can use lists, which would clean up the hardcode, but that's not a solution
+      The real problem is that we cannot pass tensors to the nearest neighbor search
+    - originally tried to .eval() on the layer preds within the network fwd
+      function, but the problem was that placeholders were being eval'd and
+      sent to kneighbor search when it needs real data
     '''
 
     # pred
