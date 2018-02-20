@@ -82,17 +82,61 @@ model_path, loss_path, cube_path = paths
 #tf.set_random_seed(utils.PARAMS_SEED)
 utils.init_params_multi(channels, num_rs, graph_model=use_graph, seed=utils.PARAMS_SEED)
 
+
+
+'''
+It would not be necessary to have all these placeholders if you were able to
+use tf ops for neighbor search instead of sklearn
+'''
 # direct graph
-X_input = tf.placeholder(tf.float32, shape=[None, None, num_particles**3, 6], name='X_input')
-#X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_truth')
-adj_list = K = None
-if use_graph:
-    #adj_list = tf.placeholder(tf.int32, shape=[None, 2], name='adj_list')
-    boundary_threshold = 0.08
-    K = pargs['knn'] # default 14
-    print('\n\ngraph model: {} {}\n\n'.format(K, boundary_threshold))
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-loss = nn.multi_model_fwd(X_input, num_layers, num_rs, K, boundary_threshold=boundary_threshold, vel_coeff=None)
+X_input = tf.placeholder(tf.float32, shape=[num_rs, None, num_particles**3, 6], name='X_input')
+X60 = X_input[0]
+X40 = X_input[1]
+X20 = X_input[2]
+X15 = X_input[3]
+X12 = X_input[4]
+X10 = X_input[5]
+X08 = X_input[6]
+X06 = X_input[7]
+X04 = X_input[8]
+X02 = X_input[9]
+X00 = X_input[10]
+
+X60_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X60_alist')
+X40_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X40_alist')
+X20_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X20_alist')
+X15_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X15_alist')
+X12_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X12_alist')
+X10_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X10_alist')
+X08_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X08_alist')
+X06_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X06_alist')
+X04_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X04_alist')
+X02_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X02_alist')
+
+
+X40_hat = nn.get_readout(model_fwd(X60,     num_layers, X60_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(0)))
+X20_hat = nn.get_readout(model_fwd(X40_hat, num_layers, X40_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(1)))
+X15_hat = nn.get_readout(model_fwd(X20_hat, num_layers, X20_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(2)))
+X12_hat = nn.get_readout(model_fwd(X15_hat, num_layers, X15_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(3)))
+X10_hat = nn.get_readout(model_fwd(X12_hat, num_layers, X12_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(4)))
+X08_hat = nn.get_readout(model_fwd(X10_hat, num_layers, X10_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(5)))
+X06_hat = nn.get_readout(model_fwd(X08_hat, num_layers, X08_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(6)))
+X04_hat = nn.get_readout(model_fwd(X06_hat, num_layers, X06_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(7)))
+X02_hat = nn.get_readout(model_fwd(X04_hat, num_layers, X04_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(8)))
+X00_hat = nn.get_readout(model_fwd(X02_hat, num_layers, X02_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(9)))
+
+# losses
+loss = nn.pbc_loss(X40_hat, X40)
+loss += nn.pbc_loss(X20_hat, X20)
+loss += nn.pbc_loss(X15_hat, X15)
+loss += nn.pbc_loss(X12_hat, X12)
+loss += nn.pbc_loss(X10_hat, X10)
+loss += nn.pbc_loss(X08_hat, X08)
+loss += nn.pbc_loss(X06_hat, X06)
+loss += nn.pbc_loss(X04_hat, X04)
+loss += nn.pbc_loss(X02_hat, X02)
+loss += nn.pbc_loss(X00_hat, X00)
+
 
 # loss and optimizer
 #readout = nn.get_readout(X_pred)
@@ -131,7 +175,8 @@ for step in range(num_iters):
     x_in   = _x_batch
     #x_true = _x_batch[1]
     fdict = {X_input: x_in}
-    #if use_graph:
+    sess.run(loss, feed_dict=fdict)
+    if use_graph:
         #neighbors = nn.get_kneighbor_alist(x_in, K)
         #neighbors = nn.get_pbc_kneighbors(x_in, K, boundary_threshold)
         #alist = nn.alist_to_indexlist(neighbors)

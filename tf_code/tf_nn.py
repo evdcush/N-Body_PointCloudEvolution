@@ -100,10 +100,26 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
 #=============================================================================
 # multi stuff
 #=============================================================================
+def multi_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=None, var_scope=VAR_SCOPE):
+    h_out = network_fwd(x_in, num_layers, var_scope, *args)
+    if add:
+        if x_in.shape[-1] == h_out.shape[-1]: # when predicting velocity
+            h_out += x_in
+        else:
+            #x_coo = x_in[...,:3]
+            h_out += x_in[...,:3]
+    if vel_coeff is not None:
+        h_out += vel_coeff * x_in[...,3:]
+    return h_out
+'''
 def multi_model_fwd(x_in, num_layers, num_rs, K,
                     activation=tf.nn.relu, add=True, vel_coeff=None,
                     boundary_threshold=0.08, validation=False):
     """ assume graph for now
+    Notes:
+     - you cannot do the neighbors stuff here, since tf first runs with the place holder
+     stuff, and the pbc_neighbors fun expects true data
+
     Args:
         x_in (tensor): (11, mb_size, n_P, 6)
     """
@@ -129,6 +145,7 @@ def multi_model_fwd(x_in, num_layers, num_rs, K,
         loss += pbc_loss(readout, x_in[z+1])
     ret = (readout, loss) if validation else loss
     return ret
+'''
 
 
 #=============================================================================
