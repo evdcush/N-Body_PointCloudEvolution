@@ -16,7 +16,7 @@ parser.add_argument('--knn',       '-k', default=14,          type=int, help='nu
 #parser.add_argument('--resume',    '-r', default=0,          type=int,  help='resume training from serialized params')
 #parser.add_argument('--multi_step','-s', default=0,          type=int, help='use multi-step redshift model')
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
-parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
+parser.add_argument('--batch_size','-b', default=4,          type=int,  help='training batch size')
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
 parser.add_argument('--save_prefix','-n', default='',         type=str,  help='model name prefix')
 parser.add_argument('--vel_coeff', '-c', default=0,          type=int, help='use timestep coefficient on velocity')
@@ -31,13 +31,14 @@ start_time = time.time()
 # nbody data params
 num_particles = pargs['particles']
 zX, zY = pargs['redshifts']
-#nbody_params = (num_particles, (zX, zY))
+nbody_params = (num_particles, (zX, zY))
+num_rs = len(utils.REDSHIFTS) - 1
 
 # Load data
 X = utils.load_npy_data(num_particles, normalize=True)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
-print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
+#print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
 
 # velocity coefficient
 vel_coeff = None
@@ -53,7 +54,7 @@ use_graph  = model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
 channels   = model_vars['channels']
 num_layers = len(channels) - 1
-print('model_type: {}\nuse_graph: {}\nchannels:{}'.format(model_type, use_graph, channels))
+#print('model_type: {}\nuse_graph: {}\nchannels:{}'.format(model_type, use_graph, channels))
 
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
@@ -71,30 +72,31 @@ paths = utils.make_save_dirs(pargs['model_dir'], model_name)
 model_path, loss_path, cube_path = paths
 
 # save test data
-utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
+#utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 
 
 #=============================================================================
 # initialize graph
 #=============================================================================
 # init network params
-tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params(channels, graph_model=use_graph)
+#tf.set_random_seed(utils.PARAMS_SEED)
+utils.init_params_multi(channels, num_rs, graph_model=use_graph, seed=utils.PARAMS_SEED)
 
 # direct graph
-X_input = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_input')
-X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_truth')
+X_input = tf.placeholder(tf.float32, shape=[None, None, num_particles**3, 6], name='X_input')
+#X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_truth')
 adj_list = K = None
 if use_graph:
-    adj_list = tf.placeholder(tf.int32, shape=[None, 2], name='adj_list')
+    #adj_list = tf.placeholder(tf.int32, shape=[None, 2], name='adj_list')
     boundary_threshold = 0.08
     K = pargs['knn'] # default 14
     print('\n\ngraph model: {} {}\n\n'.format(K, boundary_threshold))
-X_pred = nn.model_fwd(X_input, num_layers, adj_list, K, activation=tf.nn.relu, add=True, vel_coeff=None)
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+loss = nn.multi_model_fwd(X_input, num_layers, num_rs, K, boundary_threshold=boundary_threshold, vel_coeff=None)
 
 # loss and optimizer
-readout = nn.get_readout(X_pred)
-loss    = nn.pbc_loss(readout, X_truth)
+#readout = nn.get_readout(X_pred)
+#loss    = nn.pbc_loss(readout, X_truth)
 train   = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
 
@@ -126,14 +128,14 @@ start_time = time.time()
 for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
-    x_in   = _x_batch[0]
-    x_true = _x_batch[1]
-    fdict = {X_input: x_in, X_truth: x_true}
-    if use_graph:
+    x_in   = _x_batch
+    #x_true = _x_batch[1]
+    fdict = {X_input: x_in}
+    #if use_graph:
         #neighbors = nn.get_kneighbor_alist(x_in, K)
-        neighbors = nn.get_pbc_kneighbors(x_in, K, boundary_threshold)
-        alist = nn.alist_to_indexlist(neighbors)
-        fdict[adj_list] = alist
+        #neighbors = nn.get_pbc_kneighbors(x_in, K, boundary_threshold)
+        #alist = nn.alist_to_indexlist(neighbors)
+        #fdict[adj_list] = alist
 
     if verbose:
         error = sess.run(loss, feed_dict=fdict)
@@ -158,6 +160,7 @@ X_train = None # reduce memory overhead
 #=============================================================================
 # TESTING
 #=============================================================================
+'''
 # data containers
 num_test_samples = X_test.shape[1]
 test_predictions  = np.zeros((X_test.shape[1:-1] + (channels[-1],))).astype(np.float32)
@@ -190,5 +193,5 @@ print('test median: {}'.format(test_median))
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
-
+'''
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use

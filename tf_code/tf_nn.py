@@ -100,16 +100,19 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
 #=============================================================================
 # multi stuff
 #=============================================================================
-def multi_model_fwd(x_in, num_layers, xshape, alist, K,
+def multi_model_fwd(x_in, num_layers, num_rs, K,
                     activation=tf.nn.relu, add=True, vel_coeff=None,
                     boundary_threshold=0.08, validation=False):
     """ assume graph for now
     Args:
         x_in (tensor): (11, mb_size, n_P, 6)
     """
-    num_rs, mb_size, n_P, D = xshape
     assert num_rs > 2
     var_scope = VAR_SCOPE_MULTI.format(0)
+    with tf.Session() as sess:
+        x_pred = x_in[0].eval()
+        neighbors = get_pbc_kneighbors(x_pred, K, boundary_threshold)
+        alist = tf.constant(alist_to_indexlist(neighbors))
     model_out = model_fwd(x_in[0], num_layers, alist, K, var_scope=var_scope)
     readout = get_readout(model_out)
     loss    = pbc_loss(readout, x_in[1])

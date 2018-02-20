@@ -81,6 +81,28 @@ def init_params(channels, graph_model=False, seed=None, var_scope=VAR_SCOPE):
             else: # set
                 init_bias(*ktup, BIAS_TAG.format(idx))
 
+# Multi
+def init_params_multi(channels, num_rs, graph_model=False, var_scope=VAR_SCOPE_MULTI, seed=None):
+    """ Initialize network parameters
+    graph model has extra weight, no bias
+    set model has bias
+    """
+    #kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
+    for j in range(num_rs):
+        tf.set_random_seed(seed)
+        cur_scope = var_scope.format(j)
+        init_params(channels, graph_model=graph_model, var_scope=cur_scope, seed=None)
+        '''
+        with tf.variable_scope(cur_scope):
+            init_params(channels, graph_model=graph_model, var_scope=cur_scope)
+            for idx, ktup in enumerate(kdims):
+                #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+                init_weight(*ktup, WEIGHT_TAG.format(idx))
+                if graph_model: # graph
+                    init_weight(*ktup,  GRAPH_TAG.format(idx))
+                else: # set
+                    init_bias(*ktup, BIAS_TAG.format(idx))
+        '''
 #=============================================================================
 # get layer params
 def get_layer_vars(layer_idx, var_scope=VAR_SCOPE):
@@ -377,6 +399,7 @@ def save_model(model, optimizer, save_name):
     print('Saved model and optimizer at {}'.format(save_name))
 
 def save_test_cube(x, cube_path, rs, prediction=False):
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     if prediction:
         rs_tag = '{}-{}'.format(*rs) # (zX, zY)
         ptag   = 'prediction'
