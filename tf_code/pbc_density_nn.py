@@ -1,6 +1,7 @@
 import numpy as np
 import os, code, sys, time
-from sklearn.neighbors import kneighbors_graph
+from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
+import scipy
 import tensorflow as tf
 import chainer.functions as F
 import tf_utils as utils
@@ -152,7 +153,9 @@ def pbc_radius_neighbors(X, K, boundary_threshold=0.1):
     mb_size, N, D = X.shape
 
     # graph init
-    adjacency_list = np.zeros((mb_size, N, K), dtype=np.int32)
+    #adjacency_list = np.zeros((mb_size, N, K), dtype=np.int32)
+    #csr_holder = None
+    csr_list = []
 
     for b in range(mb_size):
         # get expanded cube
@@ -160,9 +163,15 @@ def pbc_radius_neighbors(X, K, boundary_threshold=0.1):
         padded_cube, idx_map = pad_cube_boundaries(clone, boundary_threshold)
 
         # get neighbors from padded_cube
-        kgraph_idx = get_kneighbors_pcube(padded_cube, idx_map, N, K)
-        adjacency_list[b] = kgraph_idx
-    return adjacency_list
+        rad_graph_csr = get_radneighbors_pcube(padded_cube, idx_map, N, K)
+        csr_list.append(rad_graph_csr)
+        '''
+        if b == 0:
+            csr_holder = rad_graph_csr
+        else:
+            csr_holder = scipy.sparse.vstack((csr_holder, rad_graph_csr))
+        '''
+    return csr_list
 
 
 #=============================================================================
@@ -184,21 +193,26 @@ def get_adjacency_list(X_in, K):
     return adj_list
 
 
+
+
+def csr_to_sparse_tensor(X):
+    coo = X.tocoo()
+    indices = np.mat([coo.row, coo.col]).transpose()
+    return tf.SparseTensor(indices, coo.data, coo.shape)
+
+
 #=============================================================================
 # sample data
 mb_size = 8
 x = X[:mb_size]
 K = 14
+rad = 0.05
 
-threshold = 0.1
+threshold = 0.05
 alist_pbc = pbc_kneighbors(x, K, boundary_threshold=threshold)
-alist_pbc2 = pbc_kneighbors(x, K, boundary_threshold=0.05)
-alist_pbc_0 = pbc_kneighbors(x, K, boundary_threshold=0)
-alist = get_adjacency_list(x, K)
-
-
-total = np.prod(alist.shape)
-larger = np.sum(alist_pbc == alist)
-tigher = np.sum(alist_pbc2 == alist)
-test = np.sum(alist == alist_pbc_0)
+rad_alist = pbc_radius_neighbors(x, rad, boundary_threshold=threshold)
+csr0 = rad_alist[0]
+tf_sparse_tensor = csr_to_sparse_tensor(csr0)
+sess = tf.Session()
+concrete_sparse_tensor = tf_sparse_tensor.eval(session=sess)
 
