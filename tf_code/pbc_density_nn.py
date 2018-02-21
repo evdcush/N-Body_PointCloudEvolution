@@ -14,53 +14,6 @@ n_P = 32
 X_data = np.load('X16_06.npy')
 X = X_data
 
-'''
-FULL CUBE
-@ + + + + + + + + + + + + + + + @
-+\                              +\
-+ \                             + \
-+  \                            +  \
-+   \                           +   \
-+    \                          +    \
-+     @ + + + + + + + + + + + + + + + @
-+     +                         +     +
-+     +                         +     +
-+     +                         +     +
-+     +                         +     +
-+     +                         +     +
-+     +                         +     +
-+     +                         +     +
-+     +                         +     +
-+     +                         +     +
-@ + + + + + + + + + + + + + + + @     +
- \    +                          \    +
-  \   +                           \   +
-   \  +                            \  +
-    \ +                             \ +
-     \+                              \+
-      @ + + + + + + + + + + + + + + + @
-
-Notes:
-3*4 edge cubes
-2*4 corner mini-cubes
-6   face cubes
-
-'''
-
-
-"""
-Boundary threshold represents the absolute distance from a boundary
-to be considered for possible bounding to another part of the cube.
-
-Cube coordinates are rescaled to the [0, 1] interval. So a threshold of
-0.1 means that if a particles is within [0, .1] or [.9, 1] along any coordinate
-axis (X,Y,Z), then it is possible that it may be bounded to another part of the
-cube.
-
-e.g.: with threshold 0.1, and particle p has coord (0.4437, 0.9247, 0.2231)
-than it may be bounded to another part of the cube in the next redshift,
-like (0.4437, 0.0103, 0.2231)
-"""
 #=============================================================================
 # boundary utils
 #=============================================================================
@@ -166,6 +119,50 @@ def pbc_kneighbors(X, K, boundary_threshold=0.1):
         adjacency_list[b] = kgraph_idx
     return adjacency_list
 
+#=============================================================================
+# DENSITY
+#=============================================================================
+#=============================================================================
+def get_radneighbors_pcube(x, idx_map, N, K):
+    """ get kneighbor graph from padded cube
+    x is padded cube of shape (M, 3),
+    where M == (N + number of added boundary particles)
+    Args:
+        x (ndarray): padded cube, of shape (M, 3)
+        idx_map (ndarray): shape (M-N,) indices
+        N: number of particles in original cube
+        K: radius
+    """
+    #kgraph = kneighbors_graph(x, K, include_self=True)[:N].indices
+    rad_graph = radius_neighbors_graph(x, K, include_self=True)[:N] # keep csr
+    rad_graph_outer = rad_graph.indices >= N
+    for k_idx, is_outer in enumerate(rad_graph_outer):
+        if is_outer:
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+            outer_idx = rad_graph.indices[k_idx]
+            rad_graph.indices[k_idx] = idx_map[outer_idx - N]
+    return rad_graph[:,:N]
+
+def pbc_radius_neighbors(X, K, boundary_threshold=0.1):
+    """
+    """
+    # get boundary range
+    lower = boundary_threshold
+    upper = 1 - boundary_threshold
+    mb_size, N, D = X.shape
+
+    # graph init
+    adjacency_list = np.zeros((mb_size, N, K), dtype=np.int32)
+
+    for b in range(mb_size):
+        # get expanded cube
+        clone = np.copy(X[b,:,:3])
+        padded_cube, idx_map = pad_cube_boundaries(clone, boundary_threshold)
+
+        # get neighbors from padded_cube
+        kgraph_idx = get_kneighbors_pcube(padded_cube, idx_map, N, K)
+        adjacency_list[b] = kgraph_idx
+    return adjacency_list
 
 
 #=============================================================================
