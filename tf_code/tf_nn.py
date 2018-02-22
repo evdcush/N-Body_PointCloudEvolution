@@ -111,6 +111,19 @@ def multi_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, ve
     if vel_coeff is not None:
         h_out += vel_coeff * x_in[...,3:]
     return h_out
+
+def multi_model_fwd(x_in, var_scopes, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=None):
+    """
+    Args:
+        x_in: (11, mb_size, ...) full rs data
+    """
+    h = get_readout_vel(model_fwd(x_in[0], num_layers, var_scopes[0], *args))
+    loss = pbc_loss_vel(h, x_in[1])
+    for idx, vscope in enumerate(var_scopes[1:]):
+        h = get_readout_vel(model_fwd(h, num_layers, vscope, *args))
+        loss += pbc_loss_vel(h, x_in[idx+1])
+    return h, loss
+
 '''
 def multi_model_fwd(x_in, num_layers, num_rs, K,
                     activation=tf.nn.relu, add=True, vel_coeff=None,
@@ -306,4 +319,18 @@ def periodic_boundary_dist(readout_full, x_truth):
 def pbc_loss(readout, x_truth):
     pbc_dist = periodic_boundary_dist(readout, x_truth)
     pbc_error = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1), name='loss')
+    return pbc_error
+
+def pbc_loss_vel(readout, x_truth):
+    # split coo vel vectors
+    readout_coo, readout_vel = tf.split(readout, [3], axis=-1)
+    x_truth_coo, x_truth_vel = tf.split(x_truth, [3], axis=-1)
+    # get coo diff
+    pbc_coo_dist = periodic_boundary_dist(readout_coo, x_truth_coo)
+    coo_mse = tf.reduce_mean(tf.reduce_sum(pbc_coo_dist, axis=-1))
+    # get vel diff
+    vel_sqr_diff = tf.squared_difference(readout_vel, x_truth_vel)
+    vel_mse = tf.reduce_mean(tf.reduce_sum(vel_sqr_diff, axis=-1))
+    # sum errors
+    pbc_error = coo_mse + vel_mse
     return pbc_error
