@@ -90,6 +90,7 @@ It would not be necessary to have all these placeholders if you were able to
 use tf ops for neighbor search instead of sklearn
 '''
 # direct graph
+'''
 X60 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X60')
 X40 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X40')
 X20 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X20')
@@ -102,20 +103,11 @@ X04 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X04')
 X02 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X02')
 X00 = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X00')
 '''
-X_input = tf.placeholder(tf.float32, shape=[num_rs, None, num_particles**3, 6], name='X_input')
-X60 = X_input[0]
-X40 = X_input[1]
-X20 = X_input[2]
-X15 = X_input[3]
-X12 = X_input[4]
-X10 = X_input[5]
-X08 = X_input[6]
-X06 = X_input[7]
-X04 = X_input[8]
-X02 = X_input[9]
-X00 = X_input[10]
-'''
+var_tags = ['X{}'.format(t) for t in utils.RS_TAGS.values()]
+data_shape = (None, num_particles**3, 6)
+true_inputs = [tf.placeholder(tf.float32, shape=data_shape, name=var_tags[t]) for t in var_tags]
 
+'''
 X60_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X60_alist')
 X40_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X40_alist')
 X20_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X20_alist')
@@ -126,7 +118,12 @@ X08_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X08_alist')
 X06_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X06_alist')
 X04_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X04_alist')
 X02_alist = tf.placeholder(tf.int32, shape=[None, 2], name='X02_alist')
+'''
+alist_shape = (None, 2)
+alist_inputs = [tf.placeholder(tf.int32, shape=alist_shape, name='{}_alist'.format(var_tags[t])) for t in var_tags[:-1]]
+
 K = 14
+''' # original
 X40_hat = nn.get_readout_vel(nn.model_fwd(X60,     num_layers, X60_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(0)))
 X20_hat = nn.get_readout_vel(nn.model_fwd(X40_hat, num_layers, X40_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(1)))
 X15_hat = nn.get_readout_vel(nn.model_fwd(X20_hat, num_layers, X20_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(2)))
@@ -137,6 +134,27 @@ X06_hat = nn.get_readout_vel(nn.model_fwd(X08_hat, num_layers, X08_alist, K, var
 X04_hat = nn.get_readout_vel(nn.model_fwd(X06_hat, num_layers, X06_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(7)))
 X02_hat = nn.get_readout_vel(nn.model_fwd(X04_hat, num_layers, X04_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(8)))
 X00_hat = nn.get_readout_vel(nn.model_fwd(X02_hat, num_layers, X02_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(9)))
+'''
+
+xhat_inputs = [tf.placeholder(tf.float32, shape=data_shape, name='{}_hat'.format(var_tags[t])) for t in var_tags[1:]]
+def rs_fwd(hat_in, num_layers, K):
+    readouts = []
+    for idx, xhat in enumerate(xhat_inputs):
+        return False
+
+
+X40_hat_out = nn.get_readout_vel(nn.model_fwd(true_inputs[0], num_layers, alist_inputs[0], K, var_scope=utils.VAR_SCOPE_MULTI.format(0)))
+X20_hat_out = nn.get_readout_vel(nn.model_fwd(X40_hat, num_layers, X40_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(1)))
+X15_hat_out = nn.get_readout_vel(nn.model_fwd(X20_hat, num_layers, X20_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(2)))
+X12_hat_out = nn.get_readout_vel(nn.model_fwd(X15_hat, num_layers, X15_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(3)))
+X10_hat_out = nn.get_readout_vel(nn.model_fwd(X12_hat, num_layers, X12_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(4)))
+X08_hat_out = nn.get_readout_vel(nn.model_fwd(X10_hat, num_layers, X10_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(5)))
+X06_hat_out = nn.get_readout_vel(nn.model_fwd(X08_hat, num_layers, X08_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(6)))
+X04_hat_out = nn.get_readout_vel(nn.model_fwd(X06_hat, num_layers, X06_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(7)))
+X02_hat_out = nn.get_readout_vel(nn.model_fwd(X04_hat, num_layers, X04_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(8)))
+X00_hat_out = nn.get_readout_vel(nn.model_fwd(X02_hat, num_layers, X02_alist, K, var_scope=utils.VAR_SCOPE_MULTI.format(9)))
+
+
 
 
 # losses
