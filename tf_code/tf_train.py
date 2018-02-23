@@ -87,10 +87,11 @@ X_truth = tf.placeholder(tf.float32, shape=[None, num_particles**3, 6], name='X_
 adj_list = K = None
 if use_graph:
     adj_list = tf.placeholder(tf.int32, shape=[None, 2], name='adj_list')
-    boundary_threshold = 0.08
+    boundary_threshold = 0.05
     K = pargs['knn'] # default 14
     print('\n\ngraph model: {} {}\n\n'.format(K, boundary_threshold))
 X_pred = nn.model_fwd(X_input, num_layers, adj_list, K, activation=tf.nn.relu, add=True, vel_coeff=None)
+#def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=None, var_scope=VAR_SCOPE)
 
 # loss and optimizer
 readout = nn.get_readout(X_pred)
