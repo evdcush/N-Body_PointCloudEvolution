@@ -84,7 +84,7 @@ model_path, loss_path, cube_path = paths
 #tf.set_random_seed(utils.PARAMS_SEED)
 utils.init_params_multi(channels, num_rs_layers, graph_model=use_graph, seed=utils.PARAMS_SEED)
 var_scopes = [utils.VAR_SCOPE_MULTI.format(j) for j in range(num_rs_layers)]
-code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 '''
 It would not be necessary to have all these placeholders if you were able to
 use tf ops for neighbor search instead of sklearn
@@ -102,7 +102,7 @@ alist_shape = (None, 2)
 adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 
 # OUTPUT
-X_pred, loss = nn.multi_model_fwd(X_input, var_scopes, num_layers, adj_list)
+X_pred, loss = nn.multi_model_fwd(X_input, var_scopes, num_layers, adj_list, K)
 
 # loss and optimizer
 train = tf.train.AdamOptimizer(learning_rate).minimize(loss)
@@ -126,7 +126,7 @@ sess.run(tf.global_variables_initializer())
 train_loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
-checkpoint = 500
+checkpoint = 100
 save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
 
 #=============================================================================
@@ -137,7 +137,7 @@ for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in = _x_batch
-    alist = nn.get_pbc_kneighbors(x_in[0], K, threshold)
+    alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
     fdict = {X_input: x_in, adj_list: alist}
 
     if verbose:

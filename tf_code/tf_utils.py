@@ -76,7 +76,7 @@ def init_params(channels, graph_model=False, seed=None, var_scope=VAR_SCOPE):
         for idx, ktup in enumerate(kdims):
             #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
             init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed)
-            code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
             if graph_model: # graph
                 init_weight(*ktup,  GRAPH_TAG.format(idx), seed=seed)
             else: # set
