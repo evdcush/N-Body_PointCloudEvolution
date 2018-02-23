@@ -59,7 +59,7 @@ num_layers = len(channels) - 1
 
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
-K = 30
+K = 14
 threshold = 0.05
 
 #=============================================================================
@@ -84,25 +84,25 @@ model_path, loss_path, cube_path = paths
 #tf.set_random_seed(utils.PARAMS_SEED)
 utils.init_params_multi(channels, num_rs_layers, graph_model=use_graph, seed=utils.PARAMS_SEED)
 var_scopes = [utils.VAR_SCOPE_MULTI.format(j) for j in range(num_rs_layers)]
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-'''
-It would not be necessary to have all these placeholders if you were able to
-use tf ops for neighbor search instead of sklearn
-'''
-# direct graph
+
 
 # INPUTS
 #var_tags = ['X{}'.format(t) for t in utils.RS_TAGS.values()]
 data_shape = (11, None, num_particles**3, 6)
-#true_inputs = [tf.placeholder(tf.float32, shape=data_shape, name=var_tags[t]) for t in var_tags]
 X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
 
 # ADJACENCY LIST
-alist_shape = (None, 2)
-adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
+#alist_shape = (None, 2) # output shape
+#alist_shape = (None, num_particles**3, 6)
+#adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
+#adj_list = tf.placeholder(tf.float32, shape=alist_shape, name='adj_list')
+#alist_inp = tf.placeholder(tf.float32)
+def alist_func(h_in): # for tf.py_func
+    return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
 
-# OUTPUT
-X_pred, loss = nn.multi_model_fwd(X_input, var_scopes, num_layers, adj_list, K)
+#alist_fn = tf.py_func(alist_func, [adj_list], tf.int32)
+
+X_pred, loss = nn.multi_func_model_fwd(X_input, var_scopes, num_layers, alist_func, K)
 
 # loss and optimizer
 train = tf.train.AdamOptimizer(learning_rate).minimize(loss)
@@ -137,8 +137,9 @@ for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in = _x_batch
-    alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
-    fdict = {X_input: x_in, adj_list: alist}
+    #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
+    #fdict = {X_input: x_in, adj_list: alist}
+    fdict = {X_input: x_in}
 
     if verbose:
         error = sess.run(loss, feed_dict=fdict)

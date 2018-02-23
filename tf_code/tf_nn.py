@@ -126,16 +126,20 @@ def multi_model_fwd(x_in, var_scopes, num_layers, *args, activation=tf.nn.relu, 
         loss += pbc_loss(h, x_in[idx+1])
     return h, loss
 
-def multi_ufunc_model_fwd(x_in, var_scopes, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=None):
+
+def multi_func_model_fwd(x_in, var_scopes, num_layers, alist_fn, K, activation=tf.nn.relu, add=True, vel_coeff=None):
     """
     Args:
         x_in: (11, mb_size, ...) full rs data
     """
-    alist, K = args
-    h = get_readout_vel(model_fwd(x_in[0], num_layers, *args, var_scope=var_scopes[0]))
+    #alist = alist_fn(x_in[0])
+    alist = tf.py_func(alist_fn, [x_in[0]], tf.int32)
+    h = get_readout_vel(model_fwd(x_in[0], num_layers, alist, K, var_scope=var_scopes[0]))
     loss = pbc_loss(h, x_in[1])
     for idx, vscope in enumerate(var_scopes[1:]):
-        h = get_readout_vel(model_fwd(h, num_layers, *args, var_scope=vscope))
+        #alist = alist_fn(h)
+        alist = tf.py_func(alist_fn, [h], tf.int32)
+        h = get_readout_vel(model_fwd(h, num_layers, alist, K, var_scope=vscope))
         loss += pbc_loss(h, x_in[idx+1])
     return h, loss
 
@@ -337,6 +341,8 @@ def pbc_loss(readout, x_truth):
     return pbc_error
 
 def pbc_loss_vel(readout, x_truth):
+    ''' Do not use this for multi! velocity predictions will improve over time
+    '''
     # split coo vel vectors
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     readout_coo = readout[...,:3]
