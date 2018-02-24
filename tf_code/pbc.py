@@ -10,10 +10,10 @@ import tf_utils as utils
 # load data
 #=============================================================================
 n_P = 32
-X_data = utils.load_datum(n_P, 0.6, normalize_data=True)
+#X_data = utils.load_datum(n_P, 0.4, normalize_data=True)
 #X_data = np.load('X16_06.npy')
 K = 30
-x = X_data[:8]
+#x = X_data[:8]
 
 
 
@@ -283,18 +283,23 @@ alist_pbc1   = KNN(np.copy(x), K, n_P).adjacency_list
 assert np.all(alist_nopbc == alist_pbc2) and np.all(alist_pbc1 == alist_pbc2)# this should cause assertion error
 '''
 
+#X_data = np.random.rand(500, 32**3, 3).astype(np.float32)
+X_coo = np.random.rand(500, 32**3, 3).astype(np.float32)
+X_vel = np.random.randn(500, 32**3, 3).astype(np.float32)
+X_data = np.concatenate((X_coo, X_vel), axis=-1)
+X_coo = X_vel = None
+
 
 mb_size = 5
 for i in range(40):
     x = X_data[i*mb_size : (i+1)*mb_size]
-    alist_nopbc = get_adjacency_list(np.copy(x))
-    alist_pbc2  = KNN_v2(np.copy(x), K, n_P, shell_fraction=0.3).adjacency_list_periodic_bc # Daniele's improved pbc knn search
-    alist_pbc1  = KNN(np.copy(x), K, n_P).adjacency_list # Daniele's original pbc knn search
+    alist_nopbc = get_adjacency_list(x)#(np.copy(x))
+    #alist_pbc2  = KNN_v2(np.copy(x), K, n_P, shell_fraction=0.3).adjacency_list_periodic_bc # improved pbc knn search
+    alist_pbc2  = KNN_v2(x, K, n_P, shell_fraction=0.3).adjacency_list_periodic_bc # improved pbc knn search
+    #alist_pbc1  = KNN(np.copy(x), K, n_P).adjacency_list # original pbc knn search
+    alist_pbc1  = KNN(x, K, n_P).adjacency_list # original pbc knn search
     all_alist_same = np.all(alist_nopbc == alist_pbc2) and np.all(alist_pbc1 == alist_pbc2)
     print('{}: {}'.format(i, all_alist_same))
     assert all_alist_same # this should cause assertion error
 
-'''
-Well, the periodic boundary conditions not changing anything.
 
-'''
