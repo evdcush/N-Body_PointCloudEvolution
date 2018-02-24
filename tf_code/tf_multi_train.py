@@ -53,14 +53,15 @@ if pargs['vel_coeff']:
 model_type = pargs['model_type'] # 0: set, 1: graph
 use_graph  = model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
-channels   = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 6]#model_vars['channels']
+#channels   = [6, 8, 16, 32, 128, 32, 16, 8, 16, 32, 16, 8, 6]#model_vars['channels']
+channels   = [6, 16, 32, 64, 32, 64, 32, 16, 6]#model_vars['channels']
 num_layers = len(channels) - 1
 #print('model_type: {}\nuse_graph: {}\nchannels:{}'.format(model_type, use_graph, channels))
 
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
 K = 32
-threshold = 0.05
+threshold = 0.08
 
 #=============================================================================
 # Session save parameters
@@ -81,8 +82,13 @@ model_path, loss_path, cube_path = paths
 # initialize graph
 #=============================================================================
 # init network params
-#tf.set_random_seed(utils.PARAMS_SEED)
+tf.set_random_seed(utils.PARAMS_SEED)
 utils.init_params_multi(channels, num_rs_layers, graph_model=use_graph, seed=utils.PARAMS_SEED)
+# restore
+'''
+with tf.Session() as sess:
+    restore_model = tf.train.import_meta_graph('./Model/Multi_G_32_06-00_')
+'''
 var_scopes = [utils.VAR_SCOPE_MULTI.format(j) for j in range(num_rs_layers)]
 
 
@@ -151,8 +157,8 @@ for step in range(num_iters):
     if save_checkpoint(step):
         error = sess.run(loss, feed_dict=fdict)
         print('checkpoint {:>5}: {}'.format(step, error))
-        wr_meta = step == checkpoint # only write on first checkpoint
-        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=wr_meta)
+        #wr_meta = step == checkpoint # only write on first checkpoint
+        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
 print('elapsed time: {}'.format(time.time() - start_time))
 
