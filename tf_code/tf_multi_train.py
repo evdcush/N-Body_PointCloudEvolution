@@ -55,7 +55,8 @@ if pargs['vel_coeff']:
 model_type = pargs['model_type'] # 0: set, 1: graph
 use_graph  = model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
-channels   = [6, 8, 16, 32, 128, 32, 16, 8, 16, 32, 16, 8, 6]#model_vars['channels']
+channels = model_vars['channels']
+channels[-1] = 6
 #channels   = [6, 16, 32, 64, 32, 64, 32, 16, 6]#model_vars['channels']
 num_layers = len(channels) - 1
 #print('model_type: {}\nuse_graph: {}\nchannels:{}'.format(model_type, use_graph, channels))
@@ -109,11 +110,12 @@ def alist_func(h_in): # for tf.py_func
     return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
 
 #alist_fn = tf.py_func(alist_func, [adj_list], tf.int32)
-X_pred, loss = nn.multi_model_fwd(X_input, var_scopes, num_layers, adj_list, K)
+X_pred, loss = nn.multi_model_vel_fwd(X_input, var_scopes, num_layers, adj_list, K)
 #X_pred, loss = nn.multi_func_model_fwd(X_input, var_scopes, num_layers, alist_func, K)
 
 # loss and optimizer
 train = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+est_error = nn.pbc_loss(X_pred, X_input[-1]) # this just for evaluation
 
 
 #=============================================================================
@@ -141,6 +143,7 @@ save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
 # TRAINING
 #=============================================================================
 start_time = time.time()
+np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
@@ -188,7 +191,8 @@ for j in range(X_test.shape[1]):
     fdict = {X_input: x_in, adj_list: alist}
 
     # validation error
-    error = sess.run(loss, feed_dict=fdict)
+    #error = sess.run(loss, feed_dict=fdict)
+    error = sess.run(est_error, feed_dict=fdict)
     test_loss_history[j] = error
     print('{}: {:.6f}'.format(j, error))
 
