@@ -232,7 +232,7 @@ def normalize_rescale_vel(X_in, scale_range=(0,1)):
     #vel_mean = np.mean(vel, axis=0)
     #vel_std  = np.std( vel, axis=0)
     #x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
-    a,b = (-.5, .5)
+    a,b = (0, 1)
     vel_max = np.max(np.max(vel, axis=0), axis=0)
     vel_min = np.min(np.min(vel, axis=0), axis=0)
     x_r[:,3:] = (b-a) * (x_r[:,3:] - vel_min) / (vel_max - vel_min) + a

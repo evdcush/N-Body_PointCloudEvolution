@@ -36,7 +36,9 @@ num_rs = len(utils.REDSHIFTS)
 num_rs_layers = num_rs - 1
 
 # Load data
-X = utils.load_npy_data(num_particles, normalize=True)
+X = utils.load_npy_data(num_particles, )#normalize=True)
+for rs in range(X.shape[0]):
+    X[rs] = utils.normalize_rescale_vel(X[rs])
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 #print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
@@ -53,8 +55,8 @@ if pargs['vel_coeff']:
 model_type = pargs['model_type'] # 0: set, 1: graph
 use_graph  = model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
-#channels   = [6, 8, 16, 32, 128, 32, 16, 8, 16, 32, 16, 8, 6]#model_vars['channels']
-channels   = [6, 16, 32, 64, 32, 64, 32, 16, 6]#model_vars['channels']
+channels   = [6, 8, 16, 32, 128, 32, 16, 8, 16, 32, 16, 8, 6]#model_vars['channels']
+#channels   = [6, 16, 32, 64, 32, 64, 32, 16, 6]#model_vars['channels']
 num_layers = len(channels) - 1
 #print('model_type: {}\nuse_graph: {}\nchannels:{}'.format(model_type, use_graph, channels))
 

@@ -35,10 +35,9 @@ nbody_params = (num_particles, (zX, zY))
 
 # Load data
 #X = utils.load_npy_data(*nbody_params, normalize=True)
-X = utils.load_npy_data(*nbody_params, normalize=False)
-for rs in range(X.shape[0]):
-    X[rs] = utils.normalize_rescale_vel(X[rs])
-assert np.min(X[...,3:]) >= -0.5 and np.max(X[...,3:]) <= 0.5
+X = utils.load_npy_data(*nbody_params, normalize=True)
+#for rs in range(X.shape[0]): X[rs] = utils.normalize_rescale_vel(X[rs])
+#assert np.min(X[...,3:]) >= -0.5 and np.max(X[...,3:]) <= 0.5
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
@@ -56,6 +55,7 @@ model_type = pargs['model_type'] # 0: set, 1: graph
 use_graph  = model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
 channels   = model_vars['channels']
+channels[-1] = 6
 num_layers = len(channels) - 1
 print('model_type: {}\nuse_graph: {}\nchannels:{}'.format(model_type, use_graph, channels))
 
@@ -95,12 +95,14 @@ if use_graph:
     K = pargs['knn'] # default 14
     print('\n\ngraph model: {} {}\n\n'.format(K, boundary_threshold))
 X_pred = nn.model_fwd(X_input, num_layers, adj_list, K, activation=tf.nn.relu, add=True, vel_coeff=None)
-#def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=None, var_scope=VAR_SCOPE)
 
 # loss and optimizer
-readout = nn.get_readout(X_pred)
-loss    = nn.pbc_loss(readout, X_truth)
+readout = nn.get_readout_vel(X_pred)
+loss    = nn.pbc_loss_vel(readout, X_truth)
+#loss    = nn.pbc_loss(readout, X_truth)
 train   = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+truth_error = nn.pbc_loss(X_input, X_truth) # sanity check
+est_error = nn.pbc_loss(readout, X_truth) # this just for evaluation
 
 
 #=============================================================================
@@ -142,8 +144,10 @@ for step in range(num_iters):
 
     if verbose:
         error = sess.run(loss, feed_dict=fdict)
+        #error = sess.run(est_error, feed_dict=fdict)
+        #terror = sess.run(truth_error, feed_dict=fdict)
         train_loss_history[step] = error
-        print('{}: {:.8f}'.format(step, error))
+        print('{}: input - truth = {:.8f}, pred-truth = {:.8f}'.format(step, terror, error))
 
     # cycle through graph
     train.run(feed_dict=fdict)
@@ -180,7 +184,8 @@ for j in range(X_test.shape[1]):
         fdict[adj_list] = alist
 
     # validation error
-    error = sess.run(loss, feed_dict=fdict)
+    #error = sess.run(loss, feed_dict=fdict)
+    error = sess.run(est_error, feed_dict=fdict)
     test_loss_history[j] = error
     print('{}: {:.6f}'.format(j, error))
 
