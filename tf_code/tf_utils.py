@@ -93,18 +93,7 @@ def init_params_multi(channels, num_rs, graph_model=False, var_scope=VAR_SCOPE_M
         tf.set_random_seed(seed)
         cur_scope = var_scope.format(j)
         init_params(channels, graph_model=graph_model, var_scope=cur_scope, seed=None)
-        #print('init_params: {}'.format(cur_scope))
-        '''
-        with tf.variable_scope(cur_scope):
-            init_params(channels, graph_model=graph_model, var_scope=cur_scope)
-            for idx, ktup in enumerate(kdims):
-                #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-                init_weight(*ktup, WEIGHT_TAG.format(idx))
-                if graph_model: # graph
-                    init_weight(*ktup,  GRAPH_TAG.format(idx))
-                else: # set
-                    init_bias(*ktup, BIAS_TAG.format(idx))
-        '''
+
 #=============================================================================
 # get layer params
 def get_layer_vars(layer_idx, var_scope=VAR_SCOPE):

@@ -34,7 +34,11 @@ zX, zY = pargs['redshifts']
 nbody_params = (num_particles, (zX, zY))
 
 # Load data
-X = utils.load_npy_data(*nbody_params, normalize=True)
+#X = utils.load_npy_data(*nbody_params, normalize=True)
+X = utils.load_npy_data(*nbody_params, normalize=False)
+for rs in range(X.shape[0]):
+    X[rs] = utils.normalize_rescale_vel(X[rs])
+assert np.min(X[...,3:]) >= -0.5 and np.max(X[...,3:]) <= 0.5
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
