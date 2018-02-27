@@ -223,6 +223,34 @@ def normalize(X_in, scale_range=(0,1)):
     X_out = np.reshape(x_r,X_in.shape).astype(np.float32) # just convert to float32 here
     return X_out
 
+def normalize_rescale_vel(X_in, scale_range=(0,1)):
+    """ Normalize data features
+    coordinates are rescaled to be in range [0,1]
+    velocities are normalized to zero mean and unit variance
+
+    Args:
+        X_in (ndarray): data to be normalized, of shape (N, D, 6)
+        scale_range   : range to which coordinate data is rescaled
+    """
+    x_r = np.reshape(X_in, [-1,6])
+    coo, vel = np.split(x_r, [3], axis=-1)
+
+    coo_min = np.min(coo, axis=0)
+    coo_max = np.max(coo, axis=0)
+    a,b = scale_range
+    x_r[:,:3] = (b-a) * (x_r[:,:3] - coo_min) / (coo_max - coo_min) + a
+
+    #vel_mean = np.mean(vel, axis=0)
+    #vel_std  = np.std( vel, axis=0)
+    #x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
+    a,b = (-.5, .5)
+    vel_max = np.max(np.max(vel, axis=0), axis=0)
+    vel_min = np.min(np.min(vel, axis=0), axis=0)
+    x_r[:,3:] = (b-a) * (x_r[:,3:] - vel_min) / (vel_max - vel_min) + a
+
+    X_out = np.reshape(x_r,X_in.shape).astype(np.float32) # just convert to float32 here
+    return X_out
+
 def normalize_fullrs(X, scale_range=(0,1)):
     """ Normalize data features, for full data array of redshifts
     coordinates are rescaled to be in range [0,1]
