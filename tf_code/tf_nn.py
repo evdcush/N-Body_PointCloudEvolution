@@ -341,6 +341,11 @@ def pbc_loss(readout, x_truth):
     return pbc_error
 
 def pbc_loss_vel(readout, x_truth):
+    pbc_dist = periodic_boundary_dist(readout, x_truth)
+    pbc_error = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1), name='loss')
+    return pbc_error
+
+def _pbc_loss_vel(readout, x_truth):
     ''' Do not use this for multi! velocity predictions will improve over time
     '''
     # split coo vel vectors
