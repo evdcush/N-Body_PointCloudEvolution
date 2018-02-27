@@ -319,6 +319,9 @@ def get_readout(h_out):
     return readout
 
 def get_readout_vel(h_out):
+    """ For when the network also predicts velocity
+    velocities remain unchanged
+    """
     h_out_coo = h_out[...,:3]
     h_out_vel = h_out[...,3:]
     gt_one  = (tf.sign(h_out_coo - 1) + 1) / 2
@@ -329,37 +332,50 @@ def get_readout_vel(h_out):
     return readout
 
 def periodic_boundary_dist(readout_full, x_truth):
+    """ minimum distances between particles given periodic boundary conditions
+    Normal squared distance would penalize for large difference between particles
+    on opposite sides of cube
+    """
     readout = readout_full[...,:3]
     x_truth_coo = x_truth[...,:3]
-    dist = tf.minimum(tf.square(readout - x_truth_coo), tf.square(readout - (1 + x_truth_coo)))
-    dist = tf.minimum(dist, tf.square((1 + readout) - x_truth_coo))
+    d1 = tf.squared_difference(readout, x_truth_coo)
+    d2 = tf.squared_difference(readout, (1 + x_truth_coo))
+    d3 = tf.squared_difference((1 + readout),  x_truth_coo)
+    dist = tf.minimum(tf.minimum(d1, d2), d3)
+    #dist = tf.minimum(tf.square(readout - x_truth_coo), tf.square(readout - (1 + x_truth_coo)))
+    #dist = tf.minimum(dist, tf.square((1 + readout) - x_truth_coo))
+    return dist
+
+def periodic_boundary_dist_vel(readout, x_truth):
+    """ minimum distances between particles given periodic boundary conditions
+    Normal squared distance would penalize for large difference between particles
+    on opposite sides of cube
+    """
+    # pbc coo dist
+    dist_coo = periodic_boundary_dist(readout[...,:3], x_truth[...,:3]) # (mb_size, N, 3)
+    # dist vel
+    dist_vel = tf.squared_difference(readout[...,3:], x_truth[...,3:])
+    # combined dist
+    dist = tf.concat([dist_coo, dist_vel], -1)
     return dist
 
 def pbc_loss(readout, x_truth):
-    pbc_dist = periodic_boundary_dist(readout, x_truth)
+    """ MSE (coo only) with periodic boundary conditions
+    Args:
+        readout (tensor): model prediction which has been remapped to inner cube
+        x_truth (tensor): ground truth (mb_size, N, 6)
+    """
+    pbc_dist = periodic_boundary_dist(readout, x_truth) # (mb_size, N, 3)
     pbc_error = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1), name='loss')
     return pbc_error
+
 
 def pbc_loss_vel(readout, x_truth):
-    pbc_dist = periodic_boundary_dist(readout, x_truth)
+    """ MSE over full dims with periodic boundary conditions
+    Args:
+        readout (tensor): model prediction which has been remapped to inner cube
+        x_truth (tensor): ground truth (mb_size, N, 6)
+    """
+    pbc_dist  = periodic_boundary_dist_vel(readout, x_truth)
     pbc_error = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1), name='loss')
-    return pbc_error
-
-def _pbc_loss_vel(readout, x_truth):
-    ''' Do not use this for multi! velocity predictions will improve over time
-    '''
-    # split coo vel vectors
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    readout_coo = readout[...,:3]
-    readout_vel = readout[...,3:]
-    x_truth_coo = x_truth[...,:3]
-    x_truth_vel = x_truth[...,3:]
-    # get coo diff
-    pbc_coo_dist = periodic_boundary_dist(readout_coo, x_truth_coo)
-    coo_mse = tf.reduce_mean(tf.reduce_sum(pbc_coo_dist, axis=-1))
-    # get vel diff
-    vel_sqr_diff = tf.squared_difference(readout_vel, x_truth_vel)
-    vel_mse = tf.reduce_mean(tf.reduce_sum(vel_sqr_diff, axis=-1))
-    # sum errors
-    pbc_error = coo_mse + vel_mse
     return pbc_error
