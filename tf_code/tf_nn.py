@@ -65,12 +65,11 @@ def kgraph_select(h, adj, K):
 def kgraph_layer(h, layer_idx, var_scope, alist, K):
     """ layer gets weights and returns linear transformation
     """
-    #W, Wg, B = utils.get_layer_vars_graph(layer_idx)
     W, Wg = utils.get_layer_vars_graph(layer_idx, var_scope=var_scope)
     nn_graph = kgraph_select(h, alist, K)
     h_w = linear(h, W)
     h_g = linear(nn_graph, Wg)
-    h_out = h_w + h_g #+ B
+    h_out = h_w + h_g
     return h_out
 
 #=============================================================================
@@ -90,7 +89,6 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
         if x_in.shape[-1] == h_out.shape[-1]: # when predicting velocity
             h_out += x_in
         else:
-            #x_coo = x_in[...,:3]
             h_out += x_in[...,:3]
     if vel_coeff is not None:
         h_out += vel_coeff * x_in[...,3:]
@@ -100,20 +98,6 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
 #=============================================================================
 # multi stuff
 #=============================================================================
-'''
-def multi_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=None, var_scope=VAR_SCOPE):
-    h_out = network_fwd(x_in, num_layers, var_scope, *args)
-    if add:
-        if x_in.shape[-1] == h_out.shape[-1]: # when predicting velocity
-            h_out += x_in
-        else:
-            #x_coo = x_in[...,:3]
-            h_out += x_in[...,:3]
-    if vel_coeff is not None:
-        h_out += vel_coeff * x_in[...,3:]
-    return h_out
-'''
-
 def multi_model_fwd(x_in, var_scopes, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=None):
     """
     Args:
@@ -143,47 +127,13 @@ def multi_func_model_fwd(x_in, var_scopes, num_layers, alist_fn, K, activation=t
         loss += pbc_loss(h, x_in[idx+1])
     return h, loss
 
-'''
-def multi_model_fwd(x_in, num_layers, num_rs, K,
-                    activation=tf.nn.relu, add=True, vel_coeff=None,
-                    boundary_threshold=0.08, validation=False):
-    """ assume graph for now
-    Notes:
-     - you cannot do the neighbors stuff here, since tf first runs with the place holder
-     stuff, and the pbc_neighbors fun expects true data
-
-    Args:
-        x_in (tensor): (11, mb_size, n_P, 6)
-    """
-    assert num_rs > 2
-    var_scope = VAR_SCOPE_MULTI.format(0)
-    with tf.Session() as sess:
-        x_pred = x_in[0].eval()
-        neighbors = get_pbc_kneighbors(x_pred, K, boundary_threshold)
-        alist = tf.constant(alist_to_indexlist(neighbors))
-    model_out = model_fwd(x_in[0], num_layers, alist, K, var_scope=var_scope)
-    readout = get_readout(model_out)
-    loss    = pbc_loss(readout, x_in[1])
-
-    # forward through rest layers, only receiving previous prediction as input
-    for z in range(1, num_rs - 1):
-        var_scope = utils.VAR_SCOPE_MULTI.format(z)
-        with tf.Session() as sess:
-            x_pred = readout.eval()
-            neighbors = get_pbc_kneighbors(x_pred, K, boundary_threshold)
-            alist = tf.constant(alist_to_indexlist(neighbors))
-        model_out = model_fwd(readout, num_layers, alist, K, var_scope=var_scope)
-        readout = get_readout(model_out)
-        loss += pbc_loss(readout, x_in[z+1])
-    ret = (readout, loss) if validation else loss
-    return ret
-'''
-
 
 #=============================================================================
 # graph ops
 #=============================================================================
 def alist_to_indexlist(alist):
+    """ reshapes adjacency list for tf.gather_nd
+    """
     batch_size, N, K = alist.shape
     id1 = np.reshape(np.arange(batch_size),[batch_size,1])
     id1 = np.tile(id1,N*K).flatten()
@@ -205,9 +155,7 @@ def get_kneighbor_alist(X_in, K=14):
         adj_list[i] = graph_idx
     return adj_list
 
-#=============================================================================
-# periodic boundary condition neighbor graph stuff
-#=============================================================================
+
 #=============================================================================
 # boundary utils
 #=============================================================================
