@@ -408,7 +408,7 @@ def error_scales(x_in):
     OUT: (num_rs,)
     """
     num_rs = x_in.shape[0]
-    scale_weights = np.zeros((num_rs)).astype(np.float32)
+    scale_weights = np.zeros((num_rs-1)).astype(np.float32)
     for i in range(num_rs - 1):
         scale_weights[i] = np_pbc_loss_vel(x_in[i], x_in[i+1])
     return 1 / scale_weights
