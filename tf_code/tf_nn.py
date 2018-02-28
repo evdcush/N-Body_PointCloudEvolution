@@ -119,16 +119,16 @@ def multi_model_fwd(x_in, var_scopes, num_layers, *args, activation=tf.nn.relu, 
         loss += pbc_loss(h, x_in[idx+1])
     return h, loss
 
-def multi_model_vel_fwd(x_in, var_scopes, num_layers, adj_lists, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+def multi_model_vel_fwd(x_in, var_scopes, num_layers, adj_lists, K, scale_weights, activation=tf.nn.relu, add=True, vel_coeff=None):
     """
     Args:
         x_in: (11, mb_size, ...) full rs data
     """
     h = get_readout_vel(model_fwd(x_in[0], num_layers, adj_lists[0], K, var_scope=var_scopes[0]))
-    loss = pbc_loss_vel(h, x_in[1])
+    loss = pbc_loss_vel(h, x_in[1]) * scale_weights[0]
     for idx, vscope in enumerate(var_scopes[1:]):
         h = get_readout_vel(model_fwd(h, num_layers, adj_lists[idx], K, var_scope=vscope))
-        loss += pbc_loss_vel(h, x_in[idx+1])
+        loss += pbc_loss_vel(h, x_in[idx+1]) * scale_weights[idx]
     return h, loss
 
 
@@ -402,3 +402,13 @@ def np_pbc_loss_vel(readout, x_truth):
     pbc_dist  = np_periodic_boundary_dist_vel(readout, x_truth)
     pbc_error = np.mean(np.sum(pbc_dist, axis=-1))
     return pbc_error
+
+def error_scales(x_in):
+    """ x_in shape (num_rs, mb_size, N, 6)
+    OUT: (num_rs,)
+    """
+    num_rs = x_in.shape[0]
+    scale_weights = np.zeros((num_rs)).astype(np.float32)
+    for i in range(num_rs - 1):
+        scale_weights[i] = np_pbc_loss_vel(x_in[i], x_in[i+1])
+    return 1 / scale_weights

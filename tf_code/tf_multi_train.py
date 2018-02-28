@@ -110,11 +110,14 @@ alist_shape = (num_rs_layers, None, 2) # output shape
 adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 #adj_list = [tf.placeholder(tf.int32, shape=alist_shape, name='alist') for i in range(num_rs_layers)]
 
+# loss scaling weights
+scale_weights = tf.placeholder(tf.float32, shape=(num_rs_layers,), name='scale_weights')
+
 def alist_func(h_in): # for tf.py_func
     return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
 
 #alist_fn = tf.py_func(alist_func, [adj_list], tf.int32)
-X_pred, loss = nn.multi_model_vel_fwd(X_input, var_scopes, num_layers, adj_list, K)
+X_pred, loss = nn.multi_model_vel_fwd(X_input, var_scopes, num_layers, adj_list, K, scale_weights)
 X_pred_val, loss_val = nn.multi_func_model_vel_fwd(X_input, var_scopes, num_layers, alist_func, K)
 #X_pred, loss = nn.multi_func_model_fwd(X_input, var_scopes, num_layers, alist_func, K)
 
@@ -153,11 +156,9 @@ for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in = _x_batch
-    #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
+    sweights = nn.error_scales(x_in)
     alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(num_rs_layers)]
-    #alist = np.array(alist)
-    fdict = {X_input: x_in, adj_list: alist}
-    #fdict = {X_input: x_in}
+    fdict = {X_input: x_in, adj_list: alist, scale_weights:sweights}
 
     if verbose:
         error = sess.run(loss, feed_dict=fdict)
