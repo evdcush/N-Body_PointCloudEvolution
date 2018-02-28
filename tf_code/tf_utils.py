@@ -226,13 +226,17 @@ def normalize_rescale_vel(X_in, scale_range=(0,1)):
 
     coo_min = np.min(coo, axis=0)
     coo_max = np.max(coo, axis=0)
-    a,b = scale_range
+    #a,b = scale_range
+    a,b = (0, 1)
     x_r[:,:3] = (b-a) * (x_r[:,:3] - coo_min) / (coo_max - coo_min) + a
 
+    # PREVIOUS velocity normalization
     #vel_mean = np.mean(vel, axis=0)
     #vel_std  = np.std( vel, axis=0)
     #x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
-    a,b = (0, 1)
+
+    # RESCALE velocity to be within scale_range
+    a,b = scale_range
     vel_max = np.max(np.max(vel, axis=0), axis=0)
     vel_min = np.min(np.min(vel, axis=0), axis=0)
     x_r[:,3:] = (b-a) * (x_r[:,3:] - vel_min) / (vel_max - vel_min) + a

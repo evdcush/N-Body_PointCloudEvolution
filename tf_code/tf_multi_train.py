@@ -32,13 +32,19 @@ start_time = time.time()
 num_particles = pargs['particles']
 zX, zY = pargs['redshifts']
 nbody_params = (num_particles, (zX, zY))
-num_rs = len(utils.REDSHIFTS)
-num_rs_layers = num_rs - 1
+#num_rs = len(utils.REDSHIFTS)
+#num_rs_layers = num_rs - 1
 
 # Load data
 X = utils.load_npy_data(num_particles, )#normalize=True)
+redshift_steps = [6.0, 1.5, 1.0, 0.4, 0.0]
+redshift_idx = [utils.REDSHIFTS.index(rs) for rs in redshift_steps]
+num_rs = len(redshift_idx)
+num_rs_layers = num_rs - 1
+
+X = X[redshift_idx]
 for rs in range(X.shape[0]):
-    X[rs] = utils.normalize_rescale_vel(X[rs])
+    X[rs] = utils.normalize_rescale_vel(X[rs], (-.5, .5))
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 #print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
@@ -57,13 +63,12 @@ use_graph  = model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
 channels = model_vars['channels']
 channels[-1] = 6
-#channels   = [6, 16, 32, 64, 32, 64, 32, 16, 6]#model_vars['channels']
 num_layers = len(channels) - 1
 #print('model_type: {}\nuse_graph: {}\nchannels:{}'.format(model_type, use_graph, channels))
 
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
-K = 32
+K = pargs['knn']
 threshold = 0.08
 
 #=============================================================================
@@ -97,25 +102,25 @@ var_scopes = [utils.VAR_SCOPE_MULTI.format(j) for j in range(num_rs_layers)]
 
 # INPUTS
 #var_tags = ['X{}'.format(t) for t in utils.RS_TAGS.values()]
-data_shape = (11, None, num_particles**3, 6)
+data_shape = (num_rs, None, num_particles**3, 6)
 X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
 
 # ADJACENCY LIST
-alist_shape = (None, 2) # output shape
-#alist_shape = (None, num_particles**3, 6)
+alist_shape = (num_rs_layers, None, 2) # output shape
 adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
-#adj_list = tf.placeholder(tf.float32, shape=alist_shape, name='adj_list')
-#alist_inp = tf.placeholder(tf.float32)
+#adj_list = [tf.placeholder(tf.int32, shape=alist_shape, name='alist') for i in range(num_rs_layers)]
+
 def alist_func(h_in): # for tf.py_func
     return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
 
 #alist_fn = tf.py_func(alist_func, [adj_list], tf.int32)
 X_pred, loss = nn.multi_model_vel_fwd(X_input, var_scopes, num_layers, adj_list, K)
+X_pred_val, loss_val = nn.multi_func_model_vel_fwd(X_input, var_scopes, num_layers, alist_func, K)
 #X_pred, loss = nn.multi_func_model_fwd(X_input, var_scopes, num_layers, alist_func, K)
 
 # loss and optimizer
 train = tf.train.AdamOptimizer(learning_rate).minimize(loss)
-est_error = nn.pbc_loss(X_pred, X_input[-1]) # this just for evaluation
+est_error = nn.pbc_loss(X_pred_val, X_input[-1]) # this just for evaluation
 
 
 #=============================================================================
@@ -148,7 +153,9 @@ for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in = _x_batch
-    alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
+    #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
+    alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(num_rs_layers)]
+    #alist = np.array(alist)
     fdict = {X_input: x_in, adj_list: alist}
     #fdict = {X_input: x_in}
 
@@ -187,8 +194,9 @@ for j in range(X_test.shape[1]):
     #x_in   = X_test[0, j:j+1] # (1, n_P, 6)
     #x_true = X_test[1, j:j+1]
     x_in = X_test[:,j:j+1]
-    alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
-    fdict = {X_input: x_in, adj_list: alist}
+    #alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(0, num_rs_layers)]
+    #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
+    fdict = {X_input: x_in, }#adj_list: alist}
 
     # validation error
     #error = sess.run(loss, feed_dict=fdict)
@@ -197,7 +205,7 @@ for j in range(X_test.shape[1]):
     print('{}: {:.6f}'.format(j, error))
 
     # prediction
-    x_pred = sess.run(X_pred, feed_dict=fdict)
+    x_pred = sess.run(X_pred_val, feed_dict=fdict)
     test_predictions[j] = x_pred[0]
 
 # median test error
