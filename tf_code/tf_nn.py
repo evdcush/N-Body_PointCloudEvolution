@@ -85,6 +85,7 @@ def network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
 #=============================================================================
 def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=None, var_scope=VAR_SCOPE):
     h_out = network_fwd(x_in, num_layers, var_scope, *args)
+    '''
     if add:
         if x_in.shape[-1] == h_out.shape[-1]: # when predicting velocity
             h_out += x_in
@@ -92,6 +93,14 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
             h_out += x_in[...,:3]
     if vel_coeff is not None:
         h_out += vel_coeff * x_in[...,3:]
+    '''
+    vel_co = utils.get_vel_coeff(var_scope) # (1,)
+    if add:
+        #x_in_coo = x_in[...,:3]
+        vel_scaled = vel_co * x_in[...,3:] + x_in[...,:3]
+        #x_in_vel = tf.matmul(vel_co, x_in[...,3:])
+        h_init = tf.concat((vel_scaled, x_in[...,3:]), axis=-1)
+        h_out += h_init
     return h_out
 
 
@@ -354,4 +363,42 @@ def pbc_loss_vel(readout, x_truth):
     """
     pbc_dist  = periodic_boundary_dist_vel(readout, x_truth)
     pbc_error = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1), name='loss')
+    return pbc_error
+
+
+
+#=============================================================================
+# NUMPY ERROR, for scaling losses in multi-model
+#=============================================================================
+def np_periodic_boundary_dist(readout_full, x_truth):
+    """ minimum distances between particles given periodic boundary conditions
+    Normal squared distance would penalize for large difference between particles
+    on opposite sides of cube
+    """
+    readout = readout_full[...,:3]
+    x_truth_coo = x_truth[...,:3]
+    d1 = np.square(readout - x_truth_coo)
+    d2 = np.square(readout - (1 + x_truth_coo))
+    d3 = np.square((1 + readout) -  x_truth_coo)
+    dist = np.minimum(np.minimum(d1, d2), d3)
+    return dist
+
+def np_periodic_boundary_dist_vel(readout, x_truth):
+    """ minimum distances between particles given periodic boundary conditions
+    Normal squared distance would penalize for large difference between particles
+    on opposite sides of cube
+    """
+    # pbc coo dist
+    dist_coo = np_periodic_boundary_dist(readout[...,:3], x_truth[...,:3]) # (mb_size, N, 3)
+    # dist vel
+    dist_vel = np.square(readout[...,3:] - x_truth[...,3:])
+    # combined dist
+    dist = np.concatenate([dist_coo, dist_vel], -1)
+    return dist
+
+def np_pbc_loss_vel(readout, x_truth):
+    """ numpy ops for scaling losses in multi
+    """
+    pbc_dist  = np_periodic_boundary_dist_vel(readout, x_truth)
+    pbc_error = np.mean(np.sum(pbc_dist, axis=-1))
     return pbc_error

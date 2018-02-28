@@ -35,8 +35,10 @@ LEARNING_RATE = 0.01
 WEIGHT_TAG = 'W_{}'
 GRAPH_TAG  = 'Wg_{}'
 BIAS_TAG   = 'B_{}'
+VEL_COEFF_TAG = 'V'
 VAR_SCOPE  = 'params'
 VAR_SCOPE_MULTI = 'params_{}'
+
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
@@ -66,7 +68,7 @@ def init_bias(k_in, k_out, name,):
 
 #=============================================================================
 # Wrappers
-def init_params(channels, graph_model=False, seed=None, var_scope=VAR_SCOPE):
+def init_params(channels, graph_model=False, vel_coeff=True, seed=None, var_scope=VAR_SCOPE):
     """ Initialize network parameters
     graph model has extra weight, no bias
     set model has bias
@@ -81,6 +83,8 @@ def init_params(channels, graph_model=False, seed=None, var_scope=VAR_SCOPE):
                 init_weight(*ktup,  GRAPH_TAG.format(idx), seed=seed)
             else: # set
                 init_bias(*ktup, BIAS_TAG.format(idx))
+        if vel_coeff:
+            tf.get_variable(VEL_COEFF_TAG, shape=(1,), dtype=tf.float32, initializer=tf.glorot_normal_initializer())
 
 # Multi
 def init_params_multi(channels, num_rs, graph_model=False, var_scope=VAR_SCOPE_MULTI, seed=None):
@@ -111,6 +115,11 @@ def get_layer_vars_graph(layer_idx, var_scope=VAR_SCOPE):
         W  = tf.get_variable(WEIGHT_TAG.format(layer_idx))
         Wg = tf.get_variable(GRAPH_TAG.format(layer_idx))
     return W, Wg
+
+def get_vel_coeff(var_scope):
+    with tf.variable_scope(var_scope, reuse=True):
+        vel_coeff = tf.get_variable(VEL_COEFF_TAG)
+    return vel_coeff
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><

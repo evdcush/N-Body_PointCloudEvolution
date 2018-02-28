@@ -44,7 +44,7 @@ num_rs_layers = num_rs - 1
 
 X = X[redshift_idx]
 for rs in range(X.shape[0]):
-    X[rs] = utils.normalize_rescale_vel(X[rs], (-.5, .5))
+    X[rs] = utils.normalize_rescale_vel(X[rs], (0, 1))
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 #print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
