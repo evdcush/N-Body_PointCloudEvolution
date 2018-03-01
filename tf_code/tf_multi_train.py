@@ -36,15 +36,14 @@ nbody_params = (num_particles, (zX, zY))
 #num_rs_layers = num_rs - 1
 
 # Load data
-X = utils.load_npy_data(num_particles, )#normalize=True)
+X = utils.load_npy_data(num_particles, normalize=True)
 redshift_steps = [6.0, 1.5, 1.0, 0.4, 0.0]
 redshift_idx = [utils.REDSHIFTS.index(rs) for rs in redshift_steps]
 num_rs = len(redshift_idx)
 num_rs_layers = num_rs - 1
 
 X = X[redshift_idx]
-for rs in range(X.shape[0]):
-    X[rs] = utils.normalize_rescale_vel(X[rs], (0, 1))
+#for rs in range(X.shape[0]): X[rs] = utils.normalize_rescale_vel(X[rs], (0, 1))
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 #print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
@@ -117,8 +116,10 @@ def alist_func(h_in): # for tf.py_func
     return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
 
 #alist_fn = tf.py_func(alist_func, [adj_list], tf.int32)
-X_pred, loss = nn.multi_model_vel_fwd(X_input, var_scopes, num_layers, adj_list, K, scale_weights)
-X_pred_val, loss_val = nn.multi_func_model_vel_fwd(X_input, var_scopes, num_layers, alist_func, K)
+#X_pred, loss = nn.multi_model_vel_fwd(X_input, var_scopes, num_layers, adj_list, K, scale_weights)
+X_pred, loss = nn.multi_model_fwd(X_input, var_scopes, num_layers, adj_list, K, scale_weights)
+X_pred_val, loss_val = nn.multi_func_model_fwd(X_input, var_scopes, num_layers, alist_func, K)
+#X_pred_val, loss_val = nn.multi_func_model_vel_fwd(X_input, var_scopes, num_layers, alist_func, K)
 #X_pred, loss = nn.multi_func_model_fwd(X_input, var_scopes, num_layers, alist_func, K)
 
 # loss and optimizer
@@ -156,7 +157,8 @@ for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in = _x_batch
-    sweights = nn.error_scales(x_in)
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    sweights = nn.error_scales(np.copy(x_in))
     alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(num_rs_layers)]
     fdict = {X_input: x_in, adj_list: alist, scale_weights:sweights}
 
