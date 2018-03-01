@@ -68,7 +68,7 @@ def init_bias(k_in, k_out, name,):
 
 #=============================================================================
 # Wrappers
-def init_params(channels, graph_model=False, vel_coeff=True, seed=None, var_scope=VAR_SCOPE):
+def init_params(channels, graph_model=False, vel_coeff=False, seed=None, var_scope=VAR_SCOPE):
     """ Initialize network parameters
     graph model has extra weight, no bias
     set model has bias
