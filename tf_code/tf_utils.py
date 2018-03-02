@@ -17,10 +17,11 @@ import tensorflow as tf
 DATA_PATH     = '/home/evan/Data/nbody_simulations/N_{0}/DM*/{1}_dm.z=0{2}000'
 DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/nbody_{}.npy'
 REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
-RS_TAGS = {6.0:'60', 4.0:'40', 2.0:'20', 1.5:'15', 1.2:'12', 1.0:'10', 0.8:'08', 0.6:'06', 0.4:'04', 0.2:'02', 0.0:'00'}
+RS_TAGS = {6.0:'60', 4.0:'40', 2.0:'20', 1.5:'15', 1.2:'12', 1.0:'10',
+           0.8:'08', 0.6:'06', 0.4:'04', 0.2:'02', 0.0:'00'}
 
 # rng seeds
-PARAMS_SEED  = 77743196 # best consistent performance for graph models, set models do better with 98765
+PARAMS_SEED  = 77743196 # for graph, set models do better with 98765
 DATASET_SEED = 12345 # for train/validation data splits
 
 # models
@@ -58,7 +59,7 @@ def init_weight(k_in, k_out, name,  seed=None):
     #std = scale * np.sqrt(2. / k_in)
     #henorm = tf.random_normal((k_in, k_out), stddev=std, seed=seed)
     norm = tf.glorot_normal_initializer(seed=seed)
-    tf.get_variable(name, shape=(k_in, k_out), dtype=tf.float32, initializer=norm)
+    tf.get_variable(name, (k_in, k_out), dtype=tf.float32, initializer=norm)
 
 def init_bias(k_in, k_out, name,):
     """ biases initialized to be near zero
@@ -66,51 +67,58 @@ def init_bias(k_in, k_out, name,):
     bval = tf.ones((k_out,), dtype=tf.float32) * 1e-8
     tf.get_variable(name, dtype=tf.float32, initializer=bval)
 
-#=============================================================================
-# Wrappers
-def init_params(channels, graph_model=False, vel_coeff=False, seed=None, var_scope=VAR_SCOPE):
+def init_vel_coeff():
+    """ scalar weight used in skip connection, for adjusting locations by
+    velocity scaled by this coeff:
+    h_out[...,:3] = h_out[...,:3] + x_in[...,:3] + vel_coeff*(x_in[...,3:])
+    """
+    v_init = tf.glorot_normal_initializer()
+    tf.get_variable(VEL_COEFF_TAG, (1,), dtype=tf.float32, initializer=v_init)
+
+# Model init wrappers ========================================================
+
+# Single-step
+def init_params(channels, graph_model=False, vel_coeff=False,
+                var_scope=VAR_SCOPE, seed=None):
     """ Initialize network parameters
     graph model has extra weight, no bias
     set model has bias
     """
+    # get (k_in, k_out) tuples from channels
     kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
     with tf.variable_scope(var_scope):
+        # initialize variables for each layer
         for idx, ktup in enumerate(kdims):
-            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
             init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed)
-            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
             if graph_model: # graph
-                init_weight(*ktup,  GRAPH_TAG.format(idx), seed=seed)
+                init_weight(*ktup, GRAPH_TAG.format(idx), seed=seed)
             else: # set
                 init_bias(*ktup, BIAS_TAG.format(idx))
-        if vel_coeff:
-            tf.get_variable(VEL_COEFF_TAG, shape=(1,), dtype=tf.float32, initializer=tf.glorot_normal_initializer())
+        if vel_coeff: # scalar weight for simulating timestep, only one
+            init_vel_coeff()
 
-# Multi
-def init_params_multi(channels, num_rs, graph_model=False, var_scope=VAR_SCOPE_MULTI, seed=None):
-    """ Initialize network parameters
-    graph model has extra weight, no bias
-    set model has bias
+# Multi-step
+def init_params_multi(channels, num_rs, graph_model=True,
+                      var_scope=VAR_SCOPE_MULTI, seed=None):
+    """ Initialize network parameters for multi-step model, for predicting
+    across multiple redshifts. (eg 6.0 -> 4.0 -> ... -> <target rs>)
+    Multi-step model is network where each layer is a single-step model
     """
-    #kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
     for j in range(num_rs):
-        tf.set_random_seed(seed)
-        cur_scope = var_scope.format(j)
-        init_params(channels, graph_model=graph_model, var_scope=cur_scope, seed=None)
+        tf.set_random_seed(seed) # ensure each sub-model has same weight init
+        cur_scope = var_scope.format(j) #
+        init_params(channels, graph_model=graph_model, var_scope=cur_scope)
 
 #=============================================================================
-# get layer params
+# var gets
+#=============================================================================
 def get_layer_vars(layer_idx, var_scope=VAR_SCOPE):
-    """ gets variables for layer
-    """
     with tf.variable_scope(var_scope, reuse=True):
         W = tf.get_variable(WEIGHT_TAG.format(layer_idx))
         B = tf.get_variable(  BIAS_TAG.format(layer_idx))
     return W, B
 
-def get_layer_vars_graph(layer_idx, var_scope=VAR_SCOPE):
-    """ gets variables for graph layer
-    """
+def get_graph_layer_vars(layer_idx, var_scope=VAR_SCOPE):
     with tf.variable_scope(var_scope, reuse=True):
         W  = tf.get_variable(WEIGHT_TAG.format(layer_idx))
         Wg = tf.get_variable(GRAPH_TAG.format(layer_idx))
