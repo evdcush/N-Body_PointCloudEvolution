@@ -108,7 +108,7 @@ alist_shape = (num_rs_layers, None, 2) # output shape
 adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 
 # loss scaling weights
-scale_weights = tf.placeholder(tf.float32, shape=(num_rs_layers,), name='scale_weights')
+#scale_weights = tf.placeholder(tf.float32, shape=(num_rs_layers,), name='scale_weights')
 
 # scheduled sampling probs
 sampling_probs = tf.placeholder(tf.bool, shape=(num_rs_layers-1,), name='sampling_probs')
@@ -116,7 +116,8 @@ sampling_probs = tf.placeholder(tf.bool, shape=(num_rs_layers-1,), name='samplin
 def alist_func(h_in): # for tf.py_func
     return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
 
-X_pred, loss = nn.multi_model_fwd_sampling(X_input, var_scopes, num_layers, adj_list, K, scale_weights, sampling_probs)
+X_pred, loss = nn.multi_model_fwd_sampling(X_input, var_scopes, num_layers, adj_list, K, sampling_probs)
+#X_pred, loss = nn.multi_model_fwd(X_input, var_scopes, num_layers, adj_list, K)
 X_pred_val, loss_val = nn.multi_func_model_fwd(X_input, var_scopes, num_layers, alist_func, K)
 
 # loss and optimizer
@@ -155,10 +156,10 @@ for step in range(num_iters):
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in = _x_batch
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    sweights = nn.error_scales(np.copy(x_in))
+    #sweights = nn.error_scales(np.copy(x_in))
     sprobs = np.random.sample(num_rs_layers-1) < (step / num_iters)
     alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(num_rs_layers)]
-    fdict = {X_input: x_in, adj_list: alist, scale_weights:sweights, sampling_probs:sprobs}
+    fdict = {X_input: x_in, adj_list: alist, sampling_probs:sprobs, }#scale_weights:sweights}
 
     if verbose:
         error = sess.run(loss, feed_dict=fdict)
