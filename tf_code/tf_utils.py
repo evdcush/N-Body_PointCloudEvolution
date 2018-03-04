@@ -418,17 +418,6 @@ def get_model_name(dparams, mtype, vel_coeff, save_prefix):
         model_name = '{}_{}'.format(save_prefix, model_name)
     return model_name
 
-def save_model(model, optimizer, save_name):
-    """ Save model and optimizer parameters
-    Model has fwd computation graph and weights saved
-    Optimizer has current weights from momentum vectors saved
-    Args:
-        model (chainer.Chain): a model with weights to save
-        optimizer (chainer.optimizers): optimizer
-    """
-    serializers.save_npz('{}{}'.format(save_name, '.model'),         model)
-    serializers.save_npz('{}{}'.format(save_name, '.optimizer'), optimizer)
-    print('Saved model and optimizer at {}'.format(save_name))
 
 def save_test_cube(x, cube_path, rs, prediction=False):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
