@@ -7,24 +7,6 @@ import tf_utils as utils
 from tf_utils import VAR_SCOPE, VAR_SCOPE_MULTI
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
-''' TF nuggets:
- - tf.get_variable only returns an existing variable with name if it was
-   created earlier by get_variable. It won't return a variable created using
-   tf.Variable()
- - EXTREMELY sensitive to random seed? I made the seed none for weight init
-   and the error per iteration went from 770000.0 to 0.22 ??
- -
-'''
-#=============================================================================
-''' IMPLEMENTATION LIST
- X velocity coefficient
- X save points
- - restore model
- X Graph model, kneighbors
- - Graph model, radius
-
-'''
-#=============================================================================
 
 #=============================================================================
 # LAYER OPS
