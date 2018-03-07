@@ -29,19 +29,21 @@ start_time = time.time()
 # nbody Data
 #=============================================================================
 # nbody data params
-num_particles = pargs['particles']
+num_particles = 32 #pargs['particles']
 zX, zY = pargs['redshifts'] # strictly for model naming
+#zX, zY = 9.0, 0.0
 nbody_params = (num_particles, (zX, zY))
 
 # redshifts
-redshift_steps = [6.0, 1.5, 1.0, 0.4, 0.0] # true redshifts
-redshift_idx   = [utils.REDSHIFTS.index(rs) for rs in redshift_steps]
-num_rs = len(redshift_idx)
+#redshift_steps = [6.0, 1.5, 1.0, 0.4, 0.0] # true redshifts
+rs_len = len(utils.REDSHIFTS)
+redshift_steps = utils.REDSHIFTS_UNI[-1::-4][::-1]
+num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
 # Load data
-X = utils.load_npy_data(num_particles, normalize=True)[redshift_idx]
-X = X[redshift_idx]
+X = utils.load_zuni_npy_data(redshifts=redshift_steps, normalize=True) # normalize only rescales coo for now
+#X = X[redshift_idx]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 #print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
@@ -51,7 +53,7 @@ X = None # reduce memory overhead
 #=============================================================================
 # model vars
 model_type = pargs['model_type'] # 0: set, 1: graph
-use_graph  = model_type == 1
+use_graph  = True #model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
 channels = model_vars['channels']
 channels[-1] = 6
@@ -67,8 +69,9 @@ threshold = 0.08
 # Session save parameters
 #=============================================================================
 # model name
-mname_args = [nbody_params, model_type, vel_coeff, pargs['save_prefix']]
-model_name = utils.get_model_name(*mname_args)
+#mname_args = [nbody_params, model_type, vel_coeff, pargs['save_prefix']]
+#model_name = utils.get_model_name(*mname_args)
+model_name = utils.get_uni_model_name(pargs['save_prefix'])
 
 # save paths
 paths = utils.make_save_dirs(pargs['model_dir'], model_name)
@@ -83,13 +86,13 @@ model_path, loss_path, cube_path = paths
 #=============================================================================
 # init network params
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params_multi(channels, num_rs_layers, graph_model=use_graph, seed=utils.PARAMS_SEED)
+utils.init_params(channels, graph_model=use_graph, seed=utils.PARAMS_SEED)
 # restore
 '''
 with tf.Session() as sess:
     restore_model = tf.train.import_meta_graph('./Model/Multi_G_32_06-00_')
 '''
-var_scopes = [utils.VAR_SCOPE_MULTI.format(j) for j in range(num_rs_layers)]
+#var_scopes = [utils.VAR_SCOPE_MULTI.format(j) for j in range(num_rs_layers)]
 
 
 # INPUTS
@@ -109,13 +112,11 @@ adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 def alist_func(h_in): # for tf.py_func
     return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
 
-#X_pred, loss = nn.multi_model_fwd_sampling(X_input, var_scopes, num_layers, adj_list, K, sampling_probs)
-#X_pred, loss = nn.multi_model_fwd(X_input, var_scopes, num_layers, adj_list, K)
-#X_pred_val, loss_val = nn.multi_func_model_fwd(X_input, var_scopes, num_layers, alist_func, K)
+X_pred, loss = nn.zuni_model_fwd(X_input, num_rs_layers, adj_list, K)
+X_pred_val, loss_val = nn.zuni_func_model_fwd(X_input, num_rs_layers, alist_func, K)
 
-# for vel
-X_pred, loss = nn.multi_model_vel_fwd(X_input, var_scopes, num_layers, adj_list, K)
-X_pred_val, loss_val = nn.multi_func_model_vel_fwd(X_input, var_scopes, num_layers, alist_func, K)
+
+
 
 # loss and optimizer
 train = tf.train.AdamOptimizer(learning_rate).minimize(loss)
@@ -140,7 +141,7 @@ sess.run(tf.global_variables_initializer())
 train_loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
-checkpoint = 500
+checkpoint = 200
 save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
 
 #=============================================================================

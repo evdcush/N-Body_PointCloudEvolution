@@ -106,7 +106,34 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
         h_init = tf.concat((vel_scaled, x_in[...,3:]), axis=-1)
         h_out += h_init
     '''
+#=============================================================================
+# multi stuff, new data
+#=============================================================================
+def zuni_model_fwd(x_in, num_rs, adj_lists, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+    """
+    Args:
+        x_in: (11, mb_size, ...) full rs data
+    """
+    h = get_readout_vel(model_fwd(x_in[0], num_layers, adj_lists[0], K))
+    loss = pbc_loss(h, x_in[1])
+    for idx in range(1, num_rs):
+        h = get_readout_vel(model_fwd(h, num_layers, adj_lists[idx], K))
+        loss += pbc_loss(h, x_in[idx+1])
+    return h, loss
 
+def zuni_func_model_fwd(x_in, num_rs, alist_fn, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+    """
+    Args:
+        x_in: (*, mb_size, ...) full rs data
+    """
+    alist = tf.py_func(alist_fn, [x_in[0]], tf.int32)
+    h = get_readout_vel(model_fwd(x_in[0], num_layers, alist, K))
+    loss = pbc_loss(h, x_in[1])
+    for idx in range(1, num_rs):
+        alist = tf.py_func(alist_fn, [h], tf.int32)
+        h = get_readout_vel(model_fwd(h, num_layers, alist, K))
+        loss += pbc_loss(h, x_in[idx+1])
+    return h, loss
 
 
 #=============================================================================

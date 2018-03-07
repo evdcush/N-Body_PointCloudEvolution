@@ -17,7 +17,8 @@ RS_TAGS = {6.0:'60', 4.0:'40', 2.0:'20', 1.5:'15', 1.2:'12', 1.0:'10',
            0.8:'08', 0.6:'06', 0.4:'04', 0.2:'02', 0.0:'00'}
 
 # dataset uniform timestep
-DATA_PATH_UNI = '/home/evan/Data/nbody_simulations/N_uniform/run*/xv_dm.z=0{2}'
+DATA_PATH_UNI     = '/home/evan/Data/nbody_simulations/N_uniform/run*/xv_dm.z=0{}'
+DATA_PATH_UNI_NPY = '/home/evan/Data/nbody_simulations/N_uniform/npy_data/X_{:.4f}_.npy'
 REDSHIFTS_UNI = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
                  1.1212, 0.9438, 0.7955, 0.6688, 0.5588, 0.4620, 0.3758,
                  0.2983, 0.2280, 0.1639, 0.1049, 0.0505, 0.0000]
@@ -205,10 +206,10 @@ def load_npy_data(n_P, redshifts=None, normalize=False):
         X = normalize_fullrs(X)
     return X
 #=============================================================================
-# Loading utils, NEW DATA, uniformly displaced
+# NEW DATA UTILS, uniformly displaced
 #=============================================================================
 '''
-def read_unidis_sim(file_list, n_P):
+def read_zuni_sim(file_list, n_P):
     """ reads simulation data from disk and returns
 
     Args:
@@ -228,7 +229,7 @@ def read_unidis_sim(file_list, n_P):
     return dataset
 '''
 
-def load_unidis_datum(redshift, normalize_data=False):
+def load_zuni_datum(redshift, normalize_data=False):
     """ loads a single redshift datum from uniformly timestepped redshift data
 
     Args:
@@ -239,11 +240,11 @@ def load_unidis_datum(redshift, normalize_data=False):
     assert redshift in REDSHIFTS_UNI
     redshift_str = '{:.4f}'.format(redshift)
     glob_paths = glob.glob(DATA_PATH_UNI.format(redshift_str))
-    X = read_sim(glob_paths, n_P)
-    #if normalize_data: X = normalize(X)
+    X = read_sim(glob_paths, n_P).astype(np.float32)
+    if normalize_data: X = normalize_zuni(X)
     return X
 
-def load_unidis_data(n_P, *args, **kwargs):
+def load_zuni_data(n_P, *args, **kwargs):
     """ loads datasets from proper data directory
     # note: this function is redundant
 
@@ -252,11 +253,52 @@ def load_unidis_data(n_P, *args, **kwargs):
     """
     data = []
     for redshift in args:
-        x = load_datum(n_P, redshift, **kwargs)
+        x = load_zuni_datum(redshift, **kwargs)
         data.append(x)
     return data
 
+def load_zuni_npy_data(redshifts=None, normalize=False):
+    """ Loads data serialized as numpy array of np.float32
+    Args:
 
+    """
+    if redshifts is None:
+        redshifts = list(REDSHIFTS_UNI) # copy
+    num_rs = len(redshifts)
+    N = 1000
+    M = 32**3
+    D = 6
+    X = np.zeros((num_rs, N, M, D)).astype(np.float32)
+    for idx, rs in enumerate(redshifts):
+        X[idx] = np.load(DATA_PATH_UNI_NPY.format(rs))
+    if normalize:
+        X = normalize_zuni(X)
+    return X
+
+def normalize_zuni(X):
+    """ Normalize data features
+    coordinates are rescaled to be in range [0,1]
+    velocities are normalized to zero mean and unit variance
+
+    Args:
+        X_in (ndarray): data to be normalized, of shape (N, D, 6)
+    """
+    #x_r = np.reshape(X_in, [-1,6])
+    #coo, vel = np.split(x_r, [3], axis=-1)
+    #x_r[:,:3] = x_r[:,:3] / 32.0
+
+
+    #coo_min = np.min(coo, axis=0)
+    #coo_max = np.max(coo, axis=0)
+    #x_r[:,:3] = (x_r[:,:3] - coo_min) / (coo_max - coo_min)
+
+    #vel_mean = np.mean(vel, axis=0)
+    #vel_std  = np.std( vel, axis=0)
+    #x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
+
+    #X_out = np.reshape(x_r, X_in.shape).astype(np.float32) # just convert to float32 here
+    X[...,:3] = X[...,:3] / 32.0
+    return X
 
 #=============================================================================
 # Data utils
@@ -479,6 +521,25 @@ def get_model_name(dparams, mtype, vel_coeff, save_prefix):
     vel_tag = 'L' if vel_coeff is not None else ''
 
     model_name = '{}{}_{}_{}-{}'.format(model_tag, vel_tag, n_P, zX, zY)
+    if save_prefix != '':
+        model_name = '{}_{}'.format(save_prefix, model_name)
+    return model_name
+
+def get_uni_model_name(save_prefix):
+    """ Consistent model naming format
+    Model name examples:
+        'GL_32_12-04': GraphModel|WithVelCoeff|32**3 Dataset|redshift 1.2->0.4
+        'S_16_04-00': SetModel|16**3 Dataset|redshift 0.4->0.0
+    """
+    #n_P, rs = dparams
+    #zX = RS_TAGS[rs[0]]
+    #zY = RS_TAGS[rs[1]]
+
+    #model_tag = NBODY_MODELS[mtype]['tag']
+    #vel_tag = 'L' if vel_coeff is not None else ''
+
+    #model_name = '{}{}_{}_{}-{}'.format(model_tag, vel_tag, n_P, zX, zY)
+    model_name = 'ZG_90-00'
     if save_prefix != '':
         model_name = '{}_{}'.format(save_prefix, model_name)
     return model_name
