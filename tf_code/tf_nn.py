@@ -1,17 +1,17 @@
 import os, code, sys, time
 import numpy as np
 import tensorflow as tf
-#import chainer.functions as F
 from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
 import tf_utils as utils
 from tf_utils import VAR_SCOPE, VAR_SCOPE_MULTI
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
-
 #=============================================================================
 # LAYER OPS
 #=============================================================================
 def left_mult(h, W):
+    """ batch matmul for set-based data
+    """
     return tf.einsum('ijl,lq->ijq', h, W)
 
 def linear(h_in, W, b=None):
@@ -29,26 +29,45 @@ def linear(h_in, W, b=None):
     return h_out
 
 def set_layer(h, layer_idx, var_scope, *args):
-    """ layer gets weights and returns linear transformation
+    """ Set layer
     """
     W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
     return linear(h, W, B)
 
 #=============================================================================
 # graph
-def kgraph_select(h, adj, K):
+def kgraph_conv(h, adj, K):
+    """ Graph convolution op for KNN-based adjacency lists
+    build graph tensor with gather_nd, and take
+    mean on KNN dim: mean((mb_size, N, K, k_in), axis=2)
+    Args:
+        h: data tensor, (mb_size, N, k_in)
+        adj: adjacency index list, for gather_nd (*, 2)
+        K (int): num nearest neighbors
+    """
     dims = tf.shape(h)
     mb = dims[0]; n  = dims[1]; d  = dims[2];
     rdim = [mb,n,K,d]
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     nn_graph = tf.reduce_mean(tf.reshape(tf.gather_nd(h, adj), rdim), axis=2)
     return nn_graph
 
 def kgraph_layer(h, layer_idx, var_scope, alist, K):
-    """ layer gets weights and returns linear transformation
+    """ Graph layer for KNN
+    Graph layer has two sets of weights for data:
+      W: for connections to all other particles
+     Wg: for connections to nearest neighbor particles
+    Unlike the set layer, no biases are used. Have tried h_w + h_g + B, but
+    error was worse.
+    Args:
+        h: data tensor, (mb_size, N, k_in)
+        layer_idx (int): layer index for params
+        var_scope (str): variable scope for get variables from graph
+        alist: adjacency index list tensor (*, 2), of tf.int32
+        K (int): number of nearest neighbors in KNN
+    RETURNS: (mb_size, N, k_out)
     """
-    W, Wg = utils.get_layer_vars_graph(layer_idx, var_scope=var_scope)
-    nn_graph = kgraph_select(h, alist, K)
+    W, Wg = utils.get_graph_layer_vars(layer_idx, var_scope=var_scope)
+    nn_graph = kgraph_conv(h, alist, K)
     h_w = linear(h, W)
     h_g = linear(nn_graph, Wg)
     h_out = h_w + h_g
