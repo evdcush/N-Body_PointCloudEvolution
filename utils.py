@@ -16,6 +16,13 @@ REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
 RS_TAGS = {6.0:'60', 4.0:'40', 2.0:'20', 1.5:'15', 1.2:'12', 1.0:'10',
            0.8:'08', 0.6:'06', 0.4:'04', 0.2:'02', 0.0:'00'}
 
+# dataset uniform timestep
+DATA_PATH_UNI = '/home/evan/Data/nbody_simulations/N_uniform/run*/xv_dm.z=0{2}'
+REDSHIFTS_UNI = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
+                 1.1212, 0.9438, 0.7955, 0.6688, 0.5588, 0.4620, 0.3758,
+                 0.2983, 0.2280, 0.1639, 0.1049, 0.0505, 0.0000]
+
+
 # rng seeds
 PARAMS_SEED  = 77743196 # for graph, set models do better with 98765
 DATASET_SEED = 12345 # for train/validation data splits
@@ -35,6 +42,7 @@ BIAS_TAG   = 'B_{}'
 VEL_COEFF_TAG = 'V'
 VAR_SCOPE  = 'params'
 VAR_SCOPE_MULTI = 'params_{}'
+
 
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
@@ -196,6 +204,59 @@ def load_npy_data(n_P, redshifts=None, normalize=False):
     if normalize:
         X = normalize_fullrs(X)
     return X
+#=============================================================================
+# Loading utils, NEW DATA, uniformly displaced
+#=============================================================================
+'''
+def read_unidis_sim(file_list, n_P):
+    """ reads simulation data from disk and returns
+
+    Args:
+        file_list: (list<str>) paths to files
+        n_P: (int) number of particles base (n_P**3 particles)
+    """
+    num_particles = n_P**3
+    dataset = []
+    for file_name in file_list:
+        this_set = []
+        with open(file_name, "rb") as f:
+            for i in range(num_particles*6):
+                s = struct.unpack('=f',f.read(4))
+                this_set.append(s[0])
+        dataset.append(this_set)
+    dataset = np.array(dataset).reshape([len(file_list),num_particles,6])
+    return dataset
+'''
+
+def load_unidis_datum(redshift, normalize_data=False):
+    """ loads a single redshift datum from uniformly timestepped redshift data
+
+    Args:
+        redshift: (float) redshift
+    """
+    n_P = 32
+    #DATA_PATH_UNI = '/home/evan/Data/nbody_simulations/N_uniform/run*/xv_dm.z=0{2}'
+    assert redshift in REDSHIFTS_UNI
+    redshift_str = '{:.4f}'.format(redshift)
+    glob_paths = glob.glob(DATA_PATH_UNI.format(redshift_str))
+    X = read_sim(glob_paths, n_P)
+    #if normalize_data: X = normalize(X)
+    return X
+
+def load_unidis_data(n_P, *args, **kwargs):
+    """ loads datasets from proper data directory
+    # note: this function is redundant
+
+    Args:
+        n_P: (int) base of number of particles (n_P**3 particles)
+    """
+    data = []
+    for redshift in args:
+        x = load_datum(n_P, redshift, **kwargs)
+        data.append(x)
+    return data
+
+
 
 #=============================================================================
 # Data utils
@@ -281,7 +342,7 @@ def split_data_validation(X, Y, num_val_samples=200, seed=DATASET_SEED):
     """
     num_samples = X.shape[0]
     np.random.seed(seed)
-    idx_list    = np.random.permutation(num_samples)
+    idx_list = np.random.permutation(num_samples)
     X = np.split(X[idx_list], [-num_val_samples])
     Y = np.split(Y[idx_list], [-num_val_samples])
     return X, Y

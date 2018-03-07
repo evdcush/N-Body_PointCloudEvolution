@@ -16,11 +16,11 @@ parser.add_argument('--model_type','-m', default=0,          type=int,  help='mo
 parser.add_argument('--knn',       '-k', default=14,          type=int, help='number of nearest neighbors for graph model')
 #parser.add_argument('--resume',    '-r', default=0,          type=int,  help='resume training from serialized params')
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
-parser.add_argument('--batch_size','-b', default=4,          type=int,  help='training batch size')
+parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
-parser.add_argument('--save_prefix','-n', default='',         type=str,  help='model name prefix')
-parser.add_argument('--vel_coeff', '-c', default=0,          type=int, help='use timestep coefficient on velocity')
-parser.add_argument('--verbose',   '-v', default=1,          type=int, help='verbose prints training progress')
+parser.add_argument('--save_prefix','-n', default='',        type=str,  help='model name prefix')
+#parser.add_argument('--vel_coeff', '-c', default=0,          type=int,  help='use timestep coefficient on velocity')
+parser.add_argument('--verbose',   '-v', default=0,          type=int,  help='verbose prints training progress')
 pargs = vars(parser.parse_args())
 start_time = time.time()
 
@@ -45,11 +45,6 @@ X = X[redshift_idx]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 #print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
-
-# velocity coefficient
-vel_coeff = None
-if pargs['vel_coeff']:
-    vel_coeff = utils.load_velocity_coefficients(num_particles)[(zX, zY)]
 
 #=============================================================================
 # network and model params
