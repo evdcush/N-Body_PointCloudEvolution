@@ -1,13 +1,9 @@
 import os, glob, struct, code, sys, shutil, time
 
 import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-
-import chainer
-import chainer.serializers as serializers
-
+#import matplotlib
+#import matplotlib.pyplot as plt
+#from mpl_toolkits.mplot3d import Axes3D
 import tensorflow as tf
 
 #=============================================================================
@@ -358,7 +354,7 @@ def next_minibatch(X_in, batch_size, data_aug=True):
         return batches
 
 def load_velocity_coefficients(num_particles):
-    vel_coeffs = np.load('../Data/velocity_coefficients_{}.npy'.format(num_particles)).item()
+    vel_coeffs = np.load('./Data/velocity_coefficients_{}.npy'.format(num_particles)).item()
     return vel_coeffs
 
 

@@ -1,11 +1,12 @@
 import os, code, sys, time, argparse
+
 import numpy as np
 from sklearn.neighbors import kneighbors_graph
-import matplotlib.pyplot as plt
 import tensorflow as tf
-import tf_utils as utils
-import tf_nn as nn
-from tf_utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS
+
+import utils
+import nn
+from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS
 
 parser = argparse.ArgumentParser()
 # argparse not handle bools well so 0,1 used instead

@@ -1,11 +1,12 @@
 import os, code, sys, time, argparse
+
 import numpy as np
 from sklearn.neighbors import kneighbors_graph
-import matplotlib.pyplot as plt
 import tensorflow as tf
-import tf_utils as utils
-import tf_nn as nn
-from tf_utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS
+
+import utils
+import nn
+from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS
 
 parser = argparse.ArgumentParser()
 # argparse not handle bools well so 0,1 used instead
@@ -14,7 +15,6 @@ parser.add_argument('--redshifts', '-z', default=[0.6, 0.0], nargs='+', type=flo
 parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
 parser.add_argument('--knn',       '-k', default=14,          type=int, help='number of nearest neighbors for graph model')
 #parser.add_argument('--resume',    '-r', default=0,          type=int,  help='resume training from serialized params')
-#parser.add_argument('--multi_step','-s', default=0,          type=int, help='use multi-step redshift model')
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
 parser.add_argument('--batch_size','-b', default=4,          type=int,  help='training batch size')
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
@@ -30,20 +30,18 @@ start_time = time.time()
 #=============================================================================
 # nbody data params
 num_particles = pargs['particles']
-zX, zY = pargs['redshifts']
+zX, zY = pargs['redshifts'] # strictly for model naming
 nbody_params = (num_particles, (zX, zY))
-#num_rs = len(utils.REDSHIFTS)
-#num_rs_layers = num_rs - 1
 
-# Load data
-X = utils.load_npy_data(num_particles, normalize=True)
-redshift_steps = [6.0, 1.5, 1.0, 0.4, 0.0]
-redshift_idx = [utils.REDSHIFTS.index(rs) for rs in redshift_steps]
+# redshifts
+redshift_steps = [6.0, 1.5, 1.0, 0.4, 0.0] # true redshifts
+redshift_idx   = [utils.REDSHIFTS.index(rs) for rs in redshift_steps]
 num_rs = len(redshift_idx)
 num_rs_layers = num_rs - 1
 
+# Load data
+X = utils.load_npy_data(num_particles, normalize=True)[redshift_idx]
 X = X[redshift_idx]
-for rs in range(X.shape[0]): X[rs] = utils.normalize_rescale_vel(X[rs], (0, 1))
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 #print('{}: X.shape = {}'.format(nbody_params, X_train.shape))

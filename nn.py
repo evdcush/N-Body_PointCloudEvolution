@@ -1,9 +1,11 @@
 import os, code, sys, time
+
 import numpy as np
-import tensorflow as tf
 from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
-import tf_utils as utils
-from tf_utils import VAR_SCOPE, VAR_SCOPE_MULTI
+import tensorflow as tf
+
+import utils
+from utils import VAR_SCOPE, VAR_SCOPE_MULTI
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 #=============================================================================
