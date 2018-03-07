@@ -112,8 +112,8 @@ adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 def alist_func(h_in): # for tf.py_func
     return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
 
-X_pred, loss = nn.zuni_model_fwd(X_input, num_rs_layers, adj_list, K)
-X_pred_val, loss_val = nn.zuni_func_model_fwd(X_input, num_rs_layers, alist_func, K)
+X_pred, loss = nn.zuni_model_fwd(X_input, num_rs_layers, num_layers, adj_list, K)
+X_pred_val, loss_val = nn.zuni_func_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
 
 
 

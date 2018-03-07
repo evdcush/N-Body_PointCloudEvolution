@@ -109,7 +109,7 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
 #=============================================================================
 # multi stuff, new data
 #=============================================================================
-def zuni_model_fwd(x_in, num_rs, adj_lists, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+def zuni_model_fwd(x_in, num_rs, num_layers, adj_lists, K, activation=tf.nn.relu, add=True, vel_coeff=None):
     """
     Args:
         x_in: (11, mb_size, ...) full rs data
@@ -121,7 +121,7 @@ def zuni_model_fwd(x_in, num_rs, adj_lists, K, activation=tf.nn.relu, add=True, 
         loss += pbc_loss(h, x_in[idx+1])
     return h, loss
 
-def zuni_func_model_fwd(x_in, num_rs, alist_fn, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+def zuni_func_model_fwd(x_in, num_rs, num_layers, alist_fn, K, activation=tf.nn.relu, add=True, vel_coeff=None):
     """
     Args:
         x_in: (*, mb_size, ...) full rs data
