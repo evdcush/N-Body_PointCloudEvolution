@@ -275,7 +275,7 @@ def load_zuni_npy_data(redshifts=None, normalize=False):
         X = normalize_zuni(X)
     return X
 
-def normalize_zuni(X):
+def normalize_zuni(X_in):
     """ Normalize data features
     coordinates are rescaled to be in range [0,1]
     velocities are normalized to zero mean and unit variance
@@ -296,9 +296,11 @@ def normalize_zuni(X):
     #vel_std  = np.std( vel, axis=0)
     #x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
 
+    X_in[...,:3] = X[...,:3] / 32.0
+    return X_in
     #X_out = np.reshape(x_r, X_in.shape).astype(np.float32) # just convert to float32 here
-    X[...,:3] = X[...,:3] / 32.0
-    return X
+    #return X_out
+
 
 #=============================================================================
 # Data utils
