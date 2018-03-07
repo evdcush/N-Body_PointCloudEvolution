@@ -129,16 +129,16 @@ def multi_model_fwd_sampling(x_in, var_scopes, num_layers, adj_lists, K, samplin
         loss += pbc_loss(h, x_in[idx+1]) #* scale_weights[idx]
     return h, loss
 
-def multi_model_vel_fwd(x_in, var_scopes, num_layers, adj_lists, K, scale_weights, activation=tf.nn.relu, add=True, vel_coeff=None):
+def multi_model_vel_fwd(x_in, var_scopes, num_layers, adj_lists, K, activation=tf.nn.relu, add=True, vel_coeff=None):
     """
     Args:
         x_in: (11, mb_size, ...) full rs data
     """
     h = get_readout_vel(model_fwd(x_in[0], num_layers, adj_lists[0], K, var_scope=var_scopes[0]))
-    loss = pbc_loss_vel(h, x_in[1]) * scale_weights[0]
+    loss = pbc_loss_vel(h, x_in[1])
     for idx, vscope in enumerate(var_scopes[1:]):
         h = get_readout_vel(model_fwd(h, num_layers, adj_lists[idx], K, var_scope=vscope))
-        loss += pbc_loss_vel(h, x_in[idx+1]) * scale_weights[idx]
+        loss += pbc_loss_vel(h, x_in[idx+1])
     return h, loss
 
 

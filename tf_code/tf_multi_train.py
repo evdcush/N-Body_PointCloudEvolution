@@ -43,7 +43,7 @@ num_rs = len(redshift_idx)
 num_rs_layers = num_rs - 1
 
 X = X[redshift_idx]
-#for rs in range(X.shape[0]): X[rs] = utils.normalize_rescale_vel(X[rs], (0, 1))
+for rs in range(X.shape[0]): X[rs] = utils.normalize_rescale_vel(X[rs], (0, 1))
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 #print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
@@ -111,14 +111,18 @@ adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 #scale_weights = tf.placeholder(tf.float32, shape=(num_rs_layers,), name='scale_weights')
 
 # scheduled sampling probs
-sampling_probs = tf.placeholder(tf.bool, shape=(num_rs_layers-1,), name='sampling_probs')
+#sampling_probs = tf.placeholder(tf.bool, shape=(num_rs_layers-1,), name='sampling_probs')
 
 def alist_func(h_in): # for tf.py_func
     return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
 
-X_pred, loss = nn.multi_model_fwd_sampling(X_input, var_scopes, num_layers, adj_list, K, sampling_probs)
+#X_pred, loss = nn.multi_model_fwd_sampling(X_input, var_scopes, num_layers, adj_list, K, sampling_probs)
 #X_pred, loss = nn.multi_model_fwd(X_input, var_scopes, num_layers, adj_list, K)
-X_pred_val, loss_val = nn.multi_func_model_fwd(X_input, var_scopes, num_layers, alist_func, K)
+#X_pred_val, loss_val = nn.multi_func_model_fwd(X_input, var_scopes, num_layers, alist_func, K)
+
+# for vel
+X_pred, loss = nn.multi_model_vel_fwd(X_input, var_scopes, num_layers, adj_list, K)
+X_pred_val, loss_val = nn.multi_func_model_vel_fwd(X_input, var_scopes, num_layers, alist_func, K)
 
 # loss and optimizer
 train = tf.train.AdamOptimizer(learning_rate).minimize(loss)
@@ -157,9 +161,9 @@ for step in range(num_iters):
     x_in = _x_batch
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     #sweights = nn.error_scales(np.copy(x_in))
-    sprobs = np.random.sample(num_rs_layers-1) < (step / num_iters)
+    #sprobs = np.random.sample(num_rs_layers-1) < (step / num_iters)
     alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(num_rs_layers)]
-    fdict = {X_input: x_in, adj_list: alist, sampling_probs:sprobs, }#scale_weights:sweights}
+    fdict = {X_input: x_in, adj_list: alist, }#sampling_probs:sprobs, }#scale_weights:sweights}
 
     if verbose:
         error = sess.run(loss, feed_dict=fdict)
