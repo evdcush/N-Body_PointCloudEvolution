@@ -148,6 +148,16 @@ def zuni_multi_model_fwd_set(x_in, num_rs, num_layers, *args, validation=False):
         loss += pbc_loss(h, x_in[idx+1])
     return h, loss
 
+def zuni_multi_single_model_fwd_set(x_in, var_scopes, num_layers, *args):
+    """
+    Args:
+        x_in: (mb_size, ...) only single redshift in
+    """
+    h = get_readout_vel(model_fwd(x_in, num_layers, var_scope=var_scopes[0]))
+    for vscope in var_scopes[1:]:
+        h = get_readout_vel(model_fwd(h, num_layers, var_scope=vscope))
+    return h
+
 def zuni_multi_func_model_fwd(x_in, num_rs, num_layers, alist_fn, K, activation=tf.nn.relu, add=True, vel_coeff=None):
     """
     Args:

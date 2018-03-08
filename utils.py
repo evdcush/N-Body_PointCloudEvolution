@@ -109,7 +109,7 @@ def init_params(channels, graph_model=False, vel_coeff=False,
 
 # Multi-step
 def init_params_multi(channels, num_rs, graph_model=True,
-                      var_scope=VAR_SCOPE_MULTI, seed=None):
+                      var_scope=VAR_SCOPE_MULTI, seed=None, restore=False):
     """ Initialize network parameters for multi-step model, for predicting
     across multiple redshifts. (eg 6.0 -> 4.0 -> ... -> <target rs>)
     Multi-step model is network where each layer is a single-step model
@@ -117,7 +117,16 @@ def init_params_multi(channels, num_rs, graph_model=True,
     for j in range(num_rs):
         tf.set_random_seed(seed) # ensure each sub-model has same weight init
         cur_scope = var_scope.format(j) #
-        init_params(channels, graph_model=graph_model, var_scope=cur_scope)
+        init_params(channels, graph_model=graph_model, var_scope=cur_scope, restore=restore)
+
+def init_zuni_params_multi(channels, vscopes, graph_model=True, seed=None, restore=False):
+    """ Initialize network parameters for multi-step model, for predicting
+    across multiple redshifts. (eg 6.0 -> 4.0 -> ... -> <target rs>)
+    Multi-step model is network where each layer is a single-step model
+    """
+    for scope in vscopes:
+        tf.set_random_seed(seed) # ensure each sub-model has same weight init
+        init_params(channels, graph_model=graph_model, var_scope=scope, restore=restore)
 
 #=============================================================================
 # var gets
@@ -144,9 +153,23 @@ def get_vel_coeff(var_scope):
 #=============================================================================
 def load_graph(sess, save_dir):
     saver = tf.train.Saver()
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     path = tf.train.get_checkpoint_state(save_dir)
     saver.restore(sess, path.model_checkpoint_path)
 
+def load_multi_graph(sess, vscopes, num_layers, save_dir):
+    for vidx, vscope in enumerate(vscopes):
+        sdict = {}
+        for layer_idx in range(num_layers):
+            wtag = vscope + '/' + WEIGHT_TAG.format(layer_idx)
+            btag = vscope + '/' + BIAS_TAG.format(layer_idx)
+            W, B = get_layer_vars(layer_idx, vscope)
+            sdict[wtag] = W
+            sdict[btag] = B
+        saver = tf.train.Saver(sdict)
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        path = tf.train.get_checkpoint_state(save_dir[vidx])
+        saver.restore(sess, path.model_checkpoint_path)
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><

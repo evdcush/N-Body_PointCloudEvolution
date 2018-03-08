@@ -30,7 +30,7 @@ start_time = time.time()
 #=============================================================================
 # nbody data params
 num_particles = 32 #pargs['particles']
-zX, zY = pargs['redshifts'] # strictly for model naming
+zX, zY = pargs['redshifts']
 #zX, zY = 9.0, 0.0
 nbody_params = (num_particles, (zX, zY))
 
@@ -88,9 +88,11 @@ restore = pargs['restore'] == 1
 #=============================================================================
 # init network params
 tf.set_random_seed(utils.PARAMS_SEED)
-vscope = utils.VAR_SCOPE_MULTI.format('{}_{}'.format(zX, zY))
+#vscope = utils.VAR_SCOPE_MULTI.format('{}_{}'.format(zX, zY))
 #utils.init_params(channels, graph_model=False, seed=utils.PARAMS_SEED, restore=restore)
-utils.init_params(channels, graph_model=False, seed=utils.PARAMS_SEED, var_scope=vscope, restore=restore)
+#utils.init_params(channels, graph_model=False, seed=utils.PARAMS_SEED, var_scope=vscope, restore=restore)
+vscopes = ['params_{}_{}'.format(i, i+1) for i in range(zX, zY)]
+utils.init_zuni_params_multi(channels, vscopes, graph_model=False, restore=restore)
 
 #var_scopes = [utils.VAR_SCOPE_MULTI.format(j) for j in range(num_rs_layers)]
 
@@ -121,8 +123,8 @@ def alist_func(h_in): # for tf.py_func
 #X_pred_val = nn.zuni_val_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
 
 # SET Model
-H_out  = nn.model_fwd(X_input, num_layers, vel_coeff=vcoeff, var_scope=vscope)
-X_pred = nn.get_readout_vel(H_out)
+X_pred = nn.zuni_multi_single_model_fwd_set(X_input, vscopes, num_layers)
+#X_pred = nn.get_readout_vel(H_out)
 
 def vel_mse_fn(a, b):
     v_diff = tf.squared_difference(a[...,3:], b[...,3:])
@@ -132,17 +134,10 @@ def vel_mse_fn(a, b):
 
 # loss and optimizer
 coo_mse  = nn.pbc_loss(X_pred, X_truth)
-#vel_diff = tf.squared_difference(X_pred[...,3:], X_truth[...,3:])
-#vel_mse  = tf.reduce_mean(tf.reduce_sum(vel_diff, axis=-1))
-#vel_mse = vel_mse_fn(X_pred, X_truth) / vel_mse_fn(X_input, X_truth)
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
-
-train = tf.train.AdamOptimizer(learning_rate).minimize(coo_mse)
-#train_vel = tf.train.AdamOptimizer(learning_rate).minimize(vel_mse)
+train = tf.train.AdamOptimizer(learning_rate, name='AdamMulti').minimize(coo_mse)
 est_error = nn.pbc_loss(X_pred, X_truth) # this just for evaluation
 ground_truth_error = nn.pbc_loss(X_input, X_truth)
-#true_vel_error     = vel_mse_fn(X_input, X_truth)
 
 
 #=============================================================================
@@ -159,15 +154,23 @@ gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
 if restore:
-    utils.load_graph(sess, model_path)
+    mp = './Model/zuniS_{}-{}/Session/'
+    mpaths = [mp.format(i, i+1) for i in range(zX, zY)]
+    utils.load_multi_graph(sess, vscopes, num_layers, mpaths)
+    '''
+    for p in mpaths:
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        utils.load_graph(sess, p)
+    '''
+
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 # Save
-train_loss_history = np.zeros((num_iters)).astype(np.float32)
+#train_loss_history = np.zeros((num_iters)).astype(np.float32)
+#train = tf.train.AdamOptimizer(learning_rate, name='AdamMulti').minimize(coo_mse)
 saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
 checkpoint = 200
 save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
-
 #=============================================================================
 # TRAINING
 #=============================================================================
@@ -192,7 +195,6 @@ print('elapsed time: {}'.format(time.time() - start_time))
 
 # save
 saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
-if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
 X_train = None # reduce memory overhead
 
 #=============================================================================
