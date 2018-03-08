@@ -14,7 +14,7 @@ parser.add_argument('--particles', '-p', default=32,         type=int,  help='nu
 parser.add_argument('--redshifts', '-z', default=[18,19], nargs='+', type=int, help='redshift tuple, predict z[1] from z[0]')
 parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
 parser.add_argument('--knn',       '-k', default=14,          type=int, help='number of nearest neighbors for graph model')
-#parser.add_argument('--resume',    '-r', default=0,          type=int,  help='resume training from serialized params')
+parser.add_argument('--restore',   '-r', default=0,          type=int,  help='resume training from serialized params')
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
 parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
@@ -62,7 +62,6 @@ vcoeff = pargs['vel_coeff'] == 1
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
 K = pargs['knn']
-
 threshold = 0.08
 
 #=============================================================================
@@ -77,6 +76,9 @@ model_name = utils.get_zuni_model_name(zX, zY, pargs['save_prefix'])
 paths = utils.make_save_dirs(pargs['model_dir'], model_name)
 model_path, loss_path, cube_path = paths
 
+# restore
+restore = pargs['restore'] == 1
+
 # save test data
 #utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 
@@ -86,17 +88,9 @@ model_path, loss_path, cube_path = paths
 #=============================================================================
 # init network params
 tf.set_random_seed(utils.PARAMS_SEED)
-#utils.init_params(channels, graph_model=use_graph, seed=utils.PARAMS_SEED)
-#utils.init_params(channels, graph_model=False, seed=utils.PARAMS_SEED, vel_coeff=vcoeff)
-
-gpu_frac = 0.8
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
-sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
-# restore
-
-restore_model = tf.train.import_meta_graph('./Model/zuni_18-19/Session/zuni_18-19.meta')
-restore_model.restore(sess, tf.train.latest_checkpoint('./Model/zuni_18-19/Session/'))
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+vscope = utils.VAR_SCOPE_MULTI.format('{}_{}'.format(zX, zY))
+#utils.init_params(channels, graph_model=False, seed=utils.PARAMS_SEED, restore=restore)
+utils.init_params(channels, graph_model=False, seed=utils.PARAMS_SEED, var_scope=vscope, restore=restore)
 
 #var_scopes = [utils.VAR_SCOPE_MULTI.format(j) for j in range(num_rs_layers)]
 
@@ -127,7 +121,7 @@ def alist_func(h_in): # for tf.py_func
 #X_pred_val = nn.zuni_val_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
 
 # SET Model
-H_out  = nn.model_fwd(X_input, num_layers, vel_coeff=vcoeff)
+H_out  = nn.model_fwd(X_input, num_layers, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
 
 def vel_mse_fn(a, b):
@@ -144,7 +138,7 @@ coo_mse  = nn.pbc_loss(X_pred, X_truth)
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 
-#train = tf.train.AdamOptimizer(learning_rate).minimize(coo_mse)
+train = tf.train.AdamOptimizer(learning_rate).minimize(coo_mse)
 #train_vel = tf.train.AdamOptimizer(learning_rate).minimize(vel_mse)
 est_error = nn.pbc_loss(X_pred, X_truth) # this just for evaluation
 ground_truth_error = nn.pbc_loss(X_input, X_truth)
@@ -160,11 +154,13 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-#gpu_frac = 0.8
-#gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
-#sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
-#sess.run(tf.global_variables_initializer())
-
+gpu_frac = 0.8
+gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
+sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+sess.run(tf.global_variables_initializer())
+if restore:
+    utils.load_graph(sess, model_path)
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 # Save
 train_loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
@@ -234,7 +230,6 @@ for step in range(num_iters):
         #wr_meta = step == checkpoint # only write on first checkpoint
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 '''
-'''
 for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
@@ -254,7 +249,7 @@ print('elapsed time: {}'.format(time.time() - start_time))
 saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
 X_train = None # reduce memory overhead
-'''
+
 #=============================================================================
 # TESTING
 #=============================================================================

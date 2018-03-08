@@ -55,7 +55,7 @@ VAR_SCOPE_MULTI = 'params_{}'
 #=============================================================================
 # var inits
 #=============================================================================
-def init_weight(k_in, k_out, name, seed=None):
+def init_weight(k_in, k_out, name, seed=None, restore=False):
     """ initialize weight Variable
     Args:
         k_in, k_out (int): weight sizes
@@ -63,14 +63,19 @@ def init_weight(k_in, k_out, name, seed=None):
     """
     #std = scale * np.sqrt(2. / k_in)
     #henorm = tf.random_normal((k_in, k_out), stddev=std, seed=seed)
-    norm = tf.glorot_normal_initializer(seed=seed)
-    tf.get_variable(name, (k_in, k_out), dtype=tf.float32, initializer=norm)
+    init = None
+    if not restore:
+        init = tf.glorot_normal_initializer(seed=seed)
+    tf.get_variable(name, (k_in, k_out), dtype=tf.float32, initializer=init)
 
-def init_bias(k_in, k_out, name,):
+def init_bias(k_in, k_out, name, restore=False):
     """ biases initialized to be near zero
     """
-    bval = tf.ones((k_out,), dtype=tf.float32) * 1e-8
-    tf.get_variable(name, dtype=tf.float32, initializer=bval)
+    if not restore:
+        init = tf.ones((k_out,), dtype=tf.float32) * 1e-8
+        tf.get_variable(name, dtype=tf.float32, initializer=init)
+    else:
+        tf.get_variable(name, (k_out,), dtype=tf.float32, initializer=None)
 
 def init_vel_coeff():
     """ scalar weight used in skip connection, for adjusting locations by
@@ -84,7 +89,7 @@ def init_vel_coeff():
 
 # Single-step
 def init_params(channels, graph_model=False, vel_coeff=False,
-                var_scope=VAR_SCOPE, seed=None):
+                var_scope=VAR_SCOPE, seed=None, restore=False):
     """ Initialize network parameters
     graph model has extra weight, no bias
     set model has bias
@@ -94,11 +99,11 @@ def init_params(channels, graph_model=False, vel_coeff=False,
     with tf.variable_scope(var_scope):
         # initialize variables for each layer
         for idx, ktup in enumerate(kdims):
-            init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed)
+            init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed, restore=restore)
             if graph_model: # graph
-                init_weight(*ktup, GRAPH_TAG.format(idx), seed=seed)
+                init_weight(*ktup, GRAPH_TAG.format(idx), seed=seed, restore=restore)
             else: # set
-                init_bias(*ktup, BIAS_TAG.format(idx))
+                init_bias(*ktup, BIAS_TAG.format(idx), restore=restore)
         if vel_coeff: # scalar weight for simulating timestep, only one
             init_vel_coeff()
 
@@ -137,7 +142,10 @@ def get_vel_coeff(var_scope):
 #=============================================================================
 # graph save and restore
 #=============================================================================
-
+def load_graph(sess, save_dir):
+    saver = tf.train.Saver()
+    path = tf.train.get_checkpoint_state(save_dir)
+    saver.restore(sess, path.model_checkpoint_path)
 
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
