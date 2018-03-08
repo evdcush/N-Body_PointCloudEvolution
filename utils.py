@@ -55,7 +55,7 @@ VAR_SCOPE_MULTI = 'params_{}'
 #=============================================================================
 # var inits
 #=============================================================================
-def init_weight(k_in, k_out, name,  seed=None):
+def init_weight(k_in, k_out, name, seed=None):
     """ initialize weight Variable
     Args:
         k_in, k_out (int): weight sizes
@@ -133,6 +133,12 @@ def get_vel_coeff(var_scope):
     with tf.variable_scope(var_scope, reuse=True):
         vel_coeff = tf.get_variable(VEL_COEFF_TAG)
     return vel_coeff
+
+#=============================================================================
+# graph save and restore
+#=============================================================================
+
+
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
@@ -516,7 +522,7 @@ def get_model_name(dparams, mtype, vel_coeff, save_prefix):
         model_name = '{}_{}'.format(save_prefix, model_name)
     return model_name
 
-def get_uni_model_name(save_prefix):
+def get_zuni_model_name(zX, zY, save_prefix):
     """ Consistent model naming format
     Model name examples:
         'GL_32_12-04': GraphModel|WithVelCoeff|32**3 Dataset|redshift 1.2->0.4
@@ -530,7 +536,8 @@ def get_uni_model_name(save_prefix):
     #vel_tag = 'L' if vel_coeff is not None else ''
 
     #model_name = '{}{}_{}_{}-{}'.format(model_tag, vel_tag, n_P, zX, zY)
-    model_name = 'ZG_90-00'
+    #model_name = 'ZG_90-00'
+    model_name = '{}-{}'.format(zX, zY)
     if save_prefix != '':
         model_name = '{}_{}'.format(save_prefix, model_name)
     return model_name
