@@ -47,7 +47,7 @@ X = utils.load_zuni_npy_data(redshifts=redshift_steps, normalize=True) # normali
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 #print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
-
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 #=============================================================================
 # network and model params
 #=============================================================================
@@ -96,10 +96,10 @@ with tf.Session() as sess:
 
 
 # INPUTS
-data_shape = (num_rs, None, num_particles**3, 6)
-#data_shape = (None, num_particles**3, 6)
+#data_shape = (num_rs, None, num_particles**3, 6)
+data_shape = (None, num_particles**3, 6)
 X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
-#X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
+X_truth = tf.placeholder(tf.float32, shape=data_shape, name='X_truth')
 
 # ADJACENCY LIST
 #alist_shape = (num_rs_layers, None, 2) # output shape
@@ -113,17 +113,20 @@ adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 #sampling_probs = tf.placeholder(tf.bool, shape=(num_rs_layers-1,), name='sampling_probs')
 
 def alist_func(h_in): # for tf.py_func
-    return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
+    #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
+    return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
 
-X_pred, loss = nn.zuni_model_fwd(X_input, num_rs_layers, num_layers, adj_list, K)
-X_pred_val, loss_val = nn.zuni_func_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
-
+H_out  = nn.model_fwd(X_input, num_layers, adj_list, K)
+X_pred = nn.get_readout_vel(H_out)
+X_pred_val = nn.zuni_val_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
 
 
 
 # loss and optimizer
-train = tf.train.AdamOptimizer(learning_rate).minimize(loss)
-est_error = nn.pbc_loss(X_pred_val, X_input[-1]) # this just for evaluation
+training_error = nn.pbc_loss(X_pred, X_truth)
+train = tf.train.AdamOptimizer(learning_rate).minimize(training_error)
+est_error = nn.pbc_loss(X_pred_val, X_truth) # this just for evaluation
+ground_truth_error = nn.pbc_loss(X_input, X_truth)
 
 
 #=============================================================================
@@ -176,28 +179,35 @@ for step in range(num_iters):
         #wr_meta = step == checkpoint # only write on first checkpoint
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 '''
+'''
+PROBLEM WITH THE SINGLE-STEP APPROACH: VELOCITY PREDICTIONS
+IT IS STILL UNKNOWN WHETHER THE MODEL CAN PRODUCE ACCURATE VELOCITY PREDICTIONS
+WHEN VELOCITY IS NOT PENALIZED. In the multi-step approach, velocity predictions
+can be treated as a latent variable, but we cannot do that with single-step
+'''
 for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
-    x_in = _x_batch
     x_pair_idx = [[i,i+1] for i in range(_x_batch.shape[0] - 1)]
     np.random.shuffle(x_pair_idx)
-    for pair_idx in x_pair_idx:
-        x_in = _x_batch[pair_idx] # (2, mb_size, 32**3, 6)
-        alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
-        #alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(num_rs_layers)]
-        fdict = {X_input: x_in, adj_list: alist, }#sampling_probs:sprobs, }#scale_weights:sweights}
+    for z_in, z_out in x_pair_idx:
+        x_in    = _x_batch[z_in]
+        x_truth = _x_batch[z_out]
+        #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
+        alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+        fdict = {X_input: x_in, X_truth: x_truth, adj_list: alist}
         if verbose:
             error = sess.run(loss, feed_dict=fdict)
             train_loss_history[step] = error
             print('{}: {:.8f}'.format(step, error))
         # cycle through graph
         train.run(feed_dict=fdict)
-        if save_checkpoint(step):
-            error = sess.run(loss, feed_dict=fdict)
-            print('checkpoint {:>5}: {}'.format(step, error))
-            #wr_meta = step == checkpoint # only write on first checkpoint
-            saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+    if save_checkpoint(step):
+        #error = sess.run(training_error, feed_dict=fdict)
+        print('checkpoint: {:>5}'.format(step))
+        #print('checkpoint {:>5}: {}'.format(step, error))
+        #wr_meta = step == checkpoint # only write on first checkpoint
+        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
 print('elapsed time: {}'.format(time.time() - start_time))
 
@@ -218,18 +228,19 @@ test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 print('\nTesting:\n==============================================================================')
 for j in range(X_test.shape[1]):
     # data
-    #x_in   = X_test[0, j:j+1] # (1, n_P, 6)
-    #x_true = X_test[1, j:j+1]
-    x_in = X_test[:,j:j+1]
+    x_in   = X_test[0,  j:j+1] # (1, n_P, 6)
+    x_true = X_test[-1, j:j+1]
+    #x_in = X_test[:,j:j+1]
     #alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(0, num_rs_layers)]
     #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
-    fdict = {X_input: x_in, }#adj_list: alist}
+    fdict = {X_input: x_in, X_truth: x_true}#adj_list: alist}
 
     # validation error
     #error = sess.run(loss, feed_dict=fdict)
     error = sess.run(est_error, feed_dict=fdict)
+    error_inp = sess.run(ground_truth_error, feed_dict=fdict)
     test_loss_history[j] = error
-    print('{}: {:.6f}'.format(j, error))
+    print('{:>3d}: {:.6f} | {:.6f}'.format(j, error, error_inp))
 
     # prediction
     x_pred = sess.run(X_pred_val, feed_dict=fdict)

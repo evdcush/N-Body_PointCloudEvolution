@@ -296,7 +296,7 @@ def normalize_zuni(X_in):
     #vel_std  = np.std( vel, axis=0)
     #x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
 
-    X_in[...,:3] = X[...,:3] / 32.0
+    X_in[...,:3] = X_in[...,:3] / 32.0
     return X_in
     #X_out = np.reshape(x_r, X_in.shape).astype(np.float32) # just convert to float32 here
     #return X_out
@@ -413,9 +413,14 @@ def random_augmentation_shift(batch):
     Returns:
         batch (ndarray): randomly shifted data array
     """
-    batch_size = batch.shape[1]
+    #batch_size = batch.shape[1]
     rands = np.random.rand(6)
-    shift = np.random.rand(1,batch_size,1,3)
+    if batch.ndim > 3: # there is rs dim
+        batch_size = batch.shape[1]
+        shift = np.random.rand(1,batch_size,1,3)
+    else:
+        batch_size = batch.shape[0]
+        shift = np.random.rand(batch_size,1,3)
     # shape (11, bs, n_P, 6)
     if rands[0] < .5:
         batch = batch[...,[1,0,2,4,3,5]]
@@ -454,7 +459,6 @@ def next_minibatch(X_in, batch_size, data_aug=True):
     batches = X_in[:,index_list]
     if data_aug:
         return random_augmentation_shift(batches)
-
     else:
         return batches
 

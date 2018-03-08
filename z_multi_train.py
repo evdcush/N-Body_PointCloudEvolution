@@ -97,10 +97,13 @@ with tf.Session() as sess:
 
 # INPUTS
 data_shape = (num_rs, None, num_particles**3, 6)
+#data_shape = (None, num_particles**3, 6)
 X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
+#X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
 
 # ADJACENCY LIST
-alist_shape = (num_rs_layers, None, 2) # output shape
+#alist_shape = (num_rs_layers, None, 2) # output shape
+alist_shape = (None, 2)
 adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 
 # loss scaling weights
@@ -149,6 +152,7 @@ save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
 #=============================================================================
 start_time = time.time()
 np.random.seed(utils.DATASET_SEED)
+'''
 for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
@@ -171,6 +175,29 @@ for step in range(num_iters):
         print('checkpoint {:>5}: {}'.format(step, error))
         #wr_meta = step == checkpoint # only write on first checkpoint
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+'''
+for step in range(num_iters):
+    # data
+    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
+    x_in = _x_batch
+    x_pair_idx = [[i,i+1] for i in range(_x_batch.shape[0] - 1)]
+    np.random.shuffle(x_pair_idx)
+    for pair_idx in x_pair_idx:
+        x_in = _x_batch[pair_idx] # (2, mb_size, 32**3, 6)
+        alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
+        #alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(num_rs_layers)]
+        fdict = {X_input: x_in, adj_list: alist, }#sampling_probs:sprobs, }#scale_weights:sweights}
+        if verbose:
+            error = sess.run(loss, feed_dict=fdict)
+            train_loss_history[step] = error
+            print('{}: {:.8f}'.format(step, error))
+        # cycle through graph
+        train.run(feed_dict=fdict)
+        if save_checkpoint(step):
+            error = sess.run(loss, feed_dict=fdict)
+            print('checkpoint {:>5}: {}'.format(step, error))
+            #wr_meta = step == checkpoint # only write on first checkpoint
+            saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
 print('elapsed time: {}'.format(time.time() - start_time))
 

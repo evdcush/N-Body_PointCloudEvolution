@@ -109,7 +109,21 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
 #=============================================================================
 # multi stuff, new data
 #=============================================================================
-def zuni_model_fwd(x_in, num_rs, num_layers, adj_lists, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+def zuni_val_model_fwd(x_in, num_rs, num_layers, alist_fn, K):
+    """ forwarding routine for validation/testing
+    Only ground truth is initial redshift input. Subsequent predictions
+    receive the previous prediction as input
+    Args:
+        x_in: (*, mb_size, ...) full rs data
+    """
+    alist = tf.py_func(alist_fn, [x_in], tf.int32)
+    h = get_readout_vel(model_fwd(x_in, num_layers, alist, K))
+    for idx in range(1, num_rs):
+        alist = tf.py_func(alist_fn, [h], tf.int32)
+        h = get_readout_vel(model_fwd(h, num_layers, alist, K))
+    return h
+
+def zuni_multi_model_fwd(x_in, num_rs, num_layers, adj_lists, K, activation=tf.nn.relu, add=True, vel_coeff=None):
     """
     Args:
         x_in: (11, mb_size, ...) full rs data
@@ -121,7 +135,7 @@ def zuni_model_fwd(x_in, num_rs, num_layers, adj_lists, K, activation=tf.nn.relu
         loss += pbc_loss(h, x_in[idx+1])
     return h, loss
 
-def zuni_func_model_fwd(x_in, num_rs, num_layers, alist_fn, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+def zuni_multi_func_model_fwd(x_in, num_rs, num_layers, alist_fn, K, activation=tf.nn.relu, add=True, vel_coeff=None):
     """
     Args:
         x_in: (*, mb_size, ...) full rs data
@@ -134,6 +148,7 @@ def zuni_func_model_fwd(x_in, num_rs, num_layers, alist_fn, K, activation=tf.nn.
         h = get_readout_vel(model_fwd(h, num_layers, alist, K))
         loss += pbc_loss(h, x_in[idx+1])
     return h, loss
+
 
 
 #=============================================================================
