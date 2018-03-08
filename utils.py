@@ -17,9 +17,9 @@ RS_TAGS = {6.0:'60', 4.0:'40', 2.0:'20', 1.5:'15', 1.2:'12', 1.0:'10',
            0.8:'08', 0.6:'06', 0.4:'04', 0.2:'02', 0.0:'00'}
 
 # dataset uniform timestep
-DATA_PATH_UNI     = '/home/evan/Data/nbody_simulations/N_uniform/run*/xv_dm.z=0{}'
-DATA_PATH_UNI_NPY = '/home/evan/Data/nbody_simulations/N_uniform/npy_data/X_{:.4f}_.npy'
-REDSHIFTS_UNI = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
+DATA_PATH_ZUNI     = '/home/evan/Data/nbody_simulations/N_uniform/run*/xv_dm.z=0{}'
+DATA_PATH_ZUNI_NPY = '/home/evan/Data/nbody_simulations/N_uniform/npy_data/X_{:.4f}_.npy'
+REDSHIFTS_ZUNI = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
                  1.1212, 0.9438, 0.7955, 0.6688, 0.5588, 0.4620, 0.3758,
                  0.2983, 0.2280, 0.1639, 0.1049, 0.0505, 0.0000]
 
@@ -208,115 +208,74 @@ def load_npy_data(n_P, redshifts=None, normalize=False):
 #=============================================================================
 # NEW DATA UTILS, uniformly displaced
 #=============================================================================
-'''
-def read_zuni_sim(file_list, n_P):
-    """ reads simulation data from disk and returns
-
-    Args:
-        file_list: (list<str>) paths to files
-        n_P: (int) number of particles base (n_P**3 particles)
-    """
-    num_particles = n_P**3
-    dataset = []
-    for file_name in file_list:
-        this_set = []
-        with open(file_name, "rb") as f:
-            for i in range(num_particles*6):
-                s = struct.unpack('=f',f.read(4))
-                this_set.append(s[0])
-        dataset.append(this_set)
-    dataset = np.array(dataset).reshape([len(file_list),num_particles,6])
-    return dataset
-'''
-
-def load_zuni_datum(redshift, normalize_data=False):
+def load_zuni_datum(redshift):
     """ loads a single redshift datum from uniformly timestepped redshift data
 
     Args:
         redshift: (float) redshift
     """
     n_P = 32
-    #DATA_PATH_UNI = '/home/evan/Data/nbody_simulations/N_uniform/run*/xv_dm.z=0{2}'
-    assert redshift in REDSHIFTS_UNI
+    assert redshift in REDSHIFTS_ZUNI
     redshift_str = '{:.4f}'.format(redshift)
-    glob_paths = glob.glob(DATA_PATH_UNI.format(redshift_str))
+    glob_paths = glob.glob(DATA_PATH_ZUNI.format(redshift_str))
     X = read_sim(glob_paths, n_P).astype(np.float32)
-    if normalize_data: X = normalize_zuni(X)
     return X
-
 
 def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
-    """ Loads data serialized as numpy array of np.float32
-    Think you may need to load full redshift data for normalization purposes,
-    and then select the redshifts for training
+    """ Loads new uniformly timestep data serialized as np array of np.float32
     Args:
-
+        redshifts (list int): list of indices into redshifts in order
+        norm_coo: normalize coordinate values to [0,1]
+        norm_vel: normalize vel values (only norm'd if coord norm'd)
     """
-    full_redshifts = list(REDSHIFTS_UNI)
-    if redshifts is None: redshifts = list(np.arange(len(full_redshifts))) # copy
-    #num_rs = len(redshifts)
-    num_rs = len(full_redshifts)
+    if redshifts is None:
+        redshifts = list(range(len(REDSHIFTS_ZUNI))) # copy
+    num_rs = len(redshifts)
     N = 1000
     M = 32**3
     D = 6
     X = np.zeros((num_rs, N, M, D)).astype(np.float32)
-    for idx, rs in enumerate(full_redshifts):
-        X[idx] = np.load(DATA_PATH_UNI_NPY.format(rs))
+    for idx, z_idx in enumerate(redshifts):
+        z_rs   = REDSHIFTS_ZUNI[z_idx]
+        z_path = DATA_PATH_ZUNI_NPY.format(z_rs)
+        print('LD: {}'.format(z_path[-13:]))
+        X[idx] = np.load(z_path)
     if norm_coo:
         X = normalize_zuni(X, norm_vel)
-    return X[redshifts]
-
-'''
-def load_zuni_npy_data(redshifts=None, normalize=False):
-    """ Loads data serialized as numpy array of np.float32
-    Think you may need to load full redshift data for normalization purposes,
-    and then select the redshifts for training
-    Args:
-
-    """
-    full_redshifts = list(REDSHIFTS_UNI)
-    if redshifts is None: redshifts = full_redshifts # copy
-    #num_rs = len(redshifts)
-    num_rs = len(full_redshifts)
-    N = 1000
-    M = 32**3
-    D = 6
-    X = np.zeros((num_rs, N, M, D)).astype(np.float32)
-    for idx, rs in enumerate(full_redshifts):
-        X[idx] = np.load(DATA_PATH_UNI_NPY.format(rs))
-    #if normalize: X = normalize_zuni(X)
-    X = normalize_zuni(X)
-    rs_idx = [full_redshifts.index(j) for j in redshifts]
-    X = X[rs_idx]
     return X
-'''
+
 
 def normalize_zuni_vel(vel_in, rescale=True):
-    """ Normalize data features
-    coordinates are rescaled to be in range [0,1]
-    velocities are normalized to zero mean and unit variance
-
+    """ Normalize velocity, either by population statistics (mean, std) or
+    by rescaling to be within a range
+    Uses population features from ALL redshifts
+    vel_pop_stat == {'max':  max over all redshifts
+                     'min':  min "
+                      'mu': mean ",
+                     'std': stdv ",}
+    NB: vel_pop_stat['mu'] == -9.8190285e-06, vel_pop_stat['std'] == 0.9580899
+    so the velocities are already in gaussian distribution
     Args:
-        vel_in (ndarray): data to be normalized, of shape (N*D, 6)
+        vel_in (ndarray): data to be normalized, of shape (num_rs*N*D, 6)
     """
+    vel_pop_stat = np.load('./Data/zuni_vel_population_statistics.npy').item()
+
     if rescale:
-        vel_max = np.max(vel_in)
-        vel_min = np.min(vel_in)
-        #x_r[:,3:] = (x_r[:,3:] - vel_min) / (vel_max - vel_min)
+        vel_max = vel_pop_stat['max']
+        vel_min = vel_pop_stat['min']
         vel_out = (vel_in - vel_min) / (vel_max - vel_min)
-    else: # normalize to 0 mean, unit var
-        vel_mean = np.mean(vel_in, axis=0)
-        vel_std  = np.std( vel_in, axis=0)
-        vel_out = (vel_in - vel_mean) / vel_std
+    else:
+        vel_mean = vel_pop_stat['mu']
+        vel_std  = vel_pop_stat['std']
+        vel_out  = (vel_in - vel_mean) / vel_std
     return vel_out
 
 def normalize_zuni(X_in, norm_vel=False):
     """ Normalize data features
     coordinates are rescaled to be in range [0,1]
-    velocities are normalized to zero mean and unit variance
-
+    velocities normalized to be within a range or by population stats
     Args:
-        X_in (ndarray): data to be normalized, of shape (N, D, 6)
+        X_in (ndarray): data to be normalized, of shape (num_rs, N, D, 6)
     """
     x_r = np.reshape(X_in, [-1,6])
     x_r[:,:3] = x_r[:,:3] / 32.0

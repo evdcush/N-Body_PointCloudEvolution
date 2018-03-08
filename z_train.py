@@ -35,21 +35,17 @@ zX, zY = pargs['redshifts'] # strictly for model naming
 nbody_params = (num_particles, (zX, zY))
 
 # redshifts
-#redshift_steps = [6.0, 1.5, 1.0, 0.4, 0.0] # true redshifts
 rs_len = len(utils.REDSHIFTS)
 #redshift_steps = utils.REDSHIFTS_UNI[-1::-4][::-1]
-#redshift_steps = utils.REDSHIFTS_UNI[-2:]
 redshift_steps = pargs['redshifts']
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
 # Load data
 X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True, norm_vel=True) # normalize only rescales coo for now
-#X = X[redshift_idx]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 #print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 #=============================================================================
 # network and model params
 #=============================================================================
@@ -236,21 +232,13 @@ for step in range(num_iters):
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in    = _x_batch[0]
     x_truth = _x_batch[1]
-    #x_pair_idx = [[i,i+1] for i in range(_x_batch.shape[0] - 1)]
-    #np.random.shuffle(x_pair_idx)
     fdict = {X_input: x_in, X_truth: x_truth}#, adj_list: alist}
-    if verbose:
-        error = sess.run(loss, feed_dict=fdict)
-        train_loss_history[step] = error
-        print('{}: {:.8f}'.format(step, error))
     # cycle through graph
-    train_vel.run(feed_dict=fdict)
+    #train_vel.run(feed_dict=fdict)
     train.run(feed_dict=fdict)
     if save_checkpoint(step):
         error = sess.run(coo_mse, feed_dict=fdict)
-        #print('checkpoint: {:>5}'.format(step))
         print('checkpoint {:>5}: {}'.format(step, error))
-        #wr_meta = step == checkpoint # only write on first checkpoint
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 print('elapsed time: {}'.format(time.time() - start_time))
 
@@ -290,7 +278,7 @@ for j in range(X_test.shape[1]):
     #true_v_error = sess.run(true_vel_error, feed_dict=fdict)
     test_loss_history[j] = error
     #test_vel[j] = vel_error
-    print('{:>3d}: {:.6f} | {:.6f}'.format(j, error, error_inp))
+    #print('{:>3d}: {:.6f} | {:.6f}'.format(j, error, error_inp))
     #print('{:>3d}: {:.6f} | {:.6f} | {:.6f} | {:.6f}'.format(j, error, vel_error, error_inp, true_v_error))
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 

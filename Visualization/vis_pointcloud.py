@@ -99,14 +99,14 @@ def volumize_arrow(datain,# n x 3
         mlab.show()
 
 
-j = 6 # sample
+j = 39 # sample
 
 #model_name = 'velmodel_16_8_1000_01_'
 #data_dir = '../Model/RGL_32_60-00/Cubes/X32_6.0-0.0_{}.npy'
 
-x_input = np.load('../Model/GL_32_06-00/Cubes/X32_0.6_data.npy')
-x_truth = np.load('../Model/GL_32_06-00/Cubes/X32_0.0_data.npy')
-x_pred  = np.load('../Model/GL_32_06-00/Cubes/X32_0.6-0.0_prediction.npy')
+x_input = np.load('../X05.npy')
+x_truth = np.load('../X00.npy')[0]
+#x_pred  = np.load('../Model/GL_32_06-00/Cubes/X32_0.6-0.0_prediction.npy')
 
 #data_dir = '../Models/'
 #x_input = np.load(data_dir + model_name + 'train_input.npy')
@@ -139,10 +139,10 @@ sfactor = .005
 
 arrow_true  = (x_input[j,mask_nz,:3], x_truth[j,mask_nz,:3] - x_input[j,mask_nz,:3])
 arrow_input = (x_input[j,mask_nz,:3], x_input[j,mask_nz,3:])
-arrow_pred  = (x_input[j,mask_nz,:3], x_pred[j, mask_nz,:3] - x_input[j,mask_nz,:3])
+#arrow_pred  = (x_input[j,mask_nz,:3], x_pred[j, mask_nz,:3] - x_input[j,mask_nz,:3])
 volumize_arrow(*arrow_true,  figure=fig, color=red,   opacity=.3, show=False, mode=arrow_mode)
-volumize_arrow(*arrow_input, figure=fig, color=green, opacity=.3, show=False, mode=arrow_mode)
-volumize_arrow(*arrow_pred,  figure=fig, color=blue,  opacity=.3, show=True,  mode=arrow_mode)
+volumize_arrow(*arrow_input, figure=fig, color=green, opacity=.3, show=True, mode=arrow_mode)
+#volumize_arrow(*arrow_pred,  figure=fig, color=blue,  opacity=.3, show=True,  mode=arrow_mode)
 #volumize_ptc(x_truth[j,mask_nz,:3], show=False,figure=fig, opacity=.5, color=red,  mode='sphere', scale_factor=sfactor)
 #volumize_ptc(x_input[j,mask_nz,:3], show=False,figure=fig, opacity=.9, color=green,mode='sphere', scale_factor=sfactor)
 #volumize_ptc( x_pred[j,mask_nz,:3], show=True, figure=fig, opacity=.5, color=blue, mode='sphere', scale_factor=sfactor)
