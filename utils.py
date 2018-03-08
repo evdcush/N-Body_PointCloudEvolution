@@ -244,38 +244,73 @@ def load_zuni_datum(redshift, normalize_data=False):
     if normalize_data: X = normalize_zuni(X)
     return X
 
-def load_zuni_data(n_P, *args, **kwargs):
-    """ loads datasets from proper data directory
-    # note: this function is redundant
 
-    Args:
-        n_P: (int) base of number of particles (n_P**3 particles)
-    """
-    data = []
-    for redshift in args:
-        x = load_zuni_datum(redshift, **kwargs)
-        data.append(x)
-    return data
-
-def load_zuni_npy_data(redshifts=None, normalize=False):
+def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
     """ Loads data serialized as numpy array of np.float32
+    Think you may need to load full redshift data for normalization purposes,
+    and then select the redshifts for training
     Args:
 
     """
     if redshifts is None:
         redshifts = list(REDSHIFTS_UNI) # copy
     num_rs = len(redshifts)
+    #num_rs = len(full_redshifts)
     N = 1000
     M = 32**3
     D = 6
     X = np.zeros((num_rs, N, M, D)).astype(np.float32)
     for idx, rs in enumerate(redshifts):
         X[idx] = np.load(DATA_PATH_UNI_NPY.format(rs))
-    if normalize:
-        X = normalize_zuni(X)
+    if norm_coo:
+        X = normalize_zuni(X, norm_vel)
     return X
 
-def normalize_zuni(X_in):
+'''
+def load_zuni_npy_data(redshifts=None, normalize=False):
+    """ Loads data serialized as numpy array of np.float32
+    Think you may need to load full redshift data for normalization purposes,
+    and then select the redshifts for training
+    Args:
+
+    """
+    full_redshifts = list(REDSHIFTS_UNI)
+    if redshifts is None: redshifts = full_redshifts # copy
+    #num_rs = len(redshifts)
+    num_rs = len(full_redshifts)
+    N = 1000
+    M = 32**3
+    D = 6
+    X = np.zeros((num_rs, N, M, D)).astype(np.float32)
+    for idx, rs in enumerate(full_redshifts):
+        X[idx] = np.load(DATA_PATH_UNI_NPY.format(rs))
+    #if normalize: X = normalize_zuni(X)
+    X = normalize_zuni(X)
+    rs_idx = [full_redshifts.index(j) for j in redshifts]
+    X = X[rs_idx]
+    return X
+'''
+
+def normalize_zuni_vel(vel_in, rescale=True):
+    """ Normalize data features
+    coordinates are rescaled to be in range [0,1]
+    velocities are normalized to zero mean and unit variance
+
+    Args:
+        vel_in (ndarray): data to be normalized, of shape (N*D, 6)
+    """
+    if rescale:
+        vel_max = np.max(vel_in)
+        vel_min = np.min(vel_in)
+        #x_r[:,3:] = (x_r[:,3:] - vel_min) / (vel_max - vel_min)
+        vel_out = (vel_in - vel_min) / (vel_max - vel_min)
+    else: # normalize to 0 mean, unit var
+        vel_mean = np.mean(vel_in, axis=0)
+        vel_std  = np.std( vel_in, axis=0)
+        vel_out = (vel_in - vel_mean) / vel_std
+    return vel_out
+
+def normalize_zuni(X_in, norm_vel=False):
     """ Normalize data features
     coordinates are rescaled to be in range [0,1]
     velocities are normalized to zero mean and unit variance
@@ -284,23 +319,9 @@ def normalize_zuni(X_in):
         X_in (ndarray): data to be normalized, of shape (N, D, 6)
     """
     x_r = np.reshape(X_in, [-1,6])
-    coo, vel = np.split(x_r, [3], axis=-1)
     x_r[:,:3] = x_r[:,:3] / 32.0
-
-
-    #coo_min = np.min(coo, axis=0)
-    #coo_max = np.max(coo, axis=0)
-    #x_r[:,:3] = (x_r[:,:3] - coo_min) / (coo_max - coo_min)
-
-    #vel_mean = np.mean(vel, axis=0)
-    #vel_std  = np.std( vel, axis=0)
-    vel_max = np.max(vel)
-    vel_min = np.min(vel)
-    x_r[:,3:] = (x_r[:,3:] - vel_min) / (vel_max - vel_min)
-    #x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
-
-    #X_in[...,:3] = X_in[...,:3] / 32.0
-    #return X_in
+    if norm_vel:
+        x_r[:,3:] = normalize_zuni_vel(np.copy(x_r[:,3:]))
     X_out = np.reshape(x_r, X_in.shape).astype(np.float32) # just convert to float32 here
     return X_out
 

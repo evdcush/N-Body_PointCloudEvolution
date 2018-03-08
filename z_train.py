@@ -42,7 +42,7 @@ num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
 # Load data
-X = utils.load_zuni_npy_data(redshifts=redshift_steps, normalize=True) # normalize only rescales coo for now
+X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True) # normalize only rescales coo for now
 #X = X[redshift_idx]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
