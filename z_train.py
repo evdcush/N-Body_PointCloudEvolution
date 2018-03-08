@@ -239,14 +239,16 @@ for step in range(num_iters):
     # cycle through graph
     #train_vel.run(feed_dict=fdict)
     train.run(feed_dict=fdict)
+    '''
     if save_checkpoint(step):
         error = sess.run(coo_mse, feed_dict=fdict)
         print('checkpoint {:>5}: {}'.format(step, error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+    '''
 print('elapsed time: {}'.format(time.time() - start_time))
 
 # save
-saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
 if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
 X_train = None # reduce memory overhead
 

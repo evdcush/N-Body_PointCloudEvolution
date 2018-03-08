@@ -11,15 +11,15 @@ from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS
 parser = argparse.ArgumentParser()
 # argparse not handle bools well so 0,1 used instead
 parser.add_argument('--particles', '-p', default=32,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
-parser.add_argument('--redshifts', '-z', default=[0.6, 0.0], nargs='+', type=float, help='redshift tuple, predict z[1] from z[0]')
+parser.add_argument('--redshifts', '-z', default=[18,19], nargs='+', type=int, help='redshift tuple, predict z[1] from z[0]')
 parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
 parser.add_argument('--knn',       '-k', default=14,          type=int, help='number of nearest neighbors for graph model')
-#parser.add_argument('--resume',    '-r', default=0,          type=int,  help='resume training from serialized params')
+parser.add_argument('--restore',   '-r', default=0,          type=int,  help='resume training from serialized params')
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
 parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
 parser.add_argument('--save_prefix','-n', default='',        type=str,  help='model name prefix')
-#parser.add_argument('--vel_coeff', '-c', default=0,          type=int,  help='use timestep coefficient on velocity')
+parser.add_argument('--vel_coeff', '-c', default=0,          type=int,  help='use timestep coefficient on velocity')
 parser.add_argument('--verbose',   '-v', default=0,          type=int,  help='verbose prints training progress')
 pargs = vars(parser.parse_args())
 start_time = time.time()
@@ -35,29 +35,28 @@ zX, zY = pargs['redshifts'] # strictly for model naming
 nbody_params = (num_particles, (zX, zY))
 
 # redshifts
-#redshift_steps = [6.0, 1.5, 1.0, 0.4, 0.0] # true redshifts
 rs_len = len(utils.REDSHIFTS)
-redshift_steps = utils.REDSHIFTS_UNI[-1::-4][::-1]
+#redshift_steps = utils.REDSHIFTS_UNI[-1::-4][::-1]
+redshift_steps = pargs['redshifts']
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
 # Load data
 X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True, norm_vel=True) # normalize only rescales coo for now
-#X = X[redshift_idx]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 #print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
-
 #=============================================================================
 # network and model params
 #=============================================================================
 # model vars
 model_type = pargs['model_type'] # 0: set, 1: graph
-use_graph  = model_type == 1
+use_graph  = True #model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
 channels = model_vars['channels']
 channels[-1] = 6
 num_layers = len(channels) - 1
+vcoeff = pargs['vel_coeff'] == 1
 #print('model_type: {}\nuse_graph: {}\nchannels:{}'.format(model_type, use_graph, channels))
 
 # hyperparameters
@@ -71,11 +70,14 @@ threshold = 0.08
 # model name
 #mname_args = [nbody_params, model_type, vel_coeff, pargs['save_prefix']]
 #model_name = utils.get_model_name(*mname_args)
-model_name = utils.get_uni_model_name(pargs['save_prefix'])
+model_name = utils.get_zuni_model_name(zX, zY, pargs['save_prefix'])
 
 # save paths
 paths = utils.make_save_dirs(pargs['model_dir'], model_name)
 model_path, loss_path, cube_path = paths
+
+# restore
+restore = pargs['restore'] == 1
 
 # save test data
 #utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
@@ -86,18 +88,18 @@ model_path, loss_path, cube_path = paths
 #=============================================================================
 # init network params
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params(channels, graph_model=use_graph, seed=utils.PARAMS_SEED)
-# restore
-'''
-with tf.Session() as sess:
-    restore_model = tf.train.import_meta_graph('./Model/Multi_G_32_06-00_')
-'''
+vscope = utils.VAR_SCOPE_MULTI.format('{}_{}'.format(zX, zY))
+#utils.init_params(channels, graph_model=False, seed=utils.PARAMS_SEED, restore=restore)
+utils.init_params(channels, graph_model=False, seed=utils.PARAMS_SEED, var_scope=vscope, restore=restore)
+
 #var_scopes = [utils.VAR_SCOPE_MULTI.format(j) for j in range(num_rs_layers)]
 
 
 # INPUTS
-data_shape = (num_rs, None, num_particles**3, 6)
+#data_shape = (num_rs, None, num_particles**3, 6)
+data_shape = (None, num_particles**3, 6)
 X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
+X_truth = tf.placeholder(tf.float32, shape=data_shape, name='X_truth')
 
 # ADJACENCY LIST
 #alist_shape = (num_rs_layers, None, 2) # output shape
@@ -111,19 +113,36 @@ X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
 #sampling_probs = tf.placeholder(tf.bool, shape=(num_rs_layers-1,), name='sampling_probs')
 
 def alist_func(h_in): # for tf.py_func
-    return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
+    #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
+    return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
 
-#X_pred, loss = nn.zuni_model_fwd(X_input, num_rs_layers, num_layers, adj_list, K)
-#X_pred_val, loss_val = nn.zuni_func_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
-X_pred, loss         = nn.zuni_multi_model_fwd_set(X_input, num_rs_layers, num_layers)
-X_pred_val, loss_val = nn.zuni_multi_model_fwd_set(X_input, num_rs_layers, num_layers, validation=True)
+#H_out  = nn.model_fwd(X_input, num_layers, adj_list, K)
+#X_pred = nn.get_readout_vel(H_out)
+#X_pred_val = nn.zuni_val_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
 
+# SET Model
+H_out  = nn.model_fwd(X_input, num_layers, vel_coeff=vcoeff, var_scope=vscope)
+X_pred = nn.get_readout_vel(H_out)
 
+def vel_mse_fn(a, b):
+    v_diff = tf.squared_difference(a[...,3:], b[...,3:])
+    v_mse  = tf.reduce_mean(tf.reduce_sum(v_diff, axis=-1))
+    return v_mse
 
 
 # loss and optimizer
-train = tf.train.AdamOptimizer(learning_rate).minimize(loss)
-est_error = nn.pbc_loss(X_pred_val, X_input[-1]) # this just for evaluation
+coo_mse  = nn.pbc_loss(X_pred, X_truth)
+#vel_diff = tf.squared_difference(X_pred[...,3:], X_truth[...,3:])
+#vel_mse  = tf.reduce_mean(tf.reduce_sum(vel_diff, axis=-1))
+#vel_mse = vel_mse_fn(X_pred, X_truth) / vel_mse_fn(X_input, X_truth)
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+
+
+train = tf.train.AdamOptimizer(learning_rate).minimize(coo_mse)
+#train_vel = tf.train.AdamOptimizer(learning_rate).minimize(vel_mse)
+est_error = nn.pbc_loss(X_pred, X_truth) # this just for evaluation
+ground_truth_error = nn.pbc_loss(X_input, X_truth)
+#true_vel_error     = vel_mse_fn(X_input, X_truth)
 
 
 #=============================================================================
@@ -139,7 +158,9 @@ gpu_frac = 0.8
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
-
+if restore:
+    utils.load_graph(sess, model_path)
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 # Save
 train_loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
@@ -155,32 +176,22 @@ np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
-    x_in = _x_batch
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    #sweights = nn.error_scales(np.copy(x_in))
-    #sprobs = np.random.sample(num_rs_layers-1) < (step / num_iters)
-    #alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(num_rs_layers)]
-    #fdict = {X_input: x_in, adj_list: alist, }#sampling_probs:sprobs, }#scale_weights:sweights}
-    fdict = {X_input: x_in}
-
-    if verbose:
-        error = sess.run(loss, feed_dict=fdict)
-        train_loss_history[step] = error
-        print('{}: {:.8f}'.format(step, error))
-
+    x_in    = _x_batch[0]
+    x_truth = _x_batch[1]
+    fdict = {X_input: x_in, X_truth: x_truth}#, adj_list: alist}
     # cycle through graph
+    #train_vel.run(feed_dict=fdict)
     train.run(feed_dict=fdict)
+    '''
     if save_checkpoint(step):
-        error = sess.run(loss, feed_dict=fdict)
+        error = sess.run(coo_mse, feed_dict=fdict)
         print('checkpoint {:>5}: {}'.format(step, error))
-        #wr_meta = step == checkpoint # only write on first checkpoint
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
-
-
+    '''
 print('elapsed time: {}'.format(time.time() - start_time))
 
 # save
-saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=False)
+saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
 if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
 X_train = None # reduce memory overhead
 
@@ -192,30 +203,43 @@ X_train = None # reduce memory overhead
 num_test_samples = X_test.shape[1]
 test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
+test_vel = np.zeros((num_test_samples)).astype(np.float32)
 
 print('\nTesting:\n==============================================================================')
 for j in range(X_test.shape[1]):
     # data
-    #x_in   = X_test[0, j:j+1] # (1, n_P, 6)
-    #x_true = X_test[1, j:j+1]
-    x_in = X_test[:,j:j+1]
+    x_in   = X_test[-2, j:j+1] # (1, n_P, 6)
+    x_true = X_test[-1, j:j+1]
+    #x_in = X_test[:,j:j+1]
     #alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(0, num_rs_layers)]
     #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
-    fdict = {X_input: x_in, }#adj_list: alist}
+    #alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+    #fdict = {X_input: x_in, X_truth: x_true, adj_list: alist}
+    fdict = {X_input: x_in, X_truth: x_true}#, adj_list: alist}
 
     # validation error
     #error = sess.run(loss, feed_dict=fdict)
     error = sess.run(est_error, feed_dict=fdict)
+    #vel_error = sess.run(vel_mse, feed_dict=fdict)
+    #error = sess.run(training_error, feed_dict=fdict)
+    error_inp = sess.run(ground_truth_error, feed_dict=fdict)
+    #true_v_error = sess.run(true_vel_error, feed_dict=fdict)
     test_loss_history[j] = error
-    print('{}: {:.6f}'.format(j, error))
+    #test_vel[j] = vel_error
+    #print('{:>3d}: {:.6f} | {:.6f}'.format(j, error, error_inp))
+    #print('{:>3d}: {:.6f} | {:.6f} | {:.6f} | {:.6f}'.format(j, error, vel_error, error_inp, true_v_error))
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
     # prediction
-    x_pred = sess.run(X_pred_val, feed_dict=fdict)
+    #x_pred = sess.run(X_pred_val, feed_dict=fdict)
+    x_pred = sess.run(X_pred, feed_dict=fdict)
     test_predictions[j] = x_pred[0]
 
 # median test error
 test_median = np.median(test_loss_history)
+#test_vel_median = np.median(test_vel)
 print('test median: {}'.format(test_median))
+#print('test median: {}\nvel  median: {}'.format(test_median, test_vel_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
