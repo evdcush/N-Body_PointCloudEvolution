@@ -11,7 +11,7 @@ from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS
 parser = argparse.ArgumentParser()
 # argparse not handle bools well so 0,1 used instead
 parser.add_argument('--particles', '-p', default=32,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
-parser.add_argument('--redshifts', '-z', default=[0.6, 0.0], nargs='+', type=float, help='redshift tuple, predict z[1] from z[0]')
+parser.add_argument('--redshifts', '-z', default=[18,19], nargs='+', type=int, help='redshift tuple, predict z[1] from z[0]')
 parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
 parser.add_argument('--knn',       '-k', default=14,          type=int, help='number of nearest neighbors for graph model')
 #parser.add_argument('--resume',    '-r', default=0,          type=int,  help='resume training from serialized params')
@@ -37,7 +37,9 @@ nbody_params = (num_particles, (zX, zY))
 # redshifts
 #redshift_steps = [6.0, 1.5, 1.0, 0.4, 0.0] # true redshifts
 rs_len = len(utils.REDSHIFTS)
-redshift_steps = utils.REDSHIFTS_UNI[-1::-4][::-1]
+#redshift_steps = utils.REDSHIFTS_UNI[-1::-4][::-1]
+#redshift_steps = utils.REDSHIFTS_UNI[-2:]
+redshift_steps = pargs['redshifts']
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
@@ -125,12 +127,25 @@ def alist_func(h_in): # for tf.py_func
 H_out  = nn.model_fwd(X_input, num_layers)
 X_pred = nn.get_readout_vel(H_out)
 
+def vel_mse_fn(a, b):
+    v_diff = tf.squared_difference(a[...,3:], b[...,3:])
+    v_mse  = tf.reduce_mean(tf.reduce_sum(v_diff, axis=-1))
+    return v_mse
+
 
 # loss and optimizer
-training_error = nn.pbc_loss(X_pred, X_truth)
-train = tf.train.AdamOptimizer(learning_rate).minimize(training_error)
-#est_error = nn.pbc_loss(X_pred_val, X_truth) # this just for evaluation
+coo_mse  = nn.pbc_loss(X_pred, X_truth)
+#vel_diff = tf.squared_difference(X_pred[...,3:], X_truth[...,3:])
+#vel_mse  = tf.reduce_mean(tf.reduce_sum(vel_diff, axis=-1))
+#vel_mse = vel_mse_fn(X_pred, X_truth) / vel_mse_fn(X_input, X_truth)
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+
+
+train = tf.train.AdamOptimizer(learning_rate).minimize(coo_mse)
+#train_vel = tf.train.AdamOptimizer(learning_rate).minimize(vel_mse)
+est_error = nn.pbc_loss(X_pred, X_truth) # this just for evaluation
 ground_truth_error = nn.pbc_loss(X_input, X_truth)
+#true_vel_error     = vel_mse_fn(X_input, X_truth)
 
 
 #=============================================================================
@@ -189,6 +204,7 @@ IT IS STILL UNKNOWN WHETHER THE MODEL CAN PRODUCE ACCURATE VELOCITY PREDICTIONS
 WHEN VELOCITY IS NOT PENALIZED. In the multi-step approach, velocity predictions
 can be treated as a latent variable, but we cannot do that with single-step
 '''
+'''
 for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
@@ -206,6 +222,7 @@ for step in range(num_iters):
             train_loss_history[step] = error
             print('{}: {:.8f}'.format(step, error))
         # cycle through graph
+        train_vel.run(feed_dict=fdict)
         train.run(feed_dict=fdict)
     if save_checkpoint(step):
         #error = sess.run(training_error, feed_dict=fdict)
@@ -213,7 +230,28 @@ for step in range(num_iters):
         #print('checkpoint {:>5}: {}'.format(step, error))
         #wr_meta = step == checkpoint # only write on first checkpoint
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
-
+'''
+for step in range(num_iters):
+    # data
+    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
+    x_in    = _x_batch[0]
+    x_truth = _x_batch[1]
+    #x_pair_idx = [[i,i+1] for i in range(_x_batch.shape[0] - 1)]
+    #np.random.shuffle(x_pair_idx)
+    fdict = {X_input: x_in, X_truth: x_truth}#, adj_list: alist}
+    if verbose:
+        error = sess.run(loss, feed_dict=fdict)
+        train_loss_history[step] = error
+        print('{}: {:.8f}'.format(step, error))
+    # cycle through graph
+    train_vel.run(feed_dict=fdict)
+    train.run(feed_dict=fdict)
+    if save_checkpoint(step):
+        error = sess.run(coo_mse, feed_dict=fdict)
+        #print('checkpoint: {:>5}'.format(step))
+        print('checkpoint {:>5}: {}'.format(step, error))
+        #wr_meta = step == checkpoint # only write on first checkpoint
+        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 print('elapsed time: {}'.format(time.time() - start_time))
 
 # save
@@ -229,6 +267,7 @@ X_train = None # reduce memory overhead
 num_test_samples = X_test.shape[1]
 test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
+test_vel = np.zeros((num_test_samples)).astype(np.float32)
 
 print('\nTesting:\n==============================================================================')
 for j in range(X_test.shape[1]):
@@ -244,11 +283,16 @@ for j in range(X_test.shape[1]):
 
     # validation error
     #error = sess.run(loss, feed_dict=fdict)
-    #error = sess.run(est_error, feed_dict=fdict)
-    error = sess.run(training_error, feed_dict=fdict)
+    error = sess.run(est_error, feed_dict=fdict)
+    #vel_error = sess.run(vel_mse, feed_dict=fdict)
+    #error = sess.run(training_error, feed_dict=fdict)
     error_inp = sess.run(ground_truth_error, feed_dict=fdict)
+    #true_v_error = sess.run(true_vel_error, feed_dict=fdict)
     test_loss_history[j] = error
+    #test_vel[j] = vel_error
     print('{:>3d}: {:.6f} | {:.6f}'.format(j, error, error_inp))
+    #print('{:>3d}: {:.6f} | {:.6f} | {:.6f} | {:.6f}'.format(j, error, vel_error, error_inp, true_v_error))
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
     # prediction
     #x_pred = sess.run(X_pred_val, feed_dict=fdict)
@@ -257,7 +301,9 @@ for j in range(X_test.shape[1]):
 
 # median test error
 test_median = np.median(test_loss_history)
+#test_vel_median = np.median(test_vel)
 print('test median: {}'.format(test_median))
+#print('test median: {}\nvel  median: {}'.format(test_median, test_vel_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)

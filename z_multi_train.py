@@ -42,7 +42,7 @@ num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
 # Load data
-X = utils.load_zuni_npy_data(redshifts=redshift_steps, normalize=True) # normalize only rescales coo for now
+X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True, norm_vel=True) # normalize only rescales coo for now
 #X = X[redshift_idx]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
@@ -53,7 +53,7 @@ X = None # reduce memory overhead
 #=============================================================================
 # model vars
 model_type = pargs['model_type'] # 0: set, 1: graph
-use_graph  = True #model_type == 1
+use_graph  = model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
 channels = model_vars['channels']
 channels[-1] = 6
@@ -97,14 +97,12 @@ with tf.Session() as sess:
 
 # INPUTS
 data_shape = (num_rs, None, num_particles**3, 6)
-#data_shape = (None, num_particles**3, 6)
 X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
-#X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
 
 # ADJACENCY LIST
 #alist_shape = (num_rs_layers, None, 2) # output shape
-alist_shape = (None, 2)
-adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
+#alist_shape = (None, 2)
+#adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 
 # loss scaling weights
 #scale_weights = tf.placeholder(tf.float32, shape=(num_rs_layers,), name='scale_weights')
@@ -115,8 +113,10 @@ adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 def alist_func(h_in): # for tf.py_func
     return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
 
-X_pred, loss = nn.zuni_model_fwd(X_input, num_rs_layers, num_layers, adj_list, K)
-X_pred_val, loss_val = nn.zuni_func_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
+#X_pred, loss = nn.zuni_model_fwd(X_input, num_rs_layers, num_layers, adj_list, K)
+#X_pred_val, loss_val = nn.zuni_func_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
+X_pred, loss         = nn.zuni_multi_model_fwd_set(X_input, num_rs_layers, num_layers)
+X_pred_val, loss_val = nn.zuni_multi_model_fwd_set(X_input, num_rs_layers, num_layers, validation=True)
 
 
 
@@ -152,7 +152,6 @@ save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
 #=============================================================================
 start_time = time.time()
 np.random.seed(utils.DATASET_SEED)
-'''
 for step in range(num_iters):
     # data
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
@@ -160,8 +159,9 @@ for step in range(num_iters):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     #sweights = nn.error_scales(np.copy(x_in))
     #sprobs = np.random.sample(num_rs_layers-1) < (step / num_iters)
-    alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(num_rs_layers)]
-    fdict = {X_input: x_in, adj_list: alist, }#sampling_probs:sprobs, }#scale_weights:sweights}
+    #alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(num_rs_layers)]
+    #fdict = {X_input: x_in, adj_list: alist, }#sampling_probs:sprobs, }#scale_weights:sweights}
+    fdict = {X_input: x_in}
 
     if verbose:
         error = sess.run(loss, feed_dict=fdict)
@@ -175,29 +175,7 @@ for step in range(num_iters):
         print('checkpoint {:>5}: {}'.format(step, error))
         #wr_meta = step == checkpoint # only write on first checkpoint
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
-'''
-for step in range(num_iters):
-    # data
-    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
-    x_in = _x_batch
-    x_pair_idx = [[i,i+1] for i in range(_x_batch.shape[0] - 1)]
-    np.random.shuffle(x_pair_idx)
-    for pair_idx in x_pair_idx:
-        x_in = _x_batch[pair_idx] # (2, mb_size, 32**3, 6)
-        alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
-        #alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(num_rs_layers)]
-        fdict = {X_input: x_in, adj_list: alist, }#sampling_probs:sprobs, }#scale_weights:sweights}
-        if verbose:
-            error = sess.run(loss, feed_dict=fdict)
-            train_loss_history[step] = error
-            print('{}: {:.8f}'.format(step, error))
-        # cycle through graph
-        train.run(feed_dict=fdict)
-        if save_checkpoint(step):
-            error = sess.run(loss, feed_dict=fdict)
-            print('checkpoint {:>5}: {}'.format(step, error))
-            #wr_meta = step == checkpoint # only write on first checkpoint
-            saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+
 
 print('elapsed time: {}'.format(time.time() - start_time))
 

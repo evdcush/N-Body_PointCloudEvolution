@@ -252,19 +252,19 @@ def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
     Args:
 
     """
-    if redshifts is None:
-        redshifts = list(REDSHIFTS_UNI) # copy
-    num_rs = len(redshifts)
-    #num_rs = len(full_redshifts)
+    full_redshifts = list(REDSHIFTS_UNI)
+    if redshifts is None: redshifts = list(np.arange(len(full_redshifts))) # copy
+    #num_rs = len(redshifts)
+    num_rs = len(full_redshifts)
     N = 1000
     M = 32**3
     D = 6
     X = np.zeros((num_rs, N, M, D)).astype(np.float32)
-    for idx, rs in enumerate(redshifts):
+    for idx, rs in enumerate(full_redshifts):
         X[idx] = np.load(DATA_PATH_UNI_NPY.format(rs))
     if norm_coo:
         X = normalize_zuni(X, norm_vel)
-    return X
+    return X[redshifts]
 
 '''
 def load_zuni_npy_data(redshifts=None, normalize=False):
@@ -321,7 +321,7 @@ def normalize_zuni(X_in, norm_vel=False):
     x_r = np.reshape(X_in, [-1,6])
     x_r[:,:3] = x_r[:,:3] / 32.0
     if norm_vel:
-        x_r[:,3:] = normalize_zuni_vel(np.copy(x_r[:,3:]))
+        x_r[:,3:] = normalize_zuni_vel(x_r[:,3:])
     X_out = np.reshape(x_r, X_in.shape).astype(np.float32) # just convert to float32 here
     return X_out
 
@@ -379,9 +379,11 @@ def normalize_rescale_vel(X_in, scale_range=(0,1)):
 
     # RESCALE velocity to be within scale_range
     a,b = scale_range
-    vel_max = np.max(np.max(vel, axis=0), axis=0)
-    vel_min = np.min(np.min(vel, axis=0), axis=0)
-    x_r[:,3:] = (b-a) * (x_r[:,3:] - vel_min) / (vel_max - vel_min) + a
+    #vel_max = np.max(np.max(vel, axis=0), axis=0)
+    #vel_min = np.min(np.min(vel, axis=0), axis=0)
+    vel_max = np.max(vel)
+    vel_min = np.min(vel)
+    x_r[:,3:] = (x_r[:,3:] - vel_min) / (vel_max - vel_min)
 
     X_out = np.reshape(x_r,X_in.shape).astype(np.float32) # just convert to float32 here
     return X_out
@@ -396,7 +398,7 @@ def normalize_fullrs(X, scale_range=(0,1)):
         scale_range   : range to which coordinate data is rescaled
     """
     for rs_idx in range(X.shape[0]):
-        X[rs_idx] = normalize(X[rs_idx])
+        X[rs_idx] = normalize_rescale_vel(X[rs_idx])
     return X
 
 
