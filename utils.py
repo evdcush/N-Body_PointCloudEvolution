@@ -283,9 +283,9 @@ def normalize_zuni(X_in):
     Args:
         X_in (ndarray): data to be normalized, of shape (N, D, 6)
     """
-    #x_r = np.reshape(X_in, [-1,6])
-    #coo, vel = np.split(x_r, [3], axis=-1)
-    #x_r[:,:3] = x_r[:,:3] / 32.0
+    x_r = np.reshape(X_in, [-1,6])
+    coo, vel = np.split(x_r, [3], axis=-1)
+    x_r[:,:3] = x_r[:,:3] / 32.0
 
 
     #coo_min = np.min(coo, axis=0)
@@ -294,12 +294,15 @@ def normalize_zuni(X_in):
 
     #vel_mean = np.mean(vel, axis=0)
     #vel_std  = np.std( vel, axis=0)
+    vel_max = np.max(vel)
+    vel_min = np.min(vel)
+    x_r[:,3:] = (x_r[:,3:] - vel_min) / (vel_max - vel_min)
     #x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
 
-    X_in[...,:3] = X_in[...,:3] / 32.0
-    return X_in
-    #X_out = np.reshape(x_r, X_in.shape).astype(np.float32) # just convert to float32 here
-    #return X_out
+    #X_in[...,:3] = X_in[...,:3] / 32.0
+    #return X_in
+    X_out = np.reshape(x_r, X_in.shape).astype(np.float32) # just convert to float32 here
+    return X_out
 
 
 #=============================================================================

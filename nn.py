@@ -90,7 +90,13 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
     h_out = network_fwd(x_in, num_layers, var_scope, *args)
     if add:
         if x_in.shape[-1] == h_out.shape[-1]: # when predicting velocity
-            h_out += x_in
+            #h_out += x_in
+            x_coo =  x_in[...,:3]
+            #x_vel =  x_in[...,3:]
+            h_coo = h_out[...,:3]
+            h_vel = h_out[...,3:]
+            h_coo += x_coo
+            h_out = tf.concat((h_coo, h_vel), axis=-1)
         else:
             h_out += x_in[...,:3]
     if vel_coeff is not None:

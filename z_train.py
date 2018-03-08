@@ -118,14 +118,15 @@ def alist_func(h_in): # for tf.py_func
 
 H_out  = nn.model_fwd(X_input, num_layers, adj_list, K)
 X_pred = nn.get_readout_vel(H_out)
-X_pred_val = nn.zuni_val_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
+#X_pred_val = nn.zuni_val_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
+
 
 
 
 # loss and optimizer
 training_error = nn.pbc_loss(X_pred, X_truth)
 train = tf.train.AdamOptimizer(learning_rate).minimize(training_error)
-est_error = nn.pbc_loss(X_pred_val, X_truth) # this just for evaluation
+#est_error = nn.pbc_loss(X_pred_val, X_truth) # this just for evaluation
 ground_truth_error = nn.pbc_loss(X_input, X_truth)
 
 
@@ -228,22 +229,25 @@ test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 print('\nTesting:\n==============================================================================')
 for j in range(X_test.shape[1]):
     # data
-    x_in   = X_test[0,  j:j+1] # (1, n_P, 6)
+    x_in   = X_test[-2, j:j+1] # (1, n_P, 6)
     x_true = X_test[-1, j:j+1]
     #x_in = X_test[:,j:j+1]
     #alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(0, num_rs_layers)]
     #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
-    fdict = {X_input: x_in, X_truth: x_true}#adj_list: alist}
+    alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+    fdict = {X_input: x_in, X_truth: x_true, adj_list: alist}
 
     # validation error
     #error = sess.run(loss, feed_dict=fdict)
-    error = sess.run(est_error, feed_dict=fdict)
+    #error = sess.run(est_error, feed_dict=fdict)
+    error = sess.run(training_error, feed_dict=fdict)
     error_inp = sess.run(ground_truth_error, feed_dict=fdict)
     test_loss_history[j] = error
     print('{:>3d}: {:.6f} | {:.6f}'.format(j, error, error_inp))
 
     # prediction
-    x_pred = sess.run(X_pred_val, feed_dict=fdict)
+    #x_pred = sess.run(X_pred_val, feed_dict=fdict)
+    x_pred = sess.run(X_pred, feed_dict=fdict)
     test_predictions[j] = x_pred[0]
 
 # median test error
