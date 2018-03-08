@@ -42,7 +42,7 @@ num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
 # Load data
-X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True) # normalize only rescales coo for now
+X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True, norm_vel=True) # normalize only rescales coo for now
 #X = X[redshift_idx]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
@@ -86,7 +86,8 @@ model_path, loss_path, cube_path = paths
 #=============================================================================
 # init network params
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params(channels, graph_model=use_graph, seed=utils.PARAMS_SEED)
+#utils.init_params(channels, graph_model=use_graph, seed=utils.PARAMS_SEED)
+utils.init_params(channels, graph_model=False, seed=utils.PARAMS_SEED)
 # restore
 '''
 with tf.Session() as sess:
@@ -103,8 +104,8 @@ X_truth = tf.placeholder(tf.float32, shape=data_shape, name='X_truth')
 
 # ADJACENCY LIST
 #alist_shape = (num_rs_layers, None, 2) # output shape
-alist_shape = (None, 2)
-adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
+#alist_shape = (None, 2)
+#adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 
 # loss scaling weights
 #scale_weights = tf.placeholder(tf.float32, shape=(num_rs_layers,), name='scale_weights')
@@ -116,11 +117,13 @@ def alist_func(h_in): # for tf.py_func
     #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
     return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
 
-H_out  = nn.model_fwd(X_input, num_layers, adj_list, K)
-X_pred = nn.get_readout_vel(H_out)
+#H_out  = nn.model_fwd(X_input, num_layers, adj_list, K)
+#X_pred = nn.get_readout_vel(H_out)
 #X_pred_val = nn.zuni_val_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
 
-
+# SET Model
+H_out  = nn.model_fwd(X_input, num_layers)
+X_pred = nn.get_readout_vel(H_out)
 
 
 # loss and optimizer
@@ -195,8 +198,9 @@ for step in range(num_iters):
         x_in    = _x_batch[z_in]
         x_truth = _x_batch[z_out]
         #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
-        alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
-        fdict = {X_input: x_in, X_truth: x_truth, adj_list: alist}
+        #alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+        #fdict = {X_input: x_in, X_truth: x_truth, adj_list: alist}
+        fdict = {X_input: x_in, X_truth: x_truth}#, adj_list: alist}
         if verbose:
             error = sess.run(loss, feed_dict=fdict)
             train_loss_history[step] = error
@@ -234,8 +238,9 @@ for j in range(X_test.shape[1]):
     #x_in = X_test[:,j:j+1]
     #alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(0, num_rs_layers)]
     #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[0], K, threshold))
-    alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
-    fdict = {X_input: x_in, X_truth: x_true, adj_list: alist}
+    #alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+    #fdict = {X_input: x_in, X_truth: x_true, adj_list: alist}
+    fdict = {X_input: x_in, X_truth: x_true}#, adj_list: alist}
 
     # validation error
     #error = sess.run(loss, feed_dict=fdict)
