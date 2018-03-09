@@ -158,20 +158,27 @@ def zuni_multi_single_model_fwd_set(x_in, var_scopes, num_layers, *args):
         h = get_readout_vel(model_fwd(h, num_layers, var_scope=vscope))
     return h
 
-def zuni_multi_func_model_fwd(x_in, num_rs, num_layers, alist_fn, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+def zuni_multi_single_model_fwd_graph(x_in, var_scopes, num_layers, alist_fn, K):
     """
     Args:
-        x_in: (*, mb_size, ...) full rs data
+        x_in: (mb_size, ...)
     """
-    alist = tf.py_func(alist_fn, [x_in[0]], tf.int32)
-    h = get_readout_vel(model_fwd(x_in[0], num_layers, alist, K))
-    loss = pbc_loss(h, x_in[1])
-    for idx in range(1, num_rs):
+    alist = tf.py_func(alist_fn, [x_in], tf.int32)
+    h = get_readout_vel(model_fwd(x_in, num_layers, alist, K, var_scope=var_scopes[0]))
+    for vscope in var_scopes[1:]:
         alist = tf.py_func(alist_fn, [h], tf.int32)
-        h = get_readout_vel(model_fwd(h, num_layers, alist, K))
-        loss += pbc_loss(h, x_in[idx+1])
-    return h, loss
+        h = get_readout_vel(model_fwd(h, num_layers, alist, K, var_scope=vscope))
+    return h
 
+def zuni_multi_single_model_fwd(x_in, var_scopes, num_layers, *args):
+    """
+    Args:
+        x_in: (mb_size, ...) only single redshift in
+    """
+    if len(args) > 0:
+        return zuni_multi_single_model_fwd_set(x_in, var_scopes, num_layers)
+    else:
+        return zuni_multi_single_model_fwd_graph(x_in, var_scopes, num_layers, *args)
 
 
 #=============================================================================

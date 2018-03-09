@@ -43,6 +43,7 @@ BIAS_TAG   = 'B_{}'
 VEL_COEFF_TAG = 'V'
 VAR_SCOPE  = 'params'
 VAR_SCOPE_MULTI = 'params_{}'
+VAR_SCOPE_SINGLE_MULTI = 'params_{}-{}'
 
 
 
@@ -157,15 +158,22 @@ def load_graph(sess, save_dir):
     path = tf.train.get_checkpoint_state(save_dir)
     saver.restore(sess, path.model_checkpoint_path)
 
-def load_multi_graph(sess, vscopes, num_layers, save_dir):
+def load_multi_graph(sess, vscopes, num_layers, save_dir, use_graph=False):
     for vidx, vscope in enumerate(vscopes):
         sdict = {}
         for layer_idx in range(num_layers):
-            wtag = vscope + '/' + WEIGHT_TAG.format(layer_idx)
-            btag = vscope + '/' + BIAS_TAG.format(layer_idx)
-            W, B = get_layer_vars(layer_idx, vscope)
-            sdict[wtag] = W
-            sdict[btag] = B
+            if use_graph:
+                wtag = vscope + '/' + WEIGHT_TAG.format(layer_idx)
+                gtag = vscope + '/' +  GRAPH_TAG.format(layer_idx)
+                W, Wg = get_graph_layer_vars(layer_idx, vscope)
+                sdict[wtag] = W
+                sdict[gtag] = Wg
+            else:
+                wtag = vscope + '/' + WEIGHT_TAG.format(layer_idx)
+                btag = vscope + '/' +   BIAS_TAG.format(layer_idx)
+                W, B = get_layer_vars(layer_idx, vscope)
+                sdict[wtag] = W
+                sdict[btag] = B
         saver = tf.train.Saver(sdict)
         #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         path = tf.train.get_checkpoint_state(save_dir[vidx])
@@ -553,7 +561,7 @@ def get_model_name(dparams, mtype, vel_coeff, save_prefix):
         model_name = '{}_{}'.format(save_prefix, model_name)
     return model_name
 
-def get_zuni_model_name(zX, zY, save_prefix):
+def get_zuni_model_name(mtype, zX, zY, save_prefix):
     """ Consistent model naming format
     Model name examples:
         'GL_32_12-04': GraphModel|WithVelCoeff|32**3 Dataset|redshift 1.2->0.4
@@ -563,12 +571,12 @@ def get_zuni_model_name(zX, zY, save_prefix):
     #zX = RS_TAGS[rs[0]]
     #zY = RS_TAGS[rs[1]]
 
-    #model_tag = NBODY_MODELS[mtype]['tag']
+    model_tag = NBODY_MODELS[mtype]['tag']
     #vel_tag = 'L' if vel_coeff is not None else ''
 
     #model_name = '{}{}_{}_{}-{}'.format(model_tag, vel_tag, n_P, zX, zY)
     #model_name = 'ZG_90-00'
-    model_name = '{}-{}'.format(zX, zY)
+    model_name = 'Z{}_{}-{}'.format(model_tag, zX, zY)
     if save_prefix != '':
         model_name = '{}_{}'.format(save_prefix, model_name)
     return model_name
