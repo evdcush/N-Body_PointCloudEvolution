@@ -175,7 +175,7 @@ def zuni_multi_single_model_fwd(x_in, var_scopes, num_layers, *args):
     Args:
         x_in: (mb_size, ...) only single redshift in
     """
-    if len(args) > 0:
+    if len(args) == 0:
         return zuni_multi_single_model_fwd_set(x_in, var_scopes, num_layers)
     else:
         return zuni_multi_single_model_fwd_graph(x_in, var_scopes, num_layers, *args)

@@ -182,12 +182,11 @@ for step in range(num_iters):
     # cycle through graph
     #train_vel.run(feed_dict=fdict)
     train.run(feed_dict=fdict)
-    '''
     if save_checkpoint(step):
-        error = sess.run(error, feed_dict=fdict)
+        train_error = sess.run(error, feed_dict=fdict)
         print('checkpoint {:>5}: {}'.format(step, error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
-    '''
+
 print('elapsed time: {}'.format(time.time() - start_time))
 
 # save
@@ -216,8 +215,7 @@ for j in range(X_test.shape[1]):
     x_pred, val_error, truth_error = vals
     test_loss_history[j] = val_error
     #test_vel[j] = vel_error
-    print('{:>3d}: {:.6f} | {:.6f}'.format(j, val_error, error_inp))
-    #print('{:>3d}: {:.6f} | {:.6f} | {:.6f} | {:.6f}'.format(j, error, vel_error, error_inp, true_v_error))
+    print('{:>3d}: {:.6f} | {:.6f}'.format(j, val_error, truth_error))
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
     # prediction
