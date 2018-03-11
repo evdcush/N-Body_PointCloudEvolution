@@ -109,19 +109,19 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
 #=============================================================================
 # multi stuff, new data
 #=============================================================================
-def zuni_val_model_fwd(x_in, num_rs, num_layers, alist_fn, K):
-    """ forwarding routine for validation/testing
-    Only ground truth is initial redshift input. Subsequent predictions
-    receive the previous prediction as input
-    Args:
-        x_in: (*, mb_size, ...) full rs data
-    """
-    alist = tf.py_func(alist_fn, [x_in], tf.int32)
-    h = get_readout_vel(model_fwd(x_in, num_layers, alist, K))
-    for idx in range(1, num_rs):
-        alist = tf.py_func(alist_fn, [h], tf.int32)
-        h = get_readout_vel(model_fwd(h, num_layers, alist, K))
-    return h
+def zuni_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
+    h_out = network_fwd(x_in, num_layers, var_scope, *args)
+    if add:
+        # x splits
+        x_coo =  x_in[...,:3]
+        x_vel =  x_in[...,3:-1]
+        # h splits
+        h_coo = h_out[...,:3]
+        h_vel = h_out[...,3:]
+        # add
+        h_coo += x_coo
+        h_out = tf.concat((h_coo, h_vel), axis=-1)
+    return h_out
 
 def zuni_multi_model_fwd(x_in, num_rs, num_layers, adj_lists, K, activation=tf.nn.relu, add=True, vel_coeff=None):
     """

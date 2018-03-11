@@ -266,6 +266,31 @@ def load_zuni_datum(redshift):
     X = read_sim(glob_paths, n_P).astype(np.float32)
     return X
 
+def load_zuni_npy_data(redshifts=None, norm_coo=False):
+    """ Loads new uniformly timestep data serialized as np array of np.float32
+    Args:
+        redshifts (list int): list of indices into redshifts in order
+        norm_coo: normalize coordinate values to [0,1]
+        norm_vel: normalize vel values (only norm'd if coord norm'd)
+    """
+    if redshifts is None:
+        redshifts = list(range(len(REDSHIFTS_ZUNI))) # copy
+    num_rs = len(redshifts)
+    N = 1000
+    M = 32**3
+    D = 7
+    X = np.zeros((num_rs, N, M, D)).astype(np.float32)
+    for idx, z_idx in enumerate(redshifts):
+        z_rs   = REDSHIFTS_ZUNI[z_idx]
+        z_path = DATA_PATH_ZUNI_NPY.format(z_rs)
+        print('LD: {}'.format(z_path[-13:]))
+        X[idx,:,:,:-1] = np.load(z_path)
+        X[idx,:,:,-1] = z_rs
+    if norm_coo: # rescale coordinates to [0,1] range
+        X[...,:3] = X[...,:3] / 32.0
+    return X
+
+'''
 def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
     """ Loads new uniformly timestep data serialized as np array of np.float32
     Args:
@@ -288,7 +313,7 @@ def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
     if norm_coo:
         X = normalize_zuni(X, norm_vel)
     return X
-
+'''
 
 def normalize_zuni_vel(vel_in, rescale=True):
     """ Normalize velocity, either by population statistics (mean, std) or
@@ -328,6 +353,37 @@ def normalize_zuni(X_in, norm_vel=False):
         x_r[:,3:] = normalize_zuni_vel(x_r[:,3:])
     X_out = np.reshape(x_r, X_in.shape).astype(np.float32) # just convert to float32 here
     return X_out
+
+def append_redshift(X_in, redshift_idx):
+    """ Append redshift to feature vectors
+    Args:
+        X_in: (rs, mb_size, 32**3, 6)
+        redshift_idx: list of redshift indices, of len rs
+    """
+    Z, batch_size, N, D = X_in.shape
+    rs = [REDSHIFTS_ZUNI[ridx] for ridx in redshift_idx]
+    rs_batch = np.zeros((Z, batch_size, N, D+1)).astype(np.float32)
+    rs_batch[...,:-1] = X_in
+    for z_idx, redshift in enumerate(rs):
+        rs_batch[z_idx,:,:,-1] = redshift
+    return rs_batch
+
+def next_zuni_minibatch(X_in, batch_size, data_aug=True):
+    """ randomly select samples for training batch
+
+    Args:
+        X_in (ndarray): (num_rs, N, D, 6) data input
+        batch_size (int): minibatch size
+        data_aug: if data_aug, randomly shift input data
+    Returns:
+        batches (ndarray): randomly selected and shifted data
+    """
+    index_list = np.random.choice(X_in.shape[1], batch_size)
+    batches = X_in[:,index_list]
+    if data_aug:
+        batches[...,:-1] = random_augmentation_shift(batches[...,:-1])
+    return batches
+
 
 
 #=============================================================================

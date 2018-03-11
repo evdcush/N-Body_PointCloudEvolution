@@ -42,8 +42,9 @@ num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
 # Load data
-X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True, norm_vel=False) # normalize only rescales coo for now
-X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
+num_val_samples = 200
+X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True) # normalize only rescales coo for now
+X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
 #print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
 #=============================================================================
@@ -55,6 +56,7 @@ use_graph  = model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
 channels = model_vars['channels']
 channels[-1] = 6
+channels[0] = 7
 num_layers = len(channels) - 1
 vcoeff = pargs['vel_coeff'] == 1
 #print('model_type: {}\nuse_graph: {}\nchannels:{}'.format(model_type, use_graph, channels))
@@ -93,8 +95,8 @@ utils.init_params(channels, graph_model=use_graph, var_scope=vscope, restore=res
 
 
 # INPUTS
-#data_shape = (num_rs, None, num_particles**3, 6)
-data_shape = (None, num_particles**3, 6)
+#data_shape = (None, num_particles**3, 6)
+data_shape = (None, num_particles**3, 7)
 X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
 X_truth = tf.placeholder(tf.float32, shape=data_shape, name='X_truth')
 
@@ -117,34 +119,26 @@ def alist_func(h_in): # for tf.py_func
 #X_pred = nn.get_readout_vel(H_out)
 #X_pred_val = nn.zuni_val_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
 
-# SET Model
+# model fwd dispatch args
 if use_graph:
     margs = (X_input, num_layers, adj_list, K)
 else:
     margs = (X_input, num_layers)
-H_out  = nn.model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
+H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
 
-def vel_mse_fn(a, b):
-    v_diff = tf.squared_difference(a[...,3:], b[...,3:])
-    v_mse  = tf.reduce_mean(tf.reduce_sum(v_diff, axis=-1))
-    return v_mse
 
 
 # loss and optimizer
-#error  = nn.pbc_loss(X_pred, X_truth)
-error  = nn.pbc_loss_vel(X_pred, X_truth)
-#vel_diff = tf.squared_difference(X_pred[...,3:], X_truth[...,3:])
-#vel_mse  = tf.reduce_mean(tf.reduce_sum(vel_diff, axis=-1))
-#vel_mse = vel_mse_fn(X_pred, X_truth) / vel_mse_fn(X_input, X_truth)
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+error = nn.pbc_loss(X_pred, X_truth[...,:-1])
+#error = nn.pbc_loss_vel(X_pred, X_truth)
+
 
 
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 #train_vel = tf.train.AdamOptimizer(learning_rate).minimize(vel_mse)
 val_error = nn.pbc_loss(X_pred, X_truth)
-ground_truth_error = nn.pbc_loss(X_input, X_truth)
-#true_vel_error     = vel_mse_fn(X_input, X_truth)
+ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
 
 
 #=============================================================================
@@ -175,66 +169,9 @@ save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
 #=============================================================================
 start_time = time.time()
 np.random.seed(utils.DATASET_SEED)
-'''
 for step in range(num_iters):
     # data
-    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
-    x_in = _x_batch
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    #sweights = nn.error_scales(np.copy(x_in))
-    #sprobs = np.random.sample(num_rs_layers-1) < (step / num_iters)
-    alist = [nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in[j], K, threshold)) for j in range(num_rs_layers)]
-    fdict = {X_input: x_in, adj_list: alist, }#sampling_probs:sprobs, }#scale_weights:sweights}
-
-    if verbose:
-        error = sess.run(loss, feed_dict=fdict)
-        train_loss_history[step] = error
-        print('{}: {:.8f}'.format(step, error))
-
-    # cycle through graph
-    train.run(feed_dict=fdict)
-    if save_checkpoint(step):
-        error = sess.run(loss, feed_dict=fdict)
-        print('checkpoint {:>5}: {}'.format(step, error))
-        #wr_meta = step == checkpoint # only write on first checkpoint
-        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
-'''
-'''
-PROBLEM WITH THE SINGLE-STEP APPROACH: VELOCITY PREDICTIONS
-IT IS STILL UNKNOWN WHETHER THE MODEL CAN PRODUCE ACCURATE VELOCITY PREDICTIONS
-WHEN VELOCITY IS NOT PENALIZED. In the multi-step approach, velocity predictions
-can be treated as a latent variable, but we cannot do that with single-step
-'''
-'''
-for step in range(num_iters):
-    # data
-    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
-    x_pair_idx = [[i,i+1] for i in range(_x_batch.shape[0] - 1)]
-    np.random.shuffle(x_pair_idx)
-    for z_in, z_out in x_pair_idx:
-        x_in    = _x_batch[z_in]
-        x_truth = _x_batch[z_out]
-        #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
-        #alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
-        #fdict = {X_input: x_in, X_truth: x_truth, adj_list: alist}
-        fdict = {X_input: x_in, X_truth: x_truth}#, adj_list: alist}
-        if verbose:
-            error = sess.run(loss, feed_dict=fdict)
-            train_loss_history[step] = error
-            print('{}: {:.8f}'.format(step, error))
-        # cycle through graph
-        train_vel.run(feed_dict=fdict)
-        train.run(feed_dict=fdict)
-    if save_checkpoint(step):
-        #error = sess.run(training_error, feed_dict=fdict)
-        print('checkpoint: {:>5}'.format(step))
-        #print('checkpoint {:>5}: {}'.format(step, error))
-        #wr_meta = step == checkpoint # only write on first checkpoint
-        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
-'''
-for step in range(num_iters):
-    # data
-    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
+    _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
     x_in    = _x_batch[0]
     x_truth = _x_batch[1]
     fdict = {X_input: x_in, X_truth: x_truth}
@@ -263,9 +200,9 @@ X_train = None # reduce memory overhead
 
 # data containers
 num_test_samples = X_test.shape[1]
-test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
+#test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
+test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
-test_vel = np.zeros((num_test_samples)).astype(np.float32)
 
 print('\nTesting:\n==============================================================================')
 for j in range(X_test.shape[1]):
