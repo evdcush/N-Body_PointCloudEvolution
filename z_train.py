@@ -42,7 +42,7 @@ num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
 # Load data
-X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True, norm_vel=True) # normalize only rescales coo for now
+X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True, norm_vel=False) # normalize only rescales coo for now
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=200)
 X = None # reduce memory overhead
 #print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
@@ -62,7 +62,7 @@ vcoeff = pargs['vel_coeff'] == 1
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
 K = pargs['knn']
-threshold = 0.08
+threshold = 0.01
 
 #=============================================================================
 # Session save parameters
@@ -132,7 +132,8 @@ def vel_mse_fn(a, b):
 
 
 # loss and optimizer
-error  = nn.pbc_loss(X_pred, X_truth)
+#error  = nn.pbc_loss(X_pred, X_truth)
+error  = nn.pbc_loss_vel(X_pred, X_truth)
 #vel_diff = tf.squared_difference(X_pred[...,3:], X_truth[...,3:])
 #vel_mse  = tf.reduce_mean(tf.reduce_sum(vel_diff, axis=-1))
 #vel_mse = vel_mse_fn(X_pred, X_truth) / vel_mse_fn(X_input, X_truth)
@@ -141,6 +142,7 @@ error  = nn.pbc_loss(X_pred, X_truth)
 
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 #train_vel = tf.train.AdamOptimizer(learning_rate).minimize(vel_mse)
+val_error = nn.pbc_loss(X_pred, X_truth)
 ground_truth_error = nn.pbc_loss(X_input, X_truth)
 #true_vel_error     = vel_mse_fn(X_input, X_truth)
 
@@ -238,16 +240,16 @@ for step in range(num_iters):
     fdict = {X_input: x_in, X_truth: x_truth}
     if use_graph:
         alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+        #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
         fdict[adj_list] = alist
     # cycle through graph
     #train_vel.run(feed_dict=fdict)
     train.run(feed_dict=fdict)
-    '''
     if save_checkpoint(step):
-        error = sess.run(error, feed_dict=fdict)
-        print('checkpoint {:>5}: {}'.format(step, error))
+        tr_error = sess.run(error, feed_dict=fdict)
+        print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
-    '''
+
 print('elapsed time: {}'.format(time.time() - start_time))
 
 # save
@@ -273,11 +275,12 @@ for j in range(X_test.shape[1]):
     fdict = {X_input: x_in, X_truth: x_true}
     if use_graph:
         alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+        #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
         fdict[adj_list] = alist
 
-    vals = sess.run([X_pred, error, ground_truth_error], feed_dict=fdict)
-    x_pred, val_error, truth_error = vals
-    test_loss_history[j] = val_error
+    vals = sess.run([X_pred, val_error, ground_truth_error], feed_dict=fdict)
+    x_pred, v_error, truth_error = vals
+    test_loss_history[j] = v_error
     test_predictions[j] = x_pred[0]
 
 # median test error
