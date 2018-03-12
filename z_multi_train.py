@@ -108,8 +108,8 @@ adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 #sampling_probs = tf.placeholder(tf.bool, shape=(num_rs_layers-1,), name='sampling_probs')
 
 def alist_func(h_in): # for tf.py_func
-    #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
-    return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
+    return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
+    #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
 
 #=============================================================================
 # Model predictions and optimizer
@@ -128,7 +128,6 @@ X_pred = nn.get_readout_vel(H_out)
 #error = nn.pbc_loss(X_pred, X_truth[...,:-1])
 error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
-#val_error = nn.pbc_loss(X_pred, X_truth) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
 
 # evaluation error (multi-step)
@@ -179,8 +178,7 @@ for step in range(num_iters):
 
         # feed graph model data
         if use_graph:
-            alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
-            #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
+            alist = alist_func(x_in)
             fdict[adj_list] = alist
 
         # training pass
@@ -217,8 +215,7 @@ for j in range(X_test.shape[1]):
     z_next  = X_test[1, j:j+1, :, -1:] # redshifts
     fdict = {X_input: x_in}
     if use_graph:
-        alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
-        #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
+        alist = alist_func(x_in)
         fdict[adj_list] = alist
     x_pred = sess.run(X_pred, feed_dict=fdict)
 
@@ -228,8 +225,7 @@ for j in range(X_test.shape[1]):
         z_next = X_test[i+1, j:j+1, :, -1:]
         fdict = {X_input: x_in}
         if use_graph:
-            alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
-            #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
+            alist = alist_func(x_in)
             fdict[adj_list] = alist
         x_pred = sess.run(X_pred, feed_dict=fdict)
 
@@ -237,15 +233,18 @@ for j in range(X_test.shape[1]):
     test_predictions[j] = x_pred[0]
 
     # feeding for multi-step loss info
-    fdict = {}
-    fdict[Val_pred] = x_pred
-    fdict[X_input]  = X_test[-2, j:j+1]
-    fdict[X_truth]  = X_test[-1, j:j+1]
+    x_in   = X_test[-2, j:j+1]
+    x_true = X_test[-1, j:j+1]
+    fdict = {Val_pred: x_pred, X_input: x_in, X_truth: x_true}
 
     # loss data
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     v_error, truth_error = sess.run([multi_error, ground_truth_error], feed_dict=fdict)
     test_loss_history[j] = v_error
+    '''
+    Ideally, the multi_error would be, at the very least, better than
+    the ground_truth_error.
+    '''
     print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
 
 
