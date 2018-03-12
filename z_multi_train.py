@@ -127,8 +127,12 @@ X_pred = nn.get_readout_vel(H_out)
 # error and optimizer
 error = nn.pbc_loss(X_pred, X_truth[...,:-1])
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
-val_error = nn.pbc_loss(X_pred, X_truth) # since training loss fn not always same
+#val_error = nn.pbc_loss(X_pred, X_truth) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
+
+# evaluation error (multi-step)
+Val_pred = tf.placeholder(tf.float32, shape=(None, num_particles**3, 6), name='Val_pred')
+multi_error = nn.pbc_loss(Val_pred, X_truth[...,:-1])
 
 
 #=============================================================================
@@ -157,30 +161,34 @@ save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
 #=============================================================================
 # TRAINING
 #=============================================================================
-start_time = time.time()
-np.random.seed(utils.DATASET_SEED)
 print('\nTraining:\n==============================================================================')
+start_time = time.time()
+rs_tups = [(i, i+1) for i in range(num_rs_layers)]
+np.random.seed(utils.DATASET_SEED)
 # START
 for step in range(num_iters):
     # data batching
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
-    x_in    = _x_batch[0]
-    x_truth = _x_batch[1]
-    fdict = {X_input: x_in, X_truth: x_truth}
+    np.random.shuffle(rs_tups)
+    for idx_in, idx_out in rs_tups:
+        # data inputs
+        x_in    = _x_batch[idx_in]
+        x_truth = _x_batch[idx_out]
+        fdict = {X_input: x_in, X_truth: x_truth}
 
-    # feed graph model data
-    if use_graph:
-        alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
-        #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
-        fdict[adj_list] = alist
+        # feed graph model data
+        if use_graph:
+            alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+            #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
+            fdict[adj_list] = alist
 
-    # training pass
-    train.run(feed_dict=fdict)
+        # training pass
+        train.run(feed_dict=fdict)
 
     # save checkpoint
     if save_checkpoint(step):
-        tr_error = sess.run(error, feed_dict=fdict)
-        print('checkpoint {:>5}: {}'.format(step, tr_error))
+        #tr_error = sess.run(error, feed_dict=fdict)
+        #print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 # END
 print('elapsed time: {}'.format(time.time() - start_time))
@@ -193,30 +201,51 @@ X_train = None # reduce memory overhead
 #=============================================================================
 # EVALUATION
 #=============================================================================
+print('\nEvaluation:\n==============================================================================')
 # data containers
 num_test_samples = X_test.shape[1]
 #test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
 test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
-print('\nEvaluation:\n==============================================================================')
-for j in range(X_test.shape[1]):
-    # validation inputs
-    x_in   = X_test[0, j:j+1] # (1, n_P, 6)
-    x_true = X_test[1, j:j+1]
-    fdict = {X_input: x_in, X_truth: x_true}
 
-    # feed graph data inputs
+rs_tups = [(i, i+1) for i in range(num_rs_layers)] # DO NOT SHUFFLE!
+
+for j in range(X_test.shape[1]):
+    # first pass
+    x_in    = X_test[0, j:j+1] # (1, n_P, 6)
+    z_next  = X_test[1, j:j+1, :, -1] # redshifts
+    fdict = {X_input: x_in}
     if use_graph:
         alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
         #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
         fdict[adj_list] = alist
+    x_pred = sess.run(X_pred, feed_dict=fdict)
 
-    # validation outputs
-    vals = sess.run([X_pred, val_error, ground_truth_error], feed_dict=fdict)
-    x_pred, v_error, truth_error = vals
-    test_loss_history[j] = v_error
+    # subsequent pass receive previous prediction
+    for i in range(1, num_rs_layers):
+        x_in = np.concatenate((x_pred, z_next), axis=-1) #(...,6) -> (...,7)
+        z_next = X_test[i+1, j:j+1, :, -1]
+        fdict = {X_input: x_in}
+        if use_graph:
+            alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+            #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
+            fdict[adj_list] = alist
+        x_pred = sess.run(X_pred, feed_dict=fdict)
+
+    # save prediction
     test_predictions[j] = x_pred[0]
-    #print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
+
+    # feeding for multi-step loss info
+    fdict = {}
+    fdict[Val_pred] = x_pred
+    fdict[X_input]  = X_test[-2, j:j+1]
+    fict[X_truth]   = X_test[-1, j:j+1]
+
+    # loss data
+    v_error, truth_error = sess.run([multi_error, ground_truth_error], feed_dict=fdict)
+    test_loss_history[j] = v_error
+    print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
+
 
 # median test error
 test_median = np.median(test_loss_history)
