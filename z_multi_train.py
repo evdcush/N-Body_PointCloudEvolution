@@ -125,7 +125,8 @@ H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
 
 # error and optimizer
-error = nn.pbc_loss(X_pred, X_truth[...,:-1])
+#error = nn.pbc_loss(X_pred, X_truth[...,:-1])
+error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 #val_error = nn.pbc_loss(X_pred, X_truth) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
@@ -213,7 +214,7 @@ rs_tups = [(i, i+1) for i in range(num_rs_layers)] # DO NOT SHUFFLE!
 for j in range(X_test.shape[1]):
     # first pass
     x_in    = X_test[0, j:j+1] # (1, n_P, 6)
-    z_next  = X_test[1, j:j+1, :, -1] # redshifts
+    z_next  = X_test[1, j:j+1, :, -1:] # redshifts
     fdict = {X_input: x_in}
     if use_graph:
         alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
@@ -224,7 +225,7 @@ for j in range(X_test.shape[1]):
     # subsequent pass receive previous prediction
     for i in range(1, num_rs_layers):
         x_in = np.concatenate((x_pred, z_next), axis=-1) #(...,6) -> (...,7)
-        z_next = X_test[i+1, j:j+1, :, -1]
+        z_next = X_test[i+1, j:j+1, :, -1:]
         fdict = {X_input: x_in}
         if use_graph:
             alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
@@ -239,9 +240,10 @@ for j in range(X_test.shape[1]):
     fdict = {}
     fdict[Val_pred] = x_pred
     fdict[X_input]  = X_test[-2, j:j+1]
-    fict[X_truth]   = X_test[-1, j:j+1]
+    fdict[X_truth]  = X_test[-1, j:j+1]
 
     # loss data
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     v_error, truth_error = sess.run([multi_error, ground_truth_error], feed_dict=fdict)
     test_loss_history[j] = v_error
     print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))

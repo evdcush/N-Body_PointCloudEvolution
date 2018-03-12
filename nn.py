@@ -481,7 +481,7 @@ def pbc_loss_vel(readout, x_truth):
 
     error_coo = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1), name='loss')
     error_vel = tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1), name='loss')
-    return error_coo * error_vel
+    return error_coo + error_vel
 
 def _pbc_loss_vel(readout, x_truth):
     """ MSE over full dims with periodic boundary conditions
