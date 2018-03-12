@@ -86,9 +86,9 @@ restore = pargs['restore'] == 1
 # initialize graph and placeholders
 #=============================================================================
 # init network params
-#vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
+vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params(channels, graph_model=use_graph, restore=restore)
+utils.init_params(channels, graph_model=use_graph, var_scope=vscope, restore=restore)
 
 
 # INPUTS
