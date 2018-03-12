@@ -30,48 +30,45 @@ start_time = time.time()
 #=============================================================================
 # nbody data params
 num_particles = 32 #pargs['particles']
-zX, zY = pargs['redshifts'] # strictly for model naming
-#zX, zY = 9.0, 0.0
-nbody_params = (num_particles, (zX, zY))
-
-# redshifts
-rs_len = len(utils.REDSHIFTS)
-#redshift_steps = utils.REDSHIFTS_UNI[-1::-4][::-1]
 redshift_steps = pargs['redshifts']
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
 # Load data
 num_val_samples = 200
-X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True) # normalize only rescales coo for now
+X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
-#print('{}: X.shape = {}'.format(nbody_params, X_train.shape))
+
+
 #=============================================================================
 # network and model params
 #=============================================================================
 # model vars
 model_type = pargs['model_type'] # 0: set, 1: graph
-use_graph  = model_type == 1
 model_vars = utils.NBODY_MODELS[model_type]
+
+# network kernel sizes and depth
 channels = model_vars['channels']
 channels[-1] = 6
 channels[0] = 7
 num_layers = len(channels) - 1
+
+# model features
+use_graph = model_type == 1
 vcoeff = pargs['vel_coeff'] == 1
-#print('model_type: {}\nuse_graph: {}\nchannels:{}'.format(model_type, use_graph, channels))
 
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
-K = pargs['knn']
-threshold = 0.01
+K = pargs['knn'] # 14
+threshold = 0.08
 
 #=============================================================================
 # Session save parameters
 #=============================================================================
 # model name
-#mname_args = [nbody_params, model_type, pargs['save_prefix']]
-#model_name = utils.get_model_name(*mname_args)
+zX = redshift_steps[0]  # starting redshift
+zY = redshift_steps[-1] # target redshift
 model_name = utils.get_zuni_model_name(model_type, zX, zY, pargs['save_prefix'])
 
 # save paths
@@ -86,12 +83,12 @@ restore = pargs['restore'] == 1
 
 
 #=============================================================================
-# initialize graph
+# initialize graph and placeholders
 #=============================================================================
 # init network params
-vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
+#vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params(channels, graph_model=use_graph, var_scope=vscope, restore=restore)
+utils.init_params(channels, graph_model=use_graph, restore=restore)
 
 
 # INPUTS
@@ -101,7 +98,6 @@ X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
 X_truth = tf.placeholder(tf.float32, shape=data_shape, name='X_truth')
 
 # ADJACENCY LIST
-#alist_shape = (num_rs_layers, None, 2) # output shape
 alist_shape = (None, 2)
 adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 
@@ -115,29 +111,23 @@ def alist_func(h_in): # for tf.py_func
     #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
     return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
 
-#H_out  = nn.model_fwd(X_input, num_layers, adj_list, K)
-#X_pred = nn.get_readout_vel(H_out)
-#X_pred_val = nn.zuni_val_model_fwd(X_input, num_rs_layers, num_layers, alist_func, K)
-
+#=============================================================================
+# Model predictions and optimizer
+#=============================================================================
 # model fwd dispatch args
 if use_graph:
     margs = (X_input, num_layers, adj_list, K)
 else:
     margs = (X_input, num_layers)
+
+# network out
 H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
 
-
-
-# loss and optimizer
+# error and optimizer
 error = nn.pbc_loss(X_pred, X_truth[...,:-1])
-#error = nn.pbc_loss_vel(X_pred, X_truth)
-
-
-
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
-#train_vel = tf.train.AdamOptimizer(learning_rate).minimize(vel_mse)
-val_error = nn.pbc_loss(X_pred, X_truth)
+val_error = nn.pbc_loss(X_pred, X_truth) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
 
 
@@ -169,62 +159,68 @@ save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
 #=============================================================================
 start_time = time.time()
 np.random.seed(utils.DATASET_SEED)
+print('\nTraining:\n==============================================================================')
+# START
 for step in range(num_iters):
-    # data
+    # data batching
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
     x_in    = _x_batch[0]
     x_truth = _x_batch[1]
     fdict = {X_input: x_in, X_truth: x_truth}
+
+    # feed graph model data
     if use_graph:
         alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
         #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
         fdict[adj_list] = alist
-    # cycle through graph
-    #train_vel.run(feed_dict=fdict)
+
+    # training pass
     train.run(feed_dict=fdict)
+
+    # save checkpoint
     if save_checkpoint(step):
         tr_error = sess.run(error, feed_dict=fdict)
         print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
-
+# END
 print('elapsed time: {}'.format(time.time() - start_time))
 
 # save
 saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
-if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
+#if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
 X_train = None # reduce memory overhead
 
 #=============================================================================
-# TESTING
+# EVALUATION
 #=============================================================================
-
 # data containers
 num_test_samples = X_test.shape[1]
 #test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
 test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
-
-print('\nTesting:\n==============================================================================')
+print('\nEvaluation:\n==============================================================================')
 for j in range(X_test.shape[1]):
-    # data
+    # validation inputs
     x_in   = X_test[0, j:j+1] # (1, n_P, 6)
     x_true = X_test[1, j:j+1]
     fdict = {X_input: x_in, X_truth: x_true}
+
+    # feed graph data inputs
     if use_graph:
         alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
         #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
         fdict[adj_list] = alist
 
+    # validation outputs
     vals = sess.run([X_pred, val_error, ground_truth_error], feed_dict=fdict)
     x_pred, v_error, truth_error = vals
     test_loss_history[j] = v_error
     test_predictions[j] = x_pred[0]
+    #print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
 
 # median test error
 test_median = np.median(test_loss_history)
-#test_vel_median = np.median(test_vel)
 print('test median: {}'.format(test_median))
-#print('test median: {}\nvel  median: {}'.format(test_median, test_vel_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
