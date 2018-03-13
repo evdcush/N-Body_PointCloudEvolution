@@ -11,7 +11,8 @@ import tensorflow as tf
 #=============================================================================
 # dataset
 DATA_PATH     = '/home/evan/Data/nbody_simulations/N_{0}/DM*/{1}_dm.z=0{2}000'
-DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/nbody_{}.npy'
+#DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/nbody_{}.npy'
+DATA_PATH_NPY = '/home/ecushing/projects/def-siamakx/ecushing/N-Body_PointCloudEvolution/Data/X32.npy'
 REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
 RS_TAGS = {6.0:'60', 4.0:'40', 2.0:'20', 1.5:'15', 1.2:'12', 1.0:'10',
            0.8:'08', 0.6:'06', 0.4:'04', 0.2:'02', 0.0:'00'}
@@ -234,6 +235,7 @@ def load_data(n_P, *args, **kwargs):
         data.append(x)
     return data
 
+'''
 def load_npy_data(n_P, redshifts=None, normalize=False):
     """ Loads data serialized as numpy array of np.float32
     Args:
@@ -250,6 +252,44 @@ def load_npy_data(n_P, redshifts=None, normalize=False):
     if normalize:
         X = normalize_fullrs(X)
     return X
+'''
+
+def load_npy_data(redshifts=None):
+    """ Loads data serialized as numpy array of np.float32
+    Args:
+        n_P: base number of particles (16 or 32)
+        redshifts (tuple): tuple of redshifts
+    """
+    print('Loading full RS data: (11, 996, 32^3, 6)')
+    X = np.load(DATA_PATH_NPY)
+    if redshifts is None:
+        return X
+    else:
+        rs_used = [REDSHIFTS[rs] for rs in redshifts]
+        print('Redshifts used: {}'.format(rs_used))
+        return X[redshifts]
+
+
+def load_rs_npy_data(redshifts, norm_coo=False, norm_vel=False):
+    """ Loads new uniformly timestep data serialized as np array of np.float32
+    Args:
+        redshifts (list int): list of indices into redshifts in order
+        norm_coo: normalize coordinate values to [0,1]
+        norm_vel: normalize vel values (only norm'd if coord norm'd)
+    """
+    X6 = load_npy_data(redshifts) # original, 6-dim feature vec
+    num_rs, N, M, D = X.shape
+    X = np.zeros((num_rs, N, M, D+1)).astype(np.float32)
+    X[...,:-1] = X6
+    X6 = None # reduce memory overhead
+    # now broadcast redshift to last dim
+    for idx, z_idx in enumerate(redshifts):
+        X[idx,:,:,-1] = REDSHIFTS[z_idx]
+    if norm_coo: # rescale coordinates to [0,1] range
+        X[...,:3] = X[...,:3] / 32.0
+    return X
+
+
 #=============================================================================
 # NEW DATA UTILS, uniformly displaced
 #=============================================================================

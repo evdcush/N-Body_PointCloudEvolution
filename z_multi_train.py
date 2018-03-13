@@ -30,13 +30,17 @@ start_time = time.time()
 #=============================================================================
 # nbody data params
 num_particles = 32 #pargs['particles']
-redshift_steps = pargs['redshifts']
+#redshift_steps = pargs['redshifts']
+#              0    1    2    3    4    5    6    7    8    9   10
+#REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
+redshift_steps = [1, 4, 7, 10]
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
 # Load data
 num_val_samples = 200
-X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True)
+#X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True)
+X = utils.load_npy_data(redshifts=redshift_steps, norm_coo=True)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
 
