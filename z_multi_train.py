@@ -126,7 +126,7 @@ def multi_model_fwd_sampling(x_in, sampling_probs, adj):
     Args:
         x_in: (11, mb_size, ...) full rs data
     """
-    rs_depth = x_in.shape[0].value
+    rs_depth = tf.shape(x_in)[0]
     h = nn.get_readout_vel(nn.zuni_model_fwd(x_in[0], num_layers, adj[0], K, var_scope=vscope))
     #for i in range(1, rs_depth): # NONETYPE ERROR HERE, FIGURE OUT
     for i in tf.range(1, rs_depth, delta=1):
