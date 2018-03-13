@@ -113,17 +113,9 @@ def alist_func(h_in): # for tf.py_func
 
 
 
-
-def train_fwd(x_in, adj):
-    # x_in (5, mb_size, N, 7)
-    h = nn.get_readout_vel(nn.zuni_model_fwd(x_in[0], num_layers, adj[0], K,var_scope=vscope))
-    z_next = x_in[1,:,:,-1]
-    for i in range(1,num_rs_layers):
-        h_in = tf.concat((h, z_next), axis=-1)
-        h = nn.get_readout_vel(nn.zuni_model_fwd(h_in, num_layers, adj[i], K, var_scope=vscope))
-        z_next = x_in[i+1,:,:,-1]
-    return h
-
+rs_adj_shape = (None, None, 2) # output shape
+#alist_shape = (None, 2)
+rs_adj = tf.placeholder(tf.int32, shape=rs_adj_shape, name='rs_adj')
 
 full_rs_shape = (None, None, num_particles**3, 7)
 X_rs = tf.placeholder(tf.float32, shape=full_rs_shape, name='X_rs')
@@ -136,13 +128,13 @@ def multi_model_fwd_sampling(x_in, sampling_probs, adj):
     """
     rs_depth = x_in.shape[0].value
     h = nn.get_readout_vel(nn.zuni_model_fwd(x_in[0], num_layers, adj[0], K, var_scope=vscope))
+    if rs_depth is None: return h
     for i in range(1, rs_depth):
         h_in = tf.where(sampling_probs[i], np.concat((h, x_in[i,:,:,-1]), axis=-1), x_in[i])
         h = nn.get_readout_vel(nn.zuni_model_fwd(h_in, num_layers, adj[i], K, var_scope=vscope))
     return h
 
-rs_pred = multi_model_fwd_sampling(X_rs, sampling_probs, )
-tr_error = nn.pbc_loss()
+X_pred_train = multi_model_fwd_sampling(X_rs, sampling_probs, rs_adj)
 
 
 #=============================================================================
@@ -160,7 +152,8 @@ X_pred = nn.get_readout_vel(H_out)
 
 # error and optimizer
 #error = nn.pbc_loss(X_pred, X_truth[...,:-1])
-error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
+error = nn.pbc_loss(X_pred_train, X_rs[-1, :,:, :-1])
+#error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
 
@@ -203,6 +196,7 @@ np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
     # data batching
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
+    '''
     np.random.shuffle(rs_tups)
     for idx_in, idx_out in rs_tups:
         # data inputs
@@ -217,6 +211,17 @@ for step in range(num_iters):
 
         # training pass
         train.run(feed_dict=fdict)
+    '''
+    samp_probs = np.random.rand(num_rs) <= step / float(num_iters)
+    samp_probs[0] = True # first input always ground truth
+    pred_depth = np.sum(samp_probs)
+
+    # feed data
+    x_in = _x_batch[:pred_depth+1]
+    adj_lists = np.array([alist_func(x_in[i]) for i in range(pred_depth)])
+    fdict = {X_rs: x_in, rs_adj:adj_lists, sampling_probs:samp_probs}
+    train.run(feed_dict=fdict)
+
 
     # save checkpoint
     if save_checkpoint(step):
