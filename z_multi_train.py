@@ -111,6 +111,40 @@ def alist_func(h_in): # for tf.py_func
     return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
     #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
 
+
+
+
+def train_fwd(x_in, adj):
+    # x_in (5, mb_size, N, 7)
+    h = nn.get_readout_vel(nn.zuni_model_fwd(x_in[0], num_layers, adj[0], K,var_scope=vscope))
+    z_next = x_in[1,:,:,-1]
+    for i in range(1,num_rs_layers):
+        h_in = tf.concat((h, z_next), axis=-1)
+        h = nn.get_readout_vel(nn.zuni_model_fwd(h_in, num_layers, adj[i], K, var_scope=vscope))
+        z_next = x_in[i+1,:,:,-1]
+    return h
+
+
+full_rs_shape = (None, None, num_particles**3, 7)
+X_rs = tf.placeholder(tf.float32, shape=full_rs_shape, name='X_rs')
+sampling_probs = tf.placeholder(tf.bool, shape=(num_rs,), name='sampling_probs') # only needs to be num_rs -1, but for convenience
+
+def multi_model_fwd_sampling(x_in, sampling_probs, adj):
+    """
+    Args:
+        x_in: (11, mb_size, ...) full rs data
+    """
+    rs_depth = x_in.shape[0].value
+    h = nn.get_readout_vel(nn.zuni_model_fwd(x_in[0], num_layers, adj[0], K, var_scope=vscope))
+    for i in range(1, rs_depth):
+        h_in = tf.where(sampling_probs[i], np.concat((h, x_in[i,:,:,-1]), axis=-1), x_in[i])
+        h = nn.get_readout_vel(nn.zuni_model_fwd(h_in, num_layers, adj[i], K, var_scope=vscope))
+    return h
+
+rs_pred = multi_model_fwd_sampling(X_rs, sampling_probs, )
+tr_error = nn.pbc_loss()
+
+
 #=============================================================================
 # Model predictions and optimizer
 #=============================================================================
