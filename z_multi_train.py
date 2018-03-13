@@ -128,11 +128,19 @@ def multi_model_fwd_sampling(x_in, sampling_probs, adj):
     """
     rs_depth = x_in.shape[0].value
     h = nn.get_readout_vel(nn.zuni_model_fwd(x_in[0], num_layers, adj[0], K, var_scope=vscope))
-    if rs_depth is None: return h
-    for i in range(1, rs_depth):
-        h_in = tf.where(sampling_probs[i], np.concat((h, x_in[i,:,:,-1]), axis=-1), x_in[i])
+    assert False
+    for i in range(1, rs_depth): # NONETYPE ERROR HERE, FIGURE OUT
+        h_in = tf.where(sampling_probs[i], tf.concat((h, x_in[i,:,:,-1]), axis=-1), x_in[i])
         h = nn.get_readout_vel(nn.zuni_model_fwd(h_in, num_layers, adj[i], K, var_scope=vscope))
     return h
+
+
+def sampling_fwd(h, x_in, adj, sampling_prob):
+    h_in = tf.where(sampling_prob, tf.concat((h, x_in[...,-1]), axis=-1), x_in)
+    h = nn.get_readout_vel(nn.zuni_model_fwd(h_in, num_layers, adj, K, var_scope=vscope))
+    return h
+
+
 
 X_pred_train = multi_model_fwd_sampling(X_rs, sampling_probs, rs_adj)
 
@@ -195,6 +203,7 @@ np.random.seed(utils.DATASET_SEED)
 # START
 for step in range(num_iters):
     # data batching
+    print('STEP: {}'.format(step))
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
     '''
     np.random.shuffle(rs_tups)
