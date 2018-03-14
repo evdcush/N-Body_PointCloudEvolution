@@ -39,8 +39,8 @@ num_rs_layers = num_rs - 1
 
 # Load data
 num_val_samples = 200
-X = utils.thinkpadx201_load_npy(redshift_steps, norm_coo=True)
-#X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=False)
+#X = utils.thinkpadx201_load_npy(redshift_steps, norm_coo=True)
+X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=False)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
 
@@ -139,15 +139,6 @@ def multi_model_fwd_sampling(x_in, sampling_probs, adj):
         h = nn.get_readout_vel(nn.zuni_model_fwd(h_in, num_layers, adj[i], K, var_scope=vscope))
     return h
 
-'''
-def sampling_fwd_body():
-    return False
-
-def sampling_fwd(h, x_in, adj, sampling_prob):
-    h_in = tf.where(sampling_prob, tf.concat((h, x_in[...,-1]), axis=-1), x_in)
-    h = nn.get_readout_vel(nn.zuni_model_fwd(h_in, num_layers, adj, K, var_scope=vscope))
-    return h
-'''
 
 X_pred_train = multi_model_fwd_sampling(X_rs, sampling_probs, rs_adj)
 
@@ -208,7 +199,6 @@ print('\nTraining:\n============================================================
 start_time = time.time()
 rs_tups = [(i, i+1) for i in range(num_rs_layers)]
 np.random.seed(utils.DATASET_SEED)
-time_per_depth = np.zeros((num_iters, num_rs)).astype(np.float32)
 # START
 for step in range(num_iters):
     # data batching
@@ -230,23 +220,21 @@ for step in range(num_iters):
         # training pass
         train.run(feed_dict=fdict)
     '''
+    # sampling probs: whether the input at rs[i] is true or pred
     samp_probs = np.random.rand(num_rs) <= step / float(num_iters)
     samp_probs[0] = True # first input always ground truth
-    pred_depth = np.sum(samp_probs)
 
-    # feed data
-    pdepths = np.arange(1, num_rs)
-    np.random.shuffle(pdepths)
-    for pred_depth in pdepths:
-        time_in = time.time()
-        x_in = _x_batch[:pred_depth+1]
-        adj_lists = np.array([alist_func(x_in[i]) for i in range(pred_depth)])
-        fdict = {X_rs: x_in, rs_adj:adj_lists, sampling_probs:samp_probs}
-        train.run(feed_dict=fdict)
-        time_elapsed = time.time() - time_in
-        time_per_depth[step, pred_depth] = time_elapsed
-        print('pred_depth: {}, time: {}'.format(pred_depth, time_elapsed))
+    # pred depth
+    w = step / float(num_iters * 0.8) # more weight to deeper pred depths
+    depth_probs = np.random.rand(num_rs) <= w
+    depth_probs[0] = True
+    pred_depth = np.sum(depth_probs)
+    print('{}: samp: {}, depth: {}'.format(step, samp_probs, pred_depth))
 
+    x_in = _x_batch[:pred_depth+1]
+    adj_lists = np.array([alist_func(x_in[i]) for i in range(pred_depth)])
+    fdict = {X_rs: x_in, rs_adj:adj_lists, sampling_probs:samp_probs}
+    train.run(feed_dict=fdict)
 
     # save checkpoint
     if save_checkpoint(step):
@@ -255,19 +243,12 @@ for step in range(num_iters):
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 # END
 print('elapsed time: {}'.format(time.time() - start_time))
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-def print_depth_times(times):
-    meds = np.median(times[:,1:], axis=0)
-    print('TIME PER DEPTH:')
-    print(meds)
-
-print_depth_times(time_per_depth)
 
 # save
 saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
 #if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
 X_train = None # reduce memory overhead
-"""
+
 #=============================================================================
 # EVALUATION
 #=============================================================================
@@ -326,5 +307,5 @@ print('test median: {}'.format(test_median))
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
-"""
+
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
