@@ -289,9 +289,10 @@ def thinkpadx201_load_npy(redshifts, norm_coo=False, norm_vel=False):
         z_rs   = REDSHIFTS[z_idx]
         z_path = DATA_PATH_NPY.format(z_rs)
         print('LD: {}'.format(z_path[-13:]))
-        X[idx] = np.load(z_path)
+        X[idx, :, :, :-1] = np.load(z_path)
+        X[idx, :, :,-1] = z_rs
     if norm_coo:
-        X = normalize_zuni(X, norm_vel)
+        X[...,:3] = X[...,:3] / 32.0
     return X
 
 def load_rs_old_npy_data(redshifts, norm_coo=False, norm_vel=False):
@@ -311,7 +312,7 @@ def load_rs_old_npy_data(redshifts, norm_coo=False, norm_vel=False):
     for idx, rs in enumerate(redshifts):
         X[idx,:,:,-1] = REDSHIFTS[z_idx]
     if norm_coo:
-        X[...,:-1] = X[...,:-1] / n_P
+        X[...,:3] = X[...,:3] / 32.0
     return X
 
 def load_rs_npy_data(redshifts, norm_coo=False, norm_vel=False, old_dataset=False):
@@ -365,7 +366,7 @@ def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
         X[idx,:,:,:-1] = np.load(z_path)
         X[idx,:,:,-1] = z_rs
     if norm_coo:
-        X = normalize_zuni(X, norm_vel)
+        X[...,:3] = X[...,:3] / 32.0
     return X
 
 def normalize_zuni_vel(vel_in, rescale=True):
