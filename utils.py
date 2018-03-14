@@ -11,7 +11,9 @@ import tensorflow as tf
 #=============================================================================
 # dataset
 DATA_PATH     = '/home/evan/Data/nbody_simulations/N_{0}/DM*/{1}_dm.z=0{2}000'
-DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/nbody_{}.npy'
+#DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/nbody_{}.npy'
+DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/npy_data/X_{:.4f}_.npy'
+
 REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
 RS_TAGS = {6.0:'60', 4.0:'40', 2.0:'20', 1.5:'15', 1.2:'12', 1.0:'10',
            0.8:'08', 0.6:'06', 0.4:'04', 0.2:'02', 0.0:'00'}
@@ -271,6 +273,47 @@ def load_rs_old_npy_data(redshifts, norm_coo=False, norm_vel=False):
         X[...,:-1] = X[...,:-1] / n_P
     return X
 
+def thinkpadx201_load_npy(redshifts, norm_coo=False, norm_vel=False):
+    """ Loads new uniformly timestep data serialized as np array of np.float32
+    Args:
+        redshifts (list int): list of indices into redshifts in order
+        norm_coo: normalize coordinate values to [0,1]
+        norm_vel: normalize vel values (only norm'd if coord norm'd)
+    """
+    num_rs = len(redshifts)
+    N = 1000
+    M = 16**3
+    D = 6
+    X = np.zeros((num_rs, N, M, D)).astype(np.float32)
+    for idx, z_idx in enumerate(redshifts):
+        z_rs   = REDSHIFTS[z_idx]
+        z_path = DATA_PATH_NPY.format(z_rs)
+        print('LD: {}'.format(z_path[-13:]))
+        X[idx] = np.load(z_path)
+    if norm_coo:
+        X = normalize_zuni(X, norm_vel)
+    return X
+
+def load_rs_old_npy_data(redshifts, norm_coo=False, norm_vel=False):
+    """ Loads new uniformly timestep data serialized as np array of np.float32
+    Args:
+        redshifts (list int): list of indices into redshifts in order
+        norm_coo: normalize coordinate values to [0,1]
+        norm_vel: normalize vel values (only norm'd if coord norm'd)
+    """
+    n_P = 32
+    X_all_rs = load_npy_data(n_P, normalize=False)[redshifts]
+    num_rs, N, M, D = X_all_rs.shape
+    X = np.zeros((num_rs, N, M, D+1)).astype(np.float32)
+    X[...,:-1] = X_all_rs
+    X_all_rs = None # reduce memory overhead
+
+    for idx, rs in enumerate(redshifts):
+        X[idx,:,:,-1] = REDSHIFTS[z_idx]
+    if norm_coo:
+        X[...,:-1] = X[...,:-1] / n_P
+    return X
+
 def load_rs_npy_data(redshifts, norm_coo=False, norm_vel=False, old_dataset=False):
     """ Loads new uniformly timestep data serialized as np array of np.float32
     Args:
@@ -313,13 +356,14 @@ def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
     num_rs = len(redshifts)
     N = 1000
     M = 32**3
-    D = 6
+    D = 7
     X = np.zeros((num_rs, N, M, D)).astype(np.float32)
     for idx, z_idx in enumerate(redshifts):
         z_rs   = REDSHIFTS_ZUNI[z_idx]
         z_path = DATA_PATH_ZUNI_NPY.format(z_rs)
         print('LD: {}'.format(z_path[-13:]))
-        X[idx] = np.load(z_path)
+        X[idx,:,:,:-1] = np.load(z_path)
+        X[idx,:,:,-1] = z_rs
     if norm_coo:
         X = normalize_zuni(X, norm_vel)
     return X
