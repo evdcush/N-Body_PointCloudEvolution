@@ -283,7 +283,7 @@ def thinkpadx201_load_npy(redshifts, norm_coo=False, norm_vel=False):
     num_rs = len(redshifts)
     N = 1000
     M = 16**3
-    D = 6
+    D = 7
     X = np.zeros((num_rs, N, M, D)).astype(np.float32)
     for idx, z_idx in enumerate(redshifts):
         z_rs   = REDSHIFTS[z_idx]

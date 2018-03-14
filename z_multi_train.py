@@ -29,7 +29,7 @@ start_time = time.time()
 # nbody Data
 #=============================================================================
 # nbody data params
-num_particles = 32 #pargs['particles']
+num_particles = 16 #pargs['particles']
 #redshift_steps = pargs['redshifts']
 #              0    1    2    3    4    5    6    7    8    9   10
 #REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
@@ -39,7 +39,8 @@ num_rs_layers = num_rs - 1
 
 # Load data
 num_val_samples = 200
-X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=False)
+X = utils.thinkpadx201_load_npy(redshift_steps, norm_coo=True)
+#X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=False)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
 
@@ -129,21 +130,24 @@ def multi_model_fwd_sampling(x_in, sampling_probs, adj):
     Args:
         x_in: (11, mb_size, ...) full rs data
     """
-    rs_depth = tf.shape(x_in)[0]
+    rs_depth = x_in.get_shape().as_list()[0]
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     h = nn.get_readout_vel(nn.zuni_model_fwd(x_in[0], num_layers, adj[0], K, var_scope=vscope))
-    #for i in range(1, rs_depth): # NONETYPE ERROR HERE, FIGURE OUT
-    for i in tf.range(1, rs_depth, delta=1):
+    if rs_depth is None: return h
+    for i in range(1, rs_depth): # NONETYPE ERROR HERE, FIGURE OUT
         h_in = tf.where(sampling_probs[i], tf.concat((h, x_in[i,:,:,-1]), axis=-1), x_in[i])
         h = nn.get_readout_vel(nn.zuni_model_fwd(h_in, num_layers, adj[i], K, var_scope=vscope))
     return h
 
+'''
+def sampling_fwd_body():
+    return False
 
 def sampling_fwd(h, x_in, adj, sampling_prob):
     h_in = tf.where(sampling_prob, tf.concat((h, x_in[...,-1]), axis=-1), x_in)
     h = nn.get_readout_vel(nn.zuni_model_fwd(h_in, num_layers, adj, K, var_scope=vscope))
     return h
-
-
+'''
 
 X_pred_train = multi_model_fwd_sampling(X_rs, sampling_probs, rs_adj)
 
@@ -182,9 +186,10 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.8
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
-sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+#gpu_frac = 0.8
+#gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
+#sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+sess = tf.InteractiveSession()
 sess.run(tf.global_variables_initializer())
 if restore:
     utils.load_graph(sess, model_path)
@@ -203,10 +208,11 @@ print('\nTraining:\n============================================================
 start_time = time.time()
 rs_tups = [(i, i+1) for i in range(num_rs_layers)]
 np.random.seed(utils.DATASET_SEED)
+time_per_depth = np.zeros((num_iters, num_rs)).astype(np.float32)
 # START
 for step in range(num_iters):
     # data batching
-    print('STEP: {}'.format(step))
+    #print('STEP: {}'.format(step))
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
     '''
     np.random.shuffle(rs_tups)
@@ -229,10 +235,17 @@ for step in range(num_iters):
     pred_depth = np.sum(samp_probs)
 
     # feed data
-    x_in = _x_batch[:pred_depth+1]
-    adj_lists = np.array([alist_func(x_in[i]) for i in range(pred_depth)])
-    fdict = {X_rs: x_in, rs_adj:adj_lists, sampling_probs:samp_probs}
-    train.run(feed_dict=fdict)
+    pdepths = np.arange(1, num_rs)
+    np.random.shuffle(pdepths)
+    for pred_depth in pdepths:
+        time_in = time.time()
+        x_in = _x_batch[:pred_depth+1]
+        adj_lists = np.array([alist_func(x_in[i]) for i in range(pred_depth)])
+        fdict = {X_rs: x_in, rs_adj:adj_lists, sampling_probs:samp_probs}
+        train.run(feed_dict=fdict)
+        time_elapsed = time.time() - time_in
+        time_per_depth[step, pred_depth] = time_elapsed
+        print('pred_depth: {}, time: {}'.format(pred_depth, time_elapsed))
 
 
     # save checkpoint
@@ -242,12 +255,19 @@ for step in range(num_iters):
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 # END
 print('elapsed time: {}'.format(time.time() - start_time))
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+def print_depth_times(times):
+    meds = np.median(times[:,1:], axis=0)
+    print('TIME PER DEPTH:')
+    print(meds)
+
+print_depth_times(time_per_depth)
 
 # save
 saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
 #if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
 X_train = None # reduce memory overhead
-
+"""
 #=============================================================================
 # EVALUATION
 #=============================================================================
@@ -306,5 +326,5 @@ print('test median: {}'.format(test_median))
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
-
+"""
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
