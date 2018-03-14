@@ -29,7 +29,7 @@ start_time = time.time()
 # nbody Data
 #=============================================================================
 # nbody data params
-num_particles = 16 #pargs['particles']
+num_particles = 32 #pargs['particles']
 #redshift_steps = pargs['redshifts']
 #              0    1    2    3    4    5    6    7    8    9   10
 #REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
@@ -39,7 +39,6 @@ num_rs_layers = num_rs - 1
 
 # Load data
 num_val_samples = 200
-#X = utils.thinkpadx201_load_npy(redshift_steps, norm_coo=True)
 X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=False)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
@@ -177,10 +176,10 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-#gpu_frac = 0.8
-#gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
-#sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
-sess = tf.InteractiveSession()
+gpu_frac = 0.8
+gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
+sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+#sess = tf.InteractiveSession()
 sess.run(tf.global_variables_initializer())
 if restore:
     utils.load_graph(sess, model_path)
