@@ -29,7 +29,7 @@ start_time = time.time()
 # nbody Data
 #=============================================================================
 # nbody data params
-num_particles = 32 #pargs['particles']
+num_particles = 16 #pargs['particles']
 #redshift_steps = pargs['redshifts']
 #              0    1    2    3    4    5    6    7    8    9   10
 #REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
@@ -39,6 +39,7 @@ num_rs_layers = num_rs - 1
 
 # Load data
 num_val_samples = 200
+#X = utils.thinkpadx201_load_npy(redshift_steps, norm_coo=True)
 X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=False)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
@@ -129,20 +130,14 @@ def multi_model_fwd_sampling(x_in, sampling_probs, adj):
     Args:
         x_in: (11, mb_size, ...) full rs data
     """
-    rs_depth = tf.shape(x_in)[0]
+    rs_depth = x_in.get_shape().as_list()[0]
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     h = nn.get_readout_vel(nn.zuni_model_fwd(x_in[0], num_layers, adj[0], K, var_scope=vscope))
-    #for i in range(1, rs_depth): # NONETYPE ERROR HERE, FIGURE OUT
-    for i in tf.range(1, rs_depth, delta=1):
+    if rs_depth is None: return h
+    for i in range(1, rs_depth): # NONETYPE ERROR HERE, FIGURE OUT
         h_in = tf.where(sampling_probs[i], tf.concat((h, x_in[i,:,:,-1]), axis=-1), x_in[i])
         h = nn.get_readout_vel(nn.zuni_model_fwd(h_in, num_layers, adj[i], K, var_scope=vscope))
     return h
-
-
-def sampling_fwd(h, x_in, adj, sampling_prob):
-    h_in = tf.where(sampling_prob, tf.concat((h, x_in[...,-1]), axis=-1), x_in)
-    h = nn.get_readout_vel(nn.zuni_model_fwd(h_in, num_layers, adj, K, var_scope=vscope))
-    return h
-
 
 
 X_pred_train = multi_model_fwd_sampling(X_rs, sampling_probs, rs_adj)
@@ -182,9 +177,10 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.8
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
-sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+#gpu_frac = 0.8
+#gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
+#sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+sess = tf.InteractiveSession()
 sess.run(tf.global_variables_initializer())
 if restore:
     utils.load_graph(sess, model_path)
@@ -206,7 +202,7 @@ np.random.seed(utils.DATASET_SEED)
 # START
 for step in range(num_iters):
     # data batching
-    print('STEP: {}'.format(step))
+    #print('STEP: {}'.format(step))
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
     '''
     np.random.shuffle(rs_tups)
@@ -224,16 +220,21 @@ for step in range(num_iters):
         # training pass
         train.run(feed_dict=fdict)
     '''
+    # sampling probs: whether the input at rs[i] is true or pred
     samp_probs = np.random.rand(num_rs) <= step / float(num_iters)
     samp_probs[0] = True # first input always ground truth
-    pred_depth = np.sum(samp_probs)
 
-    # feed data
+    # pred depth
+    w = step / float(num_iters * 0.8) # more weight to deeper pred depths
+    depth_probs = np.random.rand(num_rs) <= w
+    depth_probs[0] = True
+    pred_depth = np.sum(depth_probs)
+    print('{}: samp: {}, depth: {}'.format(step, samp_probs, pred_depth))
+
     x_in = _x_batch[:pred_depth+1]
     adj_lists = np.array([alist_func(x_in[i]) for i in range(pred_depth)])
     fdict = {X_rs: x_in, rs_adj:adj_lists, sampling_probs:samp_probs}
     train.run(feed_dict=fdict)
-
 
     # save checkpoint
     if save_checkpoint(step):
