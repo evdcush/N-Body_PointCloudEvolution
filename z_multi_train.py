@@ -33,13 +33,13 @@ num_particles = 32 #pargs['particles']
 #redshift_steps = pargs['redshifts']
 #              0    1    2    3    4    5    6    7    8    9   10
 #REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
-redshift_steps = [1, 4, 7, 10]
+redshift_steps = [0, 3, 5, 7, 10]
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
 # Load data
 num_val_samples = 200
-X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=False)
+X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
 
@@ -111,8 +111,8 @@ adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 #sampling_probs = tf.placeholder(tf.bool, shape=(num_rs_layers-1,), name='sampling_probs')
 
 def alist_func(h_in): # for tf.py_func
-    return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
-    #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
+    #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
+    return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
 
 
 
@@ -223,11 +223,11 @@ for step in range(num_iters):
     samp_probs[0] = True # first input always ground truth
 
     # pred depth
-    w = step / float(num_iters * 0.8) # more weight to deeper pred depths
+    w = step / float(num_iters * 0.85) # more weight to deeper pred depths
     depth_probs = np.random.rand(num_rs) <= w
     depth_probs[0] = True
     pred_depth = np.sum(depth_probs)
-    print('{}: samp: {}, depth: {}'.format(step, samp_probs, pred_depth))
+    #print('{}: samp: {}, depth: {}'.format(step, samp_probs, pred_depth))
 
     x_in = _x_batch[:pred_depth+1]
     adj_lists = np.array([alist_func(x_in[i]) for i in range(pred_depth)])

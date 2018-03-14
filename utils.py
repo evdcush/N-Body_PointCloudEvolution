@@ -11,8 +11,8 @@ import tensorflow as tf
 #=============================================================================
 # dataset
 DATA_PATH     = '/home/evan/Data/nbody_simulations/N_{0}/DM*/{1}_dm.z=0{2}000'
-#DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/nbody_{}.npy'
-DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/npy_data/X_{:.4f}_.npy'
+DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/nbody_{}.npy'
+#DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/npy_data/X_{:.4f}_.npy'
 
 REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
 RS_TAGS = {6.0:'60', 4.0:'40', 2.0:'20', 1.5:'15', 1.2:'12', 1.0:'10',
@@ -309,8 +309,10 @@ def load_rs_old_npy_data(redshifts, norm_coo=False, norm_vel=False):
     X[...,:-1] = X_all_rs
     X_all_rs = None # reduce memory overhead
 
-    for idx, rs in enumerate(redshifts):
-        X[idx,:,:,-1] = REDSHIFTS[z_idx]
+    for idx, z_idx in enumerate(redshifts):
+        z_rs = REDSHIFTS[z_idx]
+        print('broadcasted rs: {}'.format(z_rs))
+        X[idx,:,:,-1] = z_rs
     if norm_coo:
         X[...,:3] = X[...,:3] / 32.0
     return X
