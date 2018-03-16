@@ -30,16 +30,16 @@ start_time = time.time()
 #=============================================================================
 # nbody data params
 num_particles = 32 #pargs['particles']
-#redshift_steps = pargs['redshifts']
+redshift_steps = pargs['redshifts']
 #              0    1    2    3    4    5    6    7    8    9   10
 #REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
-redshift_steps = [0, 3, 5, 7, 10]
+#redshift_steps = [0, 3, 5, 7, 10]
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
 # Load data
 num_val_samples = 200
-X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)
+X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=False)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
 
@@ -155,10 +155,11 @@ H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
 
 # error and optimizer
-#error = nn.pbc_loss(X_pred, X_truth[...,:-1])
-error = nn.pbc_loss(X_pred_train, X_rs[-1, :,:, :-1])
-#error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
-train = tf.train.AdamOptimizer(learning_rate).minimize(error)
+single_error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
+error = nn.pbc_loss_vel(X_pred_train, X_rs[-1, :,:, :-1])
+opt = tf.train.AdamOptimizer(learning_rate)
+train1 = opt.minimize(single_error)
+train2 = opt.minimize(error)
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
 
 # evaluation error (multi-step)
@@ -202,6 +203,32 @@ for step in range(num_iters):
     # data batching
     #print('STEP: {}'.format(step))
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
+    np.random.shuffle(rs_tups)
+    for idx_in, idx_out in rs_tups:
+        # data inputs
+        x_in    = _x_batch[idx_in]
+        x_truth = _x_batch[idx_out]
+        fdict = {X_input: x_in, X_truth: x_truth}
+
+        # feed graph model data
+        if use_graph:
+            alist = alist_func(x_in)
+            fdict[adj_list] = alist
+
+        # training pass
+        train1.run(feed_dict=fdict)
+
+    # save checkpoint
+    if save_checkpoint(step):
+        #tr_error = sess.run(error, feed_dict=fdict)
+        #print('checkpoint {:>5}: {}'.format(step, tr_error))
+        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+print('FINISHED SINGLE-STEP TRAINING')
+
+for step in range(num_iters):
+    # data batching
+    #print('STEP: {}'.format(step))
+    _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
     '''
     np.random.shuffle(rs_tups)
     for idx_in, idx_out in rs_tups:
@@ -232,7 +259,7 @@ for step in range(num_iters):
     x_in = _x_batch[:pred_depth+1]
     adj_lists = np.array([alist_func(x_in[i]) for i in range(pred_depth)])
     fdict = {X_rs: x_in, rs_adj:adj_lists, sampling_probs:samp_probs}
-    train.run(feed_dict=fdict)
+    train2.run(feed_dict=fdict)
 
     # save checkpoint
     if save_checkpoint(step):
@@ -256,6 +283,7 @@ num_test_samples = X_test.shape[1]
 #test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
 test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
+inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 
 rs_tups = [(i, i+1) for i in range(num_rs_layers)] # DO NOT SHUFFLE!
 
@@ -291,6 +319,7 @@ for j in range(X_test.shape[1]):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     v_error, truth_error = sess.run([multi_error, ground_truth_error], feed_dict=fdict)
     test_loss_history[j] = v_error
+    inputs_loss_history[j] = truth_error
     '''
     Ideally, the multi_error would be, at the very least, better than
     the ground_truth_error.
@@ -300,7 +329,8 @@ for j in range(X_test.shape[1]):
 
 # median test error
 test_median = np.median(test_loss_history)
-print('test median: {}'.format(test_median))
+inputs_median = np.median(inputs_loss_history)
+print('test median: {}, input median: {}'.format(test_median, inputs_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
