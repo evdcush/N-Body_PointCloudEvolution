@@ -111,38 +111,20 @@ def alist_func(h_in): # for tf.py_func
 
 
 # SCHEDULED SAMPLING
-rs_adj = tf.placeholder(tf.int32, shape=(None, None, 2), name='rs_adj')
-full_rs_shape = (None, None, num_particles**3, 7)
+rs_adj = tf.placeholder(tf.int32, shape=(num_rs_layers, None, 2), name='rs_adj')
+full_rs_shape = (num_rs, None, num_particles**3, 7)
 X_rs = tf.placeholder(tf.float32, shape=full_rs_shape, name='X_rs')
-sampling_probs = tf.placeholder(tf.bool, shape=(None,), name='sampling_probs')
+sampling_probs = tf.placeholder(tf.bool, shape=(num_rs_layers,), name='sampling_probs')
 
-'''
-def multi_model_fwd_sampling(x_in, sampling_probs, adj):
-    """
-    Args:
-        x_in: (11, mb_size, ...) full rs data
-    """
-    rs_depth = x_in.get_shape().as_list()[0]
-    h = nn.get_readout_vel(nn.zuni_model_fwd(x_in[0], num_layers, adj[0], K, var_scope=vscope))
-    if rs_depth is None: return h
-    for i in range(1, rs_depth):
-        h_in = tf.where(sampling_probs[i], tf.concat((h, x_in[i,:,:,-1]), axis=-1), x_in[i])
-        h = nn.get_readout_vel(nn.zuni_model_fwd(h_in, num_layers, adj[i], K, var_scope=vscope))
+def multi_model_fwd_sampling(x_in, adj, sampling_probs):
+    concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
+    fwd = lambda x, a: nn.get_readout_vel(nn.zuni_model_fwd(x, num_layers, a, K, var_scope=vscope))
+    h = fwd(x_in[0], adj[0])
+    for i in range(1, num_rs_layers):
+        # if sampling_probs[i] is
+        h_in = tf.where(sampling_probs[i], concat_rs(h, x_in[i, :, :, -1:]), x_in[i])
+        h = fwd(h_in, adj[i])
     return h
-'''
-def multi_model_fwd_sampling(x_in, adj):
-    """
-    Args:
-        x_in: (11, mb_size, ...) full rs data
-    """
-    rs_depth = x_in.get_shape().as_list()[0]
-    h = nn.get_readout_vel(nn.zuni_model_fwd(x_in[0], num_layers, adj[0], K, var_scope=vscope))
-    if rs_depth is None: return h
-    for i in range(1, rs_depth):
-        #h_in = tf.where(sampling_probs[i], tf.concat((h, x_in[i,:,:,-1]), axis=-1), x_in[i])
-        h = nn.get_readout_vel(nn.zuni_model_fwd(h, num_layers, adj[i], K, var_scope=vscope))
-    return h
-
 
 #=============================================================================
 # Model predictions and optimizer
@@ -156,8 +138,7 @@ else:
 # network out
 H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
-#X_pred_sched = multi_model_fwd_sampling(X_rs, sampling_probs, rs_adj)
-X_pred_sched = multi_model_fwd_sampling(X_rs, rs_adj)
+X_pred_sched = multi_model_fwd_sampling(X_rs, rs_adj, sampling_probs)
 
 # training error
 single_step_error = nn.pbc_loss(X_pred, X_truth[...,:-1])
@@ -234,23 +215,22 @@ print('FINISHED SINGLE-STEP TRAINING')
 
 
 for step in range(num_iters):
-    #print('STEP: {}'.format(step))
+    print('SCHED STEP: {}'.format(step))
 
     # data batching: (num_rs, mb_size, N, 7)
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
 
     # sampling probabilities
-    rands = np.random.rand(num_rs) <= step / (float(num_iters) * 0.85)
-    pred_depth = np.sum(rands)
-    if pred_depth < 1: pred_depth += 1
+    rands = np.random.rand(num_rs_layers) <= step / (float(num_iters) * 0.85)
+    samp_probs = np.sort(rands) # False precede True
 
     # feed data
-    d = -(pred_depth + 1)
-    x_in = _x_batch[d:]
-    adj_lists = np.array([alist_func(x_in[i]) for i in range(x_in.shape[0])])
-    fdict = {X_rs: x_in, rs_adj:adj_lists}
-    train2.run(feed_dict=fdict)
+    x_in = _x_batch
+    adj_lists = np.array([alist_func(x_in[i]) for i in range(num_rs_layers)])
 
+    fdict = {X_rs: x_in, sampling_probs: samp_probs, rs_adj:adj_lists}
+
+    train2.run(feed_dict=fdict)
 
     '''
     # sampling probs: whether the input at rs[i] is true or pred
