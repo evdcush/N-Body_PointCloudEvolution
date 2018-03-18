@@ -160,10 +160,10 @@ scheduled_error = loss_fn(X_pred_multi, X_rs[-1, :,:, :-1])
 
 # optimizer
 opt = tf.train.AdamOptimizer(learning_rate)
-s_train0 = opt.minimize(single_errors0)
-s_train1 = opt.minimize(single_errors1)
-s_train2 = opt.minimize(single_errors2)
-s_train3 = opt.minimize(single_errors3)
+s_train0 = opt.minimize(single_error0)
+s_train1 = opt.minimize(single_error1)
+s_train2 = opt.minimize(single_error2)
+s_train3 = opt.minimize(single_error3)
 single_trains = [s_train0, s_train1, s_train2, s_train3]
 single_trains = {vs: s_train for vs, s_train in zip(VSCOPES, single_trains)}
 
@@ -217,6 +217,7 @@ for step in range(num_iters):
         idx_in, idx_out = tup
         vscope = single_scopes[tup]
         train = single_trains[vscope]
+        #print('{}: {} {}'.format(step, tup, vscope))
 
         # data inputs
         x_in    = _x_batch[idx_in]
@@ -309,7 +310,7 @@ for j in range(X_test.shape[1]):
     x_in = X_test[:,j:j+1]
     fdict = {X_rs: x_in}
 
-    x_pred, v_error, truth_error = sess.run(X_pred_multi_val, val_error, ground_truth_error, feed_dict=fdict)
+    x_pred, v_error, truth_error = sess.run([X_pred_multi_val, val_error, ground_truth_error], feed_dict=fdict)
 
     # save prediction
     test_predictions[j] = x_pred[0]
