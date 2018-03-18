@@ -112,6 +112,7 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
 def zuni_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
     h_out = network_fwd(x_in, num_layers, var_scope, *args)
     if add:
+        '''
         # x splits
         x_coo =  x_in[...,:3]
         x_vel =  x_in[...,3:-1]
@@ -121,7 +122,11 @@ def zuni_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel
         # add
         h_coo += x_coo
         h_out = tf.concat((h_coo, h_vel), axis=-1)
+        '''
+        h_out += x_in[...,:-1]
     return h_out
+
+
 
 
 #=============================================================================

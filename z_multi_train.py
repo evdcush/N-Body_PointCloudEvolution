@@ -187,7 +187,7 @@ start_time = time.time()
 rs_tups = [(i, i+1) for i in range(num_rs_layers)]
 np.random.seed(utils.DATASET_SEED)
 # START
-'''
+
 for step in range(num_iters):
     # data batching
     #print('STEP: {}'.format(step))
@@ -213,7 +213,7 @@ for step in range(num_iters):
         #print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 print('FINISHED SINGLE-STEP TRAINING')
-'''
+
 
 for step in range(num_iters):
     #print('SCHED STEP: {}'.format(step))
@@ -222,7 +222,7 @@ for step in range(num_iters):
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
 
     # sampling probabilities
-    rands = np.random.rand(num_rs_layers) <= step / (float(num_iters) * 0.65)
+    rands = np.random.rand(num_rs_layers) <= step / (float(num_iters) * 0.85)
     samp_probs = np.sort(rands) # False precede True
 
     # feed data
