@@ -92,12 +92,7 @@ restore = pargs['restore'] == 1
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
 utils.init_params(channels, graph_model=use_graph, var_scope=vscope, restore=restore)
-'''
-VSCOPES = [utils.VAR_SCOPE_SINGLE_MULTI.format(redshift_steps[i], redshift_steps[i+1]) for i in range(num_rs_layers)]
-for v in VSCOPES:
-    tf.set_random_seed(utils.PARAMS_SEED)
-    utils.init_params(channels, graph_model=use_graph, var_scope=v, restore=restore)
-'''
+
 
 # INPUTS
 #data_shape = (None, num_particles**3, 6)
@@ -135,7 +130,6 @@ H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
 sched_margs = (X_rs, num_layers, rs_adj, K, sampling_probs)
 X_pred_sched = nn.multi_fwd_sampling(*sched_margs, var_scope=vscope)
-#X_pred_multi = nn.multi_model_fwd_sampling(*sched_margs, VSCOPES)
 
 
 # training error
@@ -183,7 +177,6 @@ save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
 print('\nTraining:\n==============================================================================')
 start_time = time.time()
 rs_tups = [(i, i+1) for i in range(num_rs_layers)]
-single_scopes = {rs: vs for rs, vs in zip(rs_tups, VSCOPES)} # copy
 np.random.seed(utils.DATASET_SEED)
 # START
 

@@ -89,15 +89,17 @@ restore = pargs['restore'] == 1
 # initialize graph and placeholders
 #=============================================================================
 # init network params
+'''
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
 utils.init_params(channels, graph_model=use_graph, var_scope=vscope, restore=restore)
 '''
+
 VSCOPES = [utils.VAR_SCOPE_SINGLE_MULTI.format(redshift_steps[i], redshift_steps[i+1]) for i in range(num_rs_layers)]
 for v in VSCOPES:
     tf.set_random_seed(utils.PARAMS_SEED)
     utils.init_params(channels, graph_model=use_graph, var_scope=v, restore=restore)
-'''
+
 
 # INPUTS
 #data_shape = (None, num_particles**3, 6)
@@ -131,26 +133,45 @@ else:
     margs = (X_input, num_layers)
 
 # network out
-H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
-X_pred = nn.get_readout_vel(H_out)
+#H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
+#X_pred = nn.get_readout_vel(H_out)
+# single model
+single_fwd = lambda m, v: nn.get_readout_vel(nn.zuni_model_fwd(*m, var_scope=v))
+X_pred0 = single_fwd(margs, VSCOPES[0])
+X_pred1 = single_fwd(margs, VSCOPES[1])
+X_pred2 = single_fwd(margs, VSCOPES[2])
+X_pred3 = single_fwd(margs, VSCOPES[3])
+
+# multi model
 sched_margs = (X_rs, num_layers, rs_adj, K, sampling_probs)
-X_pred_sched = nn.multi_fwd_sampling(*sched_margs, var_scope=vscope)
-#X_pred_multi = nn.multi_model_fwd_sampling(*sched_margs, VSCOPES)
+X_pred_multi = nn.multi_model_fwd_sampling(*sched_margs, VSCOPES)
+X_pred_multi_val = nn.multi_model_fwd_val(X_rs, num_layers, alist_func, K, VSCOPES)
 
 
 # training error
-single_step_error = nn.pbc_loss(X_pred, X_truth[...,:-1])
-scheduled_error   = nn.pbc_loss(X_pred_sched, X_rs[-1, :,:, :-1])
+#single_step_error = nn.pbc_loss(X_pred, X_truth[...,:-1])
+loss_fn = nn.pbc_loss
+single_error0 = loss_fn(X_pred0, X_truth[...,:-1])
+single_error1 = loss_fn(X_pred1, X_truth[...,:-1])
+single_error2 = loss_fn(X_pred2, X_truth[...,:-1])
+single_error3 = loss_fn(X_pred3, X_truth[...,:-1])
+
+scheduled_error = loss_fn(X_pred_multi, X_rs[-1, :,:, :-1])
 
 # optimizer
 opt = tf.train.AdamOptimizer(learning_rate)
-train1 = opt.minimize(single_step_error)
+s_train0 = opt.minimize(single_errors0)
+s_train1 = opt.minimize(single_errors1)
+s_train2 = opt.minimize(single_errors2)
+s_train3 = opt.minimize(single_errors3)
+single_trains = [s_train0, s_train1, s_train2, s_train3]
+single_trains = {vs: s_train for vs, s_train in zip(VSCOPES, single_trains)}
+
 train2 = opt.minimize(scheduled_error)
 
 # evaluation error
-X_pred_val = tf.placeholder(tf.float32, shape=(None, num_particles**3, 6), name='X_pred_val')
-val_error          = nn.pbc_loss(X_pred_val, X_truth[...,:-1])
-ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
+val_error          = nn.pbc_loss(X_pred_multi_val, X_rs[-1, :, :, :-1])
+ground_truth_error = nn.pbc_loss(X_rs[-2, :, :, :-1], X_rs[-1, :, :, :-1])
 
 
 #=============================================================================
@@ -185,14 +206,18 @@ start_time = time.time()
 rs_tups = [(i, i+1) for i in range(num_rs_layers)]
 single_scopes = {rs: vs for rs, vs in zip(rs_tups, VSCOPES)} # copy
 np.random.seed(utils.DATASET_SEED)
-# START
 
+# START
 for step in range(num_iters):
     # data batching
     #print('STEP: {}'.format(step))
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
     np.random.shuffle(rs_tups)
-    for idx_in, idx_out in rs_tups:
+    for tup in rs_tups:
+        idx_in, idx_out = tup
+        vscope = single_scopes[tup]
+        train = single_trains[vscope]
+
         # data inputs
         x_in    = _x_batch[idx_in]
         x_truth = _x_batch[idx_out]
@@ -204,7 +229,8 @@ for step in range(num_iters):
             fdict[adj_list] = alist
 
         # training pass
-        train1.run(feed_dict=fdict)
+        train.run(feed_dict=fdict)
+        #train1.run(feed_dict=fdict)
 
     # save checkpoint
     if save_checkpoint(step):
@@ -278,35 +304,17 @@ rs_tups = [(i, i+1) for i in range(num_rs_layers)] # DO NOT SHUFFLE!
 
 for j in range(X_test.shape[1]):
     # first pass
-    x_in    = X_test[0, j:j+1] # (1, n_P, 6)
-    z_next  = X_test[1, j:j+1, :, -1:] # redshifts
-    fdict = {X_input: x_in}
-    if use_graph:
-        alist = alist_func(x_in)
-        fdict[adj_list] = alist
-    x_pred = sess.run(X_pred, feed_dict=fdict)
+    #x_in    = X_test[0, j:j+1] # (1, n_P, 6)
+    #z_next  = X_test[1, j:j+1, :, -1:] # redshifts
+    x_in = X_test[:,j:j+1]
+    fdict = {X_rs: x_in}
 
-    # subsequent pass receive previous prediction
-    for i in range(1, num_rs_layers):
-        x_in = np.concatenate((x_pred, z_next), axis=-1) #(...,6) -> (...,7)
-        z_next = X_test[i+1, j:j+1, :, -1:]
-        fdict = {X_input: x_in}
-        if use_graph:
-            alist = alist_func(x_in)
-            fdict[adj_list] = alist
-        x_pred = sess.run(X_pred, feed_dict=fdict)
+    x_pred, v_error, truth_error = sess.run(X_pred_multi_val, val_error, ground_truth_error, feed_dict=fdict)
 
     # save prediction
     test_predictions[j] = x_pred[0]
 
-    # feeding for multi-step loss info
-    x_in   = X_test[-2, j:j+1]
-    x_true = X_test[-1, j:j+1]
-    fdict = {X_pred_val: x_pred, X_input: x_in, X_truth: x_true}
-
     # loss data
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    v_error, truth_error = sess.run([val_error, ground_truth_error], feed_dict=fdict)
     test_loss_history[j] = v_error
     inputs_loss_history[j] = truth_error
     '''
