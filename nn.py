@@ -123,63 +123,6 @@ def zuni_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel
         h_out = tf.concat((h_coo, h_vel), axis=-1)
     return h_out
 
-def zuni_multi_model_fwd(x_in, num_rs, num_layers, adj_lists, K, activation=tf.nn.relu, add=True, vel_coeff=None):
-    """
-    Args:
-        x_in: (11, mb_size, ...) full rs data
-    """
-    h = get_readout_vel(model_fwd(x_in[0], num_layers, adj_lists[0], K))
-    loss = pbc_loss(h, x_in[1])
-    for idx in range(1, num_rs):
-        h = get_readout_vel(model_fwd(h, num_layers, adj_lists[idx], K))
-        loss += pbc_loss(h, x_in[idx+1])
-    return h, loss
-
-def zuni_multi_model_fwd_set(x_in, num_rs, num_layers, *args, validation=False):
-    """
-    Args:
-        x_in: (11, mb_size, ...) full rs data
-    """
-    h = get_readout_vel(model_fwd(x_in[0], num_layers))
-    loss = pbc_loss(h, x_in[1])
-    for idx in range(1, num_rs):
-        h_in = h if validation else x_in[idx]
-        h = get_readout_vel(model_fwd(h_in, num_layers))
-        loss += pbc_loss(h, x_in[idx+1])
-    return h, loss
-
-def zuni_multi_single_model_fwd_set(x_in, var_scopes, num_layers, *args):
-    """
-    Args:
-        x_in: (mb_size, ...) only single redshift in
-    """
-    h = get_readout_vel(model_fwd(x_in, num_layers, var_scope=var_scopes[0]))
-    for vscope in var_scopes[1:]:
-        h = get_readout_vel(model_fwd(h, num_layers, var_scope=vscope))
-    return h
-
-def zuni_multi_single_model_fwd_graph(x_in, var_scopes, num_layers, alist_fn, K):
-    """
-    Args:
-        x_in: (mb_size, ...)
-    """
-    alist = tf.py_func(alist_fn, [x_in], tf.int32)
-    h = get_readout_vel(model_fwd(x_in, num_layers, alist, K, var_scope=var_scopes[0]))
-    for vscope in var_scopes[1:]:
-        alist = tf.py_func(alist_fn, [h], tf.int32)
-        h = get_readout_vel(model_fwd(h, num_layers, alist, K, var_scope=vscope))
-    return h
-
-def zuni_multi_single_model_fwd(x_in, var_scopes, num_layers, *args):
-    """
-    Args:
-        x_in: (mb_size, ...) only single redshift in
-    """
-    if len(args) == 0:
-        return zuni_multi_single_model_fwd_set(x_in, var_scopes, num_layers)
-    else:
-        return zuni_multi_single_model_fwd_graph(x_in, var_scopes, num_layers, *args)
-
 
 #=============================================================================
 # multi stuff
