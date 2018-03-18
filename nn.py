@@ -126,12 +126,41 @@ def zuni_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel
         h_out += x_in[...,:-1]
     return h_out
 
+def multi_fwd_sampling(x_in, num_layers, adj, K, sampling_probs, var_scope=VAR_SCOPE):
+    num_rs_layers = x_in.get_shape().as_list()[0] - 1
+    concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
+    fwd = lambda x, a: get_readout_vel(zuni_model_fwd(x, num_layers, a, K, var_scope=vscope))
+    h = fwd(x_in[0], adj[0])
+    for i in range(1, num_rs_layers):
+        h_in = tf.where(sampling_probs[i], concat_rs(h, x_in[i, :, :, -1:]), x_in[i])
+        h = fwd(h_in, adj[i])
+    return h
 
+def multi_model_fwd_sampling(x_in, num_layers, adj, K, sampling_probs, var_scopes):
+    concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
+    fwd = lambda x, a, v: get_readout_vel(zuni_model_fwd(x, num_layers, a, K, var_scope=v))
+    h = fwd(x_in[0], adj[0], var_scopes[0])
+    for i, vscope in enumerate(var_scopes[1:]):
+        h_in = tf.where(sampling_probs[i], concat_rs(h, x_in[i, :, :, -1:]), x_in[i])
+        h = fwd(h_in, adj[i], vscope)
+    return h
+
+def multi_model_fwd_val(x_in, num_layers, adj_fn, K, var_scopes):
+    concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
+    fwd = lambda x, a, v: get_readout_vel(zuni_model_fwd(x, num_layers, a, K, var_scope=v))
+    adj = tf.py_func(adj_fn, [x_in[0]], tf.int32)
+    h = fwd(x_in[0], adj, var_scopes[0])
+    for i, vscope in enumerate(var_scopes[1:]):
+        adj = tf.py_func(adj_fn, [h], tf.int32)
+        h_in = concat_rs(h, x_in[i,:,:,-1:])
+        h = fwd(h_in, adj, vscope)
+    return h
 
 
 #=============================================================================
 # multi stuff
 #=============================================================================
+'''
 def multi_model_fwd_set(x_in, var_scopes, num_layers, activation=tf.nn.relu, add=True, vel_coeff=None):
     """
     Args:
@@ -227,7 +256,7 @@ def multi_func_model_vel_fwd(x_in, var_scopes, num_layers, alist_fn, K, activati
         h = get_readout_vel(model_fwd(h, num_layers, alist, K, var_scope=vscope))
         loss += pbc_loss_vel(h, x_in[idx+1])
     return h, loss
-
+'''
 
 #=============================================================================
 # graph ops
