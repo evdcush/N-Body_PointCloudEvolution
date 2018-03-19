@@ -151,10 +151,12 @@ def multi_model_fwd_val(x_in, num_layers, adj_fn, K, var_scopes):
     adj = tf.py_func(adj_fn, [x_in[0]], tf.int32)
     h = fwd(x_in[0], adj, var_scopes[0])
     for i, vscope in enumerate(var_scopes[1:]):
-        adj = tf.py_func(adj_fn, [h], tf.int32)
         h_in = concat_rs(h, x_in[i,:,:,-1:])
+        adj = tf.py_func(adj_fn, [h_in], tf.int32)
         h = fwd(h_in, adj, vscope)
     return h
+
+
 
 
 #=============================================================================

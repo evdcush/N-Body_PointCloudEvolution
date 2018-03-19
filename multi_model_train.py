@@ -170,8 +170,9 @@ single_trains = {vs: s_train for vs, s_train in zip(VSCOPES, single_trains)}
 train2 = opt.minimize(scheduled_error)
 
 # evaluation error
-val_error          = nn.pbc_loss(X_pred_multi_val, X_rs[-1, :, :, :-1])
-ground_truth_error = nn.pbc_loss(X_rs[-2, :, :, :-1], X_rs[-1, :, :, :-1])
+X_pred_val = tf.placeholder(tf.float32, shape=(None, num_particles**3, 6), name='X_pred_val')
+val_error          = nn.pbc_loss(X_pred_val, X_truth[...,:-1])
+ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
 
 
 #=============================================================================
@@ -240,7 +241,7 @@ for step in range(num_iters):
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 print('FINISHED SINGLE-STEP TRAINING')
 
-
+"""
 for step in range(num_iters):
     #print('SCHED STEP: {}'.format(step))
 
@@ -288,6 +289,7 @@ print('elapsed time: {}'.format(time.time() - start_time))
 # save
 saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
 #if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
+"""
 X_train = None # reduce memory overhead
 
 #=============================================================================
@@ -302,20 +304,41 @@ test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 
 rs_tups = [(i, i+1) for i in range(num_rs_layers)] # DO NOT SHUFFLE!
+xpreds = [X_pred0, X_pred1, X_pred2, X_pred3]
 
 for j in range(X_test.shape[1]):
     # first pass
-    #x_in    = X_test[0, j:j+1] # (1, n_P, 6)
-    #z_next  = X_test[1, j:j+1, :, -1:] # redshifts
-    x_in = X_test[:,j:j+1]
-    fdict = {X_rs: x_in}
+    x_in    = X_test[0, j:j+1] # (1, n_P, 6)
+    z_next  = X_test[1, j:j+1, :, -1:] # redshifts
+    fdict = {X_input: x_in}
+    if use_graph:
+        alist = alist_func(x_in)
+        fdict[adj_list] = alist
+    x_pred = sess.run(X_pred0, feed_dict=fdict)
 
-    x_pred, v_error, truth_error = sess.run([X_pred_multi_val, val_error, ground_truth_error], feed_dict=fdict)
+    # subsequent pass receive previous prediction
+    for i in range(1, num_rs_layers):
+        #print('eval: {}'.format(i))
+        #x_in = np.concatenate((x_pred, z_next), axis=-1) #(...,6) -> (...,7)
+        z_next = X_test[i+1, j:j+1, :, -1:]
+        fdict = {X_input: x_in}
+        if use_graph:
+            code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+            alist = alist_func(x_in)
+            fdict[adj_list] = alist
+        x_pred = sess.run(xpreds[i], feed_dict=fdict)
 
     # save prediction
     test_predictions[j] = x_pred[0]
 
+    # feeding for multi-step loss info
+    x_in   = X_test[-2, j:j+1]
+    x_true = X_test[-1, j:j+1]
+    fdict = {X_pred_val: x_pred, X_input: x_in, X_truth: x_true}
+
     # loss data
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    v_error, truth_error = sess.run([val_error, ground_truth_error], feed_dict=fdict)
     test_loss_history[j] = v_error
     inputs_loss_history[j] = truth_error
     '''
