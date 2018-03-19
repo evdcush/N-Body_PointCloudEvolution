@@ -133,8 +133,8 @@ X_pred_sched = nn.multi_fwd_sampling(*sched_margs, var_scope=vscope)
 
 
 # training error
-single_step_error = nn.pbc_loss(X_pred, X_truth[...,:-1])
-scheduled_error   = nn.pbc_loss(X_pred_sched, X_rs[-1, :,:, :-1])
+single_step_error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
+scheduled_error   = nn.pbc_loss_vel(X_pred_sched, X_rs[-1, :,:, :-1])
 
 # optimizer
 opt = tf.train.AdamOptimizer(learning_rate)
@@ -225,22 +225,6 @@ for step in range(num_iters):
 
     train2.run(feed_dict=fdict)
 
-    '''
-    # sampling probs: whether the input at rs[i] is true or pred
-    samp_probs = np.random.rand(num_rs) <= step / float(num_iters)
-    samp_probs[0] = True # first input always ground truth
-
-    # pred depth
-    w = step / float(num_iters * 0.85) # more weight to deeper pred depths
-    depth_probs = np.random.rand(num_rs) <= w
-    depth_probs[0] = True
-    pred_depth = np.sum(depth_probs)
-
-    x_in = _x_batch[:pred_depth+1]
-    adj_lists = np.array([alist_func(x_in[i]) for i in range(pred_depth)])
-    fdict = {X_rs: x_in, rs_adj:adj_lists, sampling_probs:samp_probs}
-    train2.run(feed_dict=fdict)
-    '''
 
     # save checkpoint
     if save_checkpoint(step):

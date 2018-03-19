@@ -207,7 +207,7 @@ start_time = time.time()
 rs_tups = [(i, i+1) for i in range(num_rs_layers)]
 single_scopes = {rs: vs for rs, vs in zip(rs_tups, VSCOPES)} # copy
 np.random.seed(utils.DATASET_SEED)
-
+'''
 # START
 for step in range(num_iters):
     # data batching
@@ -240,8 +240,8 @@ for step in range(num_iters):
         #print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 print('FINISHED SINGLE-STEP TRAINING')
+'''
 
-"""
 for step in range(num_iters):
     #print('SCHED STEP: {}'.format(step))
 
@@ -289,7 +289,7 @@ print('elapsed time: {}'.format(time.time() - start_time))
 # save
 saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
 #if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
-"""
+
 X_train = None # reduce memory overhead
 
 #=============================================================================
@@ -323,7 +323,7 @@ for j in range(X_test.shape[1]):
         z_next = X_test[i+1, j:j+1, :, -1:]
         fdict = {X_input: x_in}
         if use_graph:
-            code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
             alist = alist_func(x_in)
             fdict[adj_list] = alist
         x_pred = sess.run(xpreds[i], feed_dict=fdict)

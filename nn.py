@@ -129,7 +129,7 @@ def zuni_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel
 def multi_fwd_sampling(x_in, num_layers, adj, K, sampling_probs, var_scope=VAR_SCOPE):
     num_rs_layers = x_in.get_shape().as_list()[0] - 1
     concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
-    fwd = lambda x, a: get_readout_vel(zuni_model_fwd(x, num_layers, a, K, var_scope=vscope))
+    fwd = lambda x, a: get_readout_vel(zuni_model_fwd(x, num_layers, a, K, var_scope=var_scope))
     h = fwd(x_in[0], adj[0])
     for i in range(1, num_rs_layers):
         h_in = tf.where(sampling_probs[i], concat_rs(h, x_in[i, :, :, -1:]), x_in[i])
