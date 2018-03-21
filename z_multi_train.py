@@ -105,8 +105,8 @@ alist_shape = (None, 2)
 adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 
 def alist_func(h_in): # for tf.py_func
-    #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
-    return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
+    return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
+    #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
 
 
 # SCHEDULED SAMPLING
@@ -133,8 +133,8 @@ X_pred_sched = nn.multi_fwd_sampling(*sched_margs, var_scope=vscope)
 
 
 # training error
-single_step_error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
-scheduled_error   = nn.pbc_loss_vel(X_pred_sched, X_rs[-1, :,:, :-1])
+single_step_error = nn.pbc_loss(X_pred, X_truth[...,:-1])
+scheduled_error   = nn.pbc_loss(X_pred_sched, X_rs[-1, :,:, :-1])
 
 # optimizer
 opt = tf.train.AdamOptimizer(learning_rate)
@@ -214,7 +214,7 @@ for step in range(num_iters):
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
 
     # sampling probabilities
-    rands = np.random.rand(num_rs_layers) <= step / (float(num_iters) * 0.85)
+    rands = np.random.rand(num_rs_layers) <= step / (float(num_iters) * 0.80)
     samp_probs = np.sort(rands) # False precede True
 
     # feed data
