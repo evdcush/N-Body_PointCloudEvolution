@@ -38,6 +38,25 @@ def set_layer(h, layer_idx, var_scope, *args):
 
 #=============================================================================
 # graph
+def no_tiled_kgraph_conv(h, adj):
+    """ Graph convolution op for KNN-based adjacency lists
+    build graph tensor with gather_nd, and take
+    mean on KNN dim: mean((mb_size, N, K, k_in), axis=2)
+    Args:
+        h: data tensor, (mb_size, N, k_in)
+        adj: adjacency index list, for gather_nd (*, 2)
+        K (int): num nearest neighbors
+    """
+    dims = tf.shape(h)
+    mb = dims[0]; n  = dims[1]; d  = dims[2];
+    K = tf.shape(adj)[-1]
+    alist = tf.reshape(adj, [-1])
+    h_flat = tf.reshape(h, [-1, d])
+
+    rdim = [mb,n,K,d]
+    nn_graph = tf.reduce_mean(tf.reshape(tf.gather(h_flat, alist), rdim), axis=2)
+    return nn_graph
+
 def kgraph_conv(h, adj, K):
     """ Graph convolution op for KNN-based adjacency lists
     build graph tensor with gather_nd, and take
