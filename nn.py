@@ -321,3 +321,104 @@ def bounded_mean_squared_error(x_hat, x_true, boundary=BOUND):
 
 
 
+
+#=============================================================================
+# multi stuff
+#=============================================================================
+'''
+def multi_model_fwd_set(x_in, var_scopes, num_layers, activation=tf.nn.relu, add=True, vel_coeff=None):
+    """
+    Args:
+        x_in: (11, mb_size, ...) full rs data
+    """
+    h = get_readout_vel(model_fwd(x_in[0], num_layers, var_scope=var_scopes[0]))
+    loss = pbc_loss(h, x_in[1])
+    for idx, vscope in enumerate(var_scopes[1:]):
+        h = get_readout_vel(model_fwd(h, num_layers, var_scope=vscope))
+        loss += pbc_loss(h, x_in[idx+1])
+    return h, loss
+
+
+def multi_model_fwd_weightedSum(x_in, var_scopes, num_layers, adj_lists, K, scale_weights, activation=tf.nn.relu, add=True, vel_coeff=None):
+    """
+    Args:
+        x_in: (11, mb_size, ...) full rs data
+    """
+    h = get_readout_vel(model_fwd(x_in[0], num_layers, adj_lists[0], K, var_scope=var_scopes[0]))
+    loss = pbc_loss(h, x_in[1]) * scale_weights[0]
+    for idx, vscope in enumerate(var_scopes[1:]):
+        h = get_readout_vel(model_fwd(h, num_layers, adj_lists[idx], K, var_scope=vscope))
+        loss += pbc_loss(h, x_in[idx+1]) * scale_weights[idx]
+    return h, loss
+
+def multi_model_fwd(x_in, var_scopes, num_layers, adj_lists, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+    """
+    Args:
+        x_in: (11, mb_size, ...) full rs data
+    """
+    h = get_readout_vel(model_fwd(x_in[0], num_layers, adj_lists[0], K, var_scope=var_scopes[0]))
+    loss = pbc_loss(h, x_in[1])
+    for idx, vscope in enumerate(var_scopes[1:]):
+        h = get_readout_vel(model_fwd(h, num_layers, adj_lists[idx], K, var_scope=vscope))
+        loss += pbc_loss(h, x_in[idx+1])
+    return h, loss
+
+
+def multi_model_fwd_sampling(x_in, var_scopes, num_layers, adj_lists, K, sampling_probs, activation=tf.nn.relu, add=True, vel_coeff=None):
+    """
+    Args:
+        x_in: (11, mb_size, ...) full rs data
+    """
+    h = get_readout_vel(model_fwd(x_in[0], num_layers, adj_lists[0], K, var_scope=var_scopes[0]))
+    loss = pbc_loss(h, x_in[1]) #* scale_weights[0]
+    for idx, vscope in enumerate(var_scopes[1:]):
+        h_in = tf.where(sampling_probs[idx-1], h, x_in[idx])
+        h = get_readout_vel(model_fwd(h_in, num_layers, adj_lists[idx], K, var_scope=vscope))
+        loss += pbc_loss(h, x_in[idx+1]) #* scale_weights[idx]
+    return h, loss
+
+def multi_model_vel_fwd(x_in, var_scopes, num_layers, adj_lists, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+    """
+    Args:
+        x_in: (11, mb_size, ...) full rs data
+    """
+    h = get_readout_vel(model_fwd(x_in[0], num_layers, adj_lists[0], K, var_scope=var_scopes[0]))
+    loss = pbc_loss_vel(h, x_in[1])
+    for idx, vscope in enumerate(var_scopes[1:]):
+        h = get_readout_vel(model_fwd(h, num_layers, adj_lists[idx], K, var_scope=vscope))
+        loss += pbc_loss_vel(h, x_in[idx+1])
+    return h, loss
+
+
+def multi_func_model_fwd(x_in, var_scopes, num_layers, alist_fn, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+    """
+    Args:
+        x_in: (11, mb_size, ...) full rs data
+    """
+    #alist = alist_fn(x_in[0])
+    alist = tf.py_func(alist_fn, [x_in[0]], tf.int32)
+    h = get_readout_vel(model_fwd(x_in[0], num_layers, alist, K, var_scope=var_scopes[0]))
+    loss = pbc_loss(h, x_in[1])
+    for idx, vscope in enumerate(var_scopes[1:]):
+        #alist = alist_fn(h)
+        alist = tf.py_func(alist_fn, [h], tf.int32)
+        h = get_readout_vel(model_fwd(h, num_layers, alist, K, var_scope=vscope))
+        loss += pbc_loss(h, x_in[idx+1])
+    return h, loss
+
+def multi_func_model_vel_fwd(x_in, var_scopes, num_layers, alist_fn, K, activation=tf.nn.relu, add=True, vel_coeff=None):
+    """
+    Args:
+        x_in: (11, mb_size, ...) full rs data
+    """
+    #alist = alist_fn(x_in[0])
+    alist = tf.py_func(alist_fn, [x_in[0]], tf.int32)
+    h = get_readout_vel(model_fwd(x_in[0], num_layers, alist, K, var_scope=var_scopes[0]))
+    loss = pbc_loss_vel(h, x_in[1])
+    for idx, vscope in enumerate(var_scopes[1:]):
+        #alist = alist_fn(h)
+        alist = tf.py_func(alist_fn, [h], tf.int32)
+        h = get_readout_vel(model_fwd(h, num_layers, alist, K, var_scope=vscope))
+        loss += pbc_loss_vel(h, x_in[idx+1])
+    return h, loss
+'''
