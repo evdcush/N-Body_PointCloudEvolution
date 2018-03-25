@@ -39,13 +39,16 @@ def set_layer(h, layer_idx, var_scope, *args):
 #=============================================================================
 # graph
 def no_tiled_kgraph_conv(h, adj):
-    """ Graph convolution op for KNN-based adjacency lists
-    build graph tensor with gather_nd, and take
-    mean on KNN dim: mean((mb_size, N, K, k_in), axis=2)
+    """ Uses gather instead of gather_nd. Idea being you can keep the adj
+    list in it's "natural" shape, and you don't need to pass K as an arg anymore,
+    but tf complains.
+
+    Works, but not using due to tf dense gradient warning:
+    "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
+
     Args:
         h: data tensor, (mb_size, N, k_in)
-        adj: adjacency index list, for gather_nd (*, 2)
-        K (int): num nearest neighbors
+        adj: adjacency index list, for gather (mb_size, N, K)
     """
     dims = tf.shape(h)
     mb = dims[0]; n  = dims[1]; d  = dims[2];
