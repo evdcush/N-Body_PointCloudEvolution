@@ -148,6 +148,11 @@ def zuni_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel
         h_out += x_in[...,:-1]
     return h_out
 
+def zuni_fwd_nors(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
+    h_out = network_fwd(x_in, num_layers, var_scope, *args)
+    if add: h_out += x_in
+    return h_out
+
 def multi_fwd_sampling(x_in, num_layers, adj, K, sampling_probs, var_scope=VAR_SCOPE):
     num_rs_layers = x_in.get_shape().as_list()[0] - 1
     concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
@@ -155,6 +160,17 @@ def multi_fwd_sampling(x_in, num_layers, adj, K, sampling_probs, var_scope=VAR_S
     h = fwd(x_in[0], adj[0])
     for i in range(1, num_rs_layers):
         h_in = tf.where(sampling_probs[i], concat_rs(h, x_in[i, :, :, -1:]), x_in[i])
+        h = fwd(h_in, adj[i])
+    return h
+
+def multi_fwd_sampling_nors(x_in, num_layers, adj, K, sampling_probs, var_scope=VAR_SCOPE):
+    num_rs_layers = x_in.get_shape().as_list()[0] - 1
+    #concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
+    fwd = lambda x, a: get_readout_vel(zuni_fwd_nors(x, num_layers, a, K, var_scope=var_scope))
+    h = fwd(x_in[0], adj[0])
+    for i in range(1, num_rs_layers):
+        h_in = tf.where(sampling_probs[i], h, x_in[i])
+        #h_in = tf.where(sampling_probs[i], concat_rs(h, x_in[i, :, :, -1:]), x_in[i])
         h = fwd(h_in, adj[i])
     return h
 
