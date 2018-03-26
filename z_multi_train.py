@@ -82,7 +82,7 @@ model_path, loss_path, cube_path = paths
 restore = pargs['restore'] == 1
 
 # save test data
-#utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
+utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 
 
 #=============================================================================
@@ -105,8 +105,8 @@ alist_shape = (None, 2)
 adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 
 def alist_func(h_in): # for tf.py_func
-    return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
-    #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
+    #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
+    return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
 
 
 # SCHEDULED SAMPLING
@@ -179,7 +179,7 @@ start_time = time.time()
 rs_tups = [(i, i+1) for i in range(num_rs_layers)]
 np.random.seed(utils.DATASET_SEED)
 # START
-
+'''
 for step in range(num_iters):
     # data batching
     #print('STEP: {}'.format(step))
@@ -238,6 +238,7 @@ print('elapsed time: {}'.format(time.time() - start_time))
 # save
 saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
 #if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
+'''
 X_train = None # reduce memory overhead
 
 #=============================================================================
@@ -247,7 +248,8 @@ print('\nEvaluation:\n==========================================================
 # data containers
 num_test_samples = X_test.shape[1]
 #test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
-test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
+#test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
+test_predictions  = np.zeros((num_rs_layers,) + X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 
@@ -262,6 +264,7 @@ for j in range(X_test.shape[1]):
         alist = alist_func(x_in)
         fdict[adj_list] = alist
     x_pred = sess.run(X_pred, feed_dict=fdict)
+    test_predictions[0, j] = x_pred[0]
 
     # subsequent pass receive previous prediction
     for i in range(1, num_rs_layers):
@@ -272,9 +275,10 @@ for j in range(X_test.shape[1]):
             alist = alist_func(x_in)
             fdict[adj_list] = alist
         x_pred = sess.run(X_pred, feed_dict=fdict)
+        test_predictions[i, j] = x_pred[0]
 
     # save prediction
-    test_predictions[j] = x_pred[0]
+    #test_predictions[j] = x_pred[0]
 
     # feeding for multi-step loss info
     x_in   = X_test[-2, j:j+1]

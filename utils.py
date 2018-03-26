@@ -697,6 +697,7 @@ def get_zuni_model_name(mtype, zX, zY, save_prefix):
 
 def save_test_cube(x, cube_path, rs, prediction=False):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    '''
     if prediction:
         rs_tag = '{}-{}'.format(*rs) # (zX, zY)
         ptag   = 'prediction'
@@ -706,6 +707,11 @@ def save_test_cube(x, cube_path, rs, prediction=False):
             rs_tag = '{}'.format(rs[i])
             ptag   = 'data'
             save_cube(x[i], cube_path, rs_tag, ptag)
+    '''
+    rs_tag = '{}-{}'.format(*rs) # (zX, zY)
+    ptag = 'prediction' if prediction else 'true'
+    save_cube(x, cube_path, rs_tag, ptag)
+
 
 def save_cube(x, cube_path, rs_tag, ptag):
     """ Save validation data

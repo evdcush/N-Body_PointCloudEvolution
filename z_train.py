@@ -79,7 +79,7 @@ model_path, loss_path, cube_path = paths
 restore = pargs['restore'] == 1
 
 # save test data
-#utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
+utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 
 
 #=============================================================================
@@ -127,7 +127,7 @@ X_pred = nn.get_readout_vel(H_out)
 # error and optimizer
 error = nn.pbc_loss(X_pred, X_truth[...,:-1])
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
-val_error = nn.pbc_loss(X_pred, X_truth) # since training loss fn not always same
+val_error = nn.pbc_loss(X_pred, X_truth[...,:-1]) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
 
 
@@ -198,6 +198,8 @@ num_test_samples = X_test.shape[1]
 #test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
 test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
+inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
+
 print('\nEvaluation:\n==============================================================================')
 for j in range(X_test.shape[1]):
     # validation inputs
@@ -215,12 +217,15 @@ for j in range(X_test.shape[1]):
     vals = sess.run([X_pred, val_error, ground_truth_error], feed_dict=fdict)
     x_pred, v_error, truth_error = vals
     test_loss_history[j] = v_error
+    inputs_loss_history[j] = truth_error
     test_predictions[j] = x_pred[0]
-    #print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
+    print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
 
 # median test error
 test_median = np.median(test_loss_history)
-print('test median: {}'.format(test_median))
+inputs_median = np.median(inputs_loss_history)
+#print('test median: {}'.format(test_median))
+print('test median: {}, input median: {}'.format(test_median, inputs_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
