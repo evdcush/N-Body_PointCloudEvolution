@@ -146,7 +146,7 @@ X_pred_val = tf.placeholder(tf.float32, shape=(None, num_particles**3, 6), name=
 val_error          = nn.pbc_loss(X_pred_val, X_truth[...,:-1])
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
 
-
+#
 #=============================================================================
 # Session and Train setup
 #=============================================================================
