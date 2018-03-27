@@ -14,7 +14,8 @@ parser.add_argument('--particles', '-p', default=32,         type=int,  help='nu
 parser.add_argument('--redshifts', '-z', default=[18,19], nargs='+', type=int, help='redshift tuple, predict z[1] from z[0]')
 parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
 parser.add_argument('--knn',       '-k', default=14,          type=int, help='number of nearest neighbors for graph model')
-parser.add_argument('--restore',   '-r', default=0,          type=int,  help='resume training from serialized params')
+parser.add_argument('--restore_single', '-rs', default=0,          type=int,  help='resume training from serialized params')
+parser.add_argument('--restore_agg',    '-ra', default=0,          type=int,  help='resume training from serialized params')
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
 parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
@@ -77,7 +78,8 @@ paths = utils.make_save_dirs(pargs['model_dir'], model_name)
 model_path, loss_path, cube_path = paths
 
 # restore
-restore = pargs['restore'] == 1
+#restore = pargs['restore'] == 1
+restore = True
 
 # save test data
 utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
@@ -91,7 +93,6 @@ utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 tf.set_random_seed(utils.PARAMS_SEED)
 vscopes = [utils.VAR_SCOPE_SINGLE_MULTI.format(tup[0], tup[1]) for tup in rs_tups]
 utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=restore)
-#utils.init_params(channels, graph_model=use_graph, var_scope=vscope, restore=restore)
 
 
 # INPUTS
@@ -126,13 +127,15 @@ else:
 #H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 #X_pred = nn.get_readout_vel(H_out)
 X_pred     = nn.zuni_multi_single_fwd(X_rs, num_layers, rs_adj_list, K, vscopes)
-X_pred_val = nn.zuni_multi_single_fwd_val(X_rs, num_layers, alist_func, K, vscopes)
+#X_pred_val = nn.zuni_multi_single_fwd_val(X_rs, num_layers, alist_func, K, vscopes)
+X_pred_val = nn.zuni_multi_single_fwd_val_all(X_rs, num_layers, alist_func, K, vscopes)
 
 # error and optimizer
 error = nn.pbc_loss(X_pred, X_rs[-1,:,:,:-1])
-error = nn.pbc_loss_vel(X_pred, X_rs[-1,:,:,:-1])
+#error = nn.pbc_loss_vel(X_pred, X_rs[-1,:,:,:-1])
 train = tf.train.AdamOptimizer(learning_rate, name='AdamMulti').minimize(error)
-val_error = nn.pbc_loss(X_pred_val, X_rs[-1,:,:,:-1]) # since training loss fn not always same
+#val_error = nn.pbc_loss(X_pred_val, X_rs[-1,:,:,:-1]) # since training loss fn not always same
+val_error = nn.pbc_loss(X_pred_val[-1], X_rs[-1,:,:,:-1]) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_rs[-2,:,:,:-1], X_rs[-1,:,:,:-1])
 
 
@@ -145,15 +148,16 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.7
+gpu_frac = 0.9
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
-#if restore: utils.load_graph(sess, model_path)
-if restore:
+if pargs['restore_single']:
     mp = './Model/M_ZG_{}-{}/Session/'
     mpaths = [mp.format(tup[0], tup[1]) for tup in rs_tups]
     utils.load_multi_graph(sess, vscopes, num_layers, mpaths, use_graph=use_graph)
+elif pargs['restore_agg']:
+    utils.load_graph(sess, model_path)
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 # Save
@@ -181,8 +185,8 @@ for step in range(num_iters):
 
     # save checkpoint
     if save_checkpoint(step):
-        #tr_error = sess.run(error, feed_dict=fdict)
-        #print('checkpoint {:>5}: {}'.format(step, tr_error))
+        tr_error = sess.run(error, feed_dict=fdict)
+        print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
 # END
@@ -198,8 +202,8 @@ X_train = None # reduce memory overhead
 #=============================================================================
 # data containers
 num_test_samples = X_test.shape[1]
-#test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
-test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
+#test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
+test_predictions  = np.zeros((num_rs_layers,) + X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 
@@ -214,7 +218,9 @@ for j in range(X_test.shape[1]):
     x_pred, v_error, truth_error = vals
     test_loss_history[j] = v_error
     inputs_loss_history[j] = truth_error
-    test_predictions[j] = x_pred[0]
+    #test_predictions[j] = x_pred[0]
+    for idx, x in enumerate(x_pred): test_predictions[idx,j] = x[0]
+
     print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
 
 # median test error
