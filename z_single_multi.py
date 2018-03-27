@@ -99,7 +99,6 @@ utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=r
 #data_shape = (None, num_particles**3, 6)
 data_shape = (None, num_particles**3, 7)
 X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
-#X_truth = tf.placeholder(tf.float32, shape=data_shape, name='X_truth')
 
 # ADJACENCY LIST
 alist_shape = (None, 2)
@@ -107,8 +106,8 @@ adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 
 
 def alist_func(h_in): # for tf.py_func
-    #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
-    return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
+    return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
+    #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
 
 # multi stuff
 rs_adj_list = tf.placeholder(tf.int32, shape=(num_rs_layers,) + alist_shape, name='rs_adj_list')
@@ -124,16 +123,16 @@ else:
     margs = (X_input, num_layers)
 
 # network out
-#H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
-#X_pred = nn.get_readout_vel(H_out)
 X_pred     = nn.zuni_multi_single_fwd(X_rs, num_layers, rs_adj_list, K, vscopes)
 #X_pred_val = nn.zuni_multi_single_fwd_val(X_rs, num_layers, alist_func, K, vscopes)
 X_pred_val = nn.zuni_multi_single_fwd_val_all(X_rs, num_layers, alist_func, K, vscopes)
 
-# error and optimizer
+# Training error and optimizer
 error = nn.pbc_loss(X_pred, X_rs[-1,:,:,:-1])
 #error = nn.pbc_loss_vel(X_pred, X_rs[-1,:,:,:-1])
 train = tf.train.AdamOptimizer(learning_rate, name='AdamMulti').minimize(error)
+
+# Validation error
 #val_error = nn.pbc_loss(X_pred_val, X_rs[-1,:,:,:-1]) # since training loss fn not always same
 val_error = nn.pbc_loss(X_pred_val[-1], X_rs[-1,:,:,:-1]) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_rs[-2,:,:,:-1], X_rs[-1,:,:,:-1])
@@ -152,10 +151,14 @@ gpu_frac = 0.9
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
-if pargs['restore_single']:
+
+# RESTORE
+ # restore individually trained params for new aggregate model
+if pargs['restore_single']: #
     mp = './Model/M_ZG_{}-{}/Session/'
     mpaths = [mp.format(tup[0], tup[1]) for tup in rs_tups]
     utils.load_multi_graph(sess, vscopes, num_layers, mpaths, use_graph=use_graph)
+ # restore previously trained aggregate model
 elif pargs['restore_agg']:
     utils.load_graph(sess, model_path)
 
