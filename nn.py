@@ -163,16 +163,18 @@ def multi_fwd_sampling(x_in, num_layers, adj, K, sampling_probs, var_scope=VAR_S
         h = fwd(h_in, adj[i])
     return h
 
-def multi_fwd_sampling_nors(x_in, num_layers, adj, K, sampling_probs, var_scope=VAR_SCOPE):
+def multi_fwd_sampling_sumError(x_in, num_layers, adj, K, sampling_probs, var_scope=VAR_SCOPE):
     num_rs_layers = x_in.get_shape().as_list()[0] - 1
-    #concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
-    fwd = lambda x, a: get_readout_vel(zuni_fwd_nors(x, num_layers, a, K, var_scope=var_scope))
+    concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
+    fwd = lambda x, a: get_readout_vel(zuni_model_fwd(x, num_layers, a, K, var_scope=var_scope))
     h = fwd(x_in[0], adj[0])
+    error_sum = pbc_loss(h, x_in[1,:,:,:-1])
     for i in range(1, num_rs_layers):
-        h_in = tf.where(sampling_probs[i], h, x_in[i])
-        #h_in = tf.where(sampling_probs[i], concat_rs(h, x_in[i, :, :, -1:]), x_in[i])
+        h_in = tf.where(sampling_probs[i], concat_rs(h, x_in[i, :, :, -1:]), x_in[i])
         h = fwd(h_in, adj[i])
-    return h
+        error_sum += pbc_loss(h, x_in[i+1,:,:,:-1])
+    return h, error_sum
+
 
 def multi_model_fwd_sampling(x_in, num_layers, adj, K, sampling_probs, var_scopes):
     concat_rs = lambda x, z: tf.concat((x, z), axis=-1)

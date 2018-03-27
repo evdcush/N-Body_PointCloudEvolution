@@ -131,7 +131,7 @@ H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
 sched_margs = (X_rs, num_layers, rs_adj, K, sampling_probs)
 X_pred_sched = nn.multi_fwd_sampling(*sched_margs, var_scope=vscope)
-
+#X_pred_sched, error_sum = nn.multi_fwd_sampling_sumError(*sched_margs, var_scope=vscope)
 
 # training error
 single_step_error = nn.pbc_loss(X_pred, X_truth[...,:-1])
@@ -141,6 +141,7 @@ scheduled_error   = nn.pbc_loss(X_pred_sched, X_rs[-1, :,:, :-1])
 opt = tf.train.AdamOptimizer(learning_rate)
 train1 = opt.minimize(single_step_error)
 train2 = opt.minimize(scheduled_error)
+#train3 = opt.minimize(error_sum)
 
 # evaluation error
 X_pred_val = tf.placeholder(tf.float32, shape=(None, num_particles**3, 6), name='X_pred_val')
@@ -185,7 +186,7 @@ for step in range(num_iters):
     # data batching
     #print('STEP: {}'.format(step))
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
-    _x_batch = _x_batch[...,:-1]
+    #_x_batch = _x_batch[...,:-1]
     np.random.shuffle(rs_tups)
     for idx_in, idx_out in rs_tups:
         # data inputs
@@ -214,7 +215,7 @@ for step in range(num_iters):
 
     # data batching: (num_rs, mb_size, N, 7)
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
-    _x_batch = _x_batch[...,:-1]
+    #_x_batch = _x_batch[...,:-1]
 
     # sampling probabilities
     rands = np.random.rand(num_rs_layers) <= step / (float(num_iters) * 0.80)
@@ -227,6 +228,7 @@ for step in range(num_iters):
     fdict = {X_rs: x_in, sampling_probs: samp_probs, rs_adj:adj_lists}
 
     train2.run(feed_dict=fdict)
+    #train3.run(feed_dict=fdict)
 
 
     # save checkpoint
