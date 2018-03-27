@@ -54,7 +54,7 @@ model_vars = utils.NBODY_MODELS[model_type]
 # network kernel sizes and depth
 channels = model_vars['channels']
 channels[-1] = 6
-#channels[0] = 7
+channels[0] = 7
 num_layers = len(channels) - 1
 
 # model features
@@ -95,8 +95,8 @@ utils.init_params(channels, graph_model=use_graph, var_scope=vscope, restore=res
 
 
 # INPUTS
-data_shape = (None, num_particles**3, 6)
-#data_shape = (None, num_particles**3, 7)
+#data_shape = (None, num_particles**3, 6)
+data_shape = (None, num_particles**3, 7)
 X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
 X_truth = tf.placeholder(tf.float32, shape=data_shape, name='X_truth')
 
@@ -111,8 +111,8 @@ def alist_func(h_in): # for tf.py_func
 
 # SCHEDULED SAMPLING
 rs_adj = tf.placeholder(tf.int32, shape=(num_rs_layers, None, 2), name='rs_adj')
-#full_rs_shape = (num_rs, None, num_particles**3, 7)
-full_rs_shape = (num_rs, None, num_particles**3, 6)
+full_rs_shape = (num_rs, None, num_particles**3, 7)
+#full_rs_shape = (num_rs, None, num_particles**3, 6)
 X_rs = tf.placeholder(tf.float32, shape=full_rs_shape, name='X_rs')
 sampling_probs = tf.placeholder(tf.bool, shape=(num_rs_layers,), name='sampling_probs')
 
@@ -127,19 +127,15 @@ else:
     margs = (X_input, num_layers)
 
 # network out
-#H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
-H_out = nn.zuni_fwd_nors(*margs, vel_coeff=vcoeff, var_scope=vscope)
+H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
 sched_margs = (X_rs, num_layers, rs_adj, K, sampling_probs)
-#X_pred_sched = nn.multi_fwd_sampling(*sched_margs, var_scope=vscope)
-X_pred_sched = nn.multi_fwd_sampling_nors(*sched_margs, var_scope=vscope)
+X_pred_sched = nn.multi_fwd_sampling(*sched_margs, var_scope=vscope)
 
 
 # training error
-#single_step_error = nn.pbc_loss(X_pred, X_truth[...,:-1])
-#scheduled_error   = nn.pbc_loss(X_pred_sched, X_rs[-1, :,:, :-1])
-single_step_error = nn.pbc_loss(X_pred, X_truth)
-scheduled_error   = nn.pbc_loss(X_pred_sched, X_rs[-1])
+single_step_error = nn.pbc_loss(X_pred, X_truth[...,:-1])
+scheduled_error   = nn.pbc_loss(X_pred_sched, X_rs[-1, :,:, :-1])
 
 # optimizer
 opt = tf.train.AdamOptimizer(learning_rate)
@@ -148,10 +144,9 @@ train2 = opt.minimize(scheduled_error)
 
 # evaluation error
 X_pred_val = tf.placeholder(tf.float32, shape=(None, num_particles**3, 6), name='X_pred_val')
-#val_error          = nn.pbc_loss(X_pred_val, X_truth[...,:-1])
-#ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
-val_error          = nn.pbc_loss(X_pred_val, X_truth)
-ground_truth_error = nn.pbc_loss(X_input, X_truth)
+val_error          = nn.pbc_loss(X_pred_val, X_truth[...,:-1])
+ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
+
 
 #
 #=============================================================================
@@ -261,7 +256,6 @@ test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 
 rs_tups = [(i, i+1) for i in range(num_rs_layers)] # DO NOT SHUFFLE!
-"""
 for j in range(X_test.shape[1]):
     # first pass
     x_in    = X_test[0, j:j+1] # (1, n_P, 6)
@@ -302,47 +296,7 @@ for j in range(X_test.shape[1]):
     the ground_truth_error.
     '''
     print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
-"""
-for j in range(X_test.shape[1]):
-    # first pass
-    x_in    = X_test[0, j:j+1,:,:-1] # (1, n_P, 6)
-    #z_next  = X_test[1, j:j+1, :, -1:] # redshifts
-    fdict = {X_input: x_in}
-    if use_graph:
-        alist = alist_func(x_in)
-        fdict[adj_list] = alist
-    x_pred = sess.run(X_pred, feed_dict=fdict)
-    test_predictions[0, j] = x_pred[0]
 
-    # subsequent pass receive previous prediction
-    for i in range(1, num_rs_layers):
-        #x_in = np.concatenate((x_pred, z_next), axis=-1) #(...,6) -> (...,7)
-        #z_next = X_test[i+1, j:j+1, :, -1:]
-        fdict = {X_input: x_pred}
-        if use_graph:
-            alist = alist_func(x_in)
-            fdict[adj_list] = alist
-        x_pred = sess.run(X_pred, feed_dict=fdict)
-        test_predictions[i, j] = x_pred[0]
-
-    # save prediction
-    #test_predictions[j] = x_pred[0]
-
-    # feeding for multi-step loss info
-    x_in   = X_test[-2, j:j+1, :, :-1]
-    x_true = X_test[-1, j:j+1, :, :-1]
-    fdict = {X_pred_val: x_pred, X_input: x_in, X_truth: x_true}
-
-    # loss data
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    v_error, truth_error = sess.run([val_error, ground_truth_error], feed_dict=fdict)
-    test_loss_history[j] = v_error
-    inputs_loss_history[j] = truth_error
-    '''
-    Ideally, the multi_error would be, at the very least, better than
-    the ground_truth_error.
-    '''
-    print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
 
 
 # median test error
