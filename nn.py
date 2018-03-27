@@ -148,10 +148,6 @@ def zuni_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel
         h_out += x_in[...,:-1]
     return h_out
 
-def zuni_fwd_nors(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
-    h_out = network_fwd(x_in, num_layers, var_scope, *args)
-    if add: h_out += x_in
-    return h_out
 
 def multi_fwd_sampling(x_in, num_layers, adj, K, sampling_probs, var_scope=VAR_SCOPE):
     num_rs_layers = x_in.get_shape().as_list()[0] - 1
@@ -192,6 +188,31 @@ def multi_model_fwd_val(x_in, num_layers, adj_fn, K, var_scopes):
     h = fwd(x_in[0], adj, var_scopes[0])
     for i, vscope in enumerate(var_scopes[1:]):
         h_in = concat_rs(h, x_in[i,:,:,-1:])
+        adj = tf.py_func(adj_fn, [h_in], tf.int32)
+        h = fwd(h_in, adj, vscope)
+    return h
+
+#=============================================================================
+# multi fns for single step trained models
+
+def zuni_multi_single_fwd(x_rs, num_layers, rs_adj_list, K, var_scopes):
+    concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
+    fwd = lambda x, a, v: get_readout_vel(zuni_model_fwd(x, num_layers, a, K, var_scope=v))
+    h = fwd(x_rs[0], rs_adj_list[0], var_scopes[0])
+    for i, vscope in enumerate(var_scopes[1:]):
+        h_in = concat_rs(h, x_rs[i,:,:,-1:])
+        h = fwd(h_in, rs_adj_list[i], vscope)
+    return h
+
+def zuni_multi_single_fwd_val(x_rs, num_layers, adj_fn, K, var_scopes):
+    # helpers
+    concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
+    fwd = lambda x, a, v: get_readout_vel(zuni_model_fwd(x, num_layers, a, K, var_scope=v))
+    adj = tf.py_func(adj_fn, [x_rs[0]], tf.int32)
+
+    h = fwd(x_rs[0], adj, var_scopes[0])
+    for i, vscope in enumerate(var_scopes[1:]):
+        h_in = concat_rs(h, x_rs[i,:,:,-1:])
         adj = tf.py_func(adj_fn, [h_in], tf.int32)
         h = fwd(h_in, adj, vscope)
     return h
