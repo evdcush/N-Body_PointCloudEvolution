@@ -134,18 +134,22 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
 def zuni_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
     h_out = network_fwd(x_in, num_layers, var_scope, *args)
     if add:
-        '''
         # x splits
         x_coo =  x_in[...,:3]
         x_vel =  x_in[...,3:-1]
+
         # h splits
         h_coo = h_out[...,:3]
         h_vel = h_out[...,3:]
+
         # add
         h_coo += x_coo
+        h_vel += x_vel
+        if vel_coeff:
+            vel_co = utils.get_vel_coeff(var_scope)
+            h_coo += vel_co * x_vel
         h_out = tf.concat((h_coo, h_vel), axis=-1)
-        '''
-        h_out += x_in[...,:-1]
+        #h_out += x_in[...,:-1]
     return h_out
 
 
@@ -516,7 +520,7 @@ def pbc_loss_vel(readout, x_truth):
 
     error_coo = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1), name='loss')
     error_vel = tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1), name='loss')
-    return error_coo + error_vel
+    return error_coo * error_vel
 
 def _pbc_loss_vel(readout, x_truth):
     """ MSE over full dims with periodic boundary conditions

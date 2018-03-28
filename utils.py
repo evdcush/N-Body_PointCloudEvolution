@@ -85,7 +85,8 @@ def init_vel_coeff():
     velocity scaled by this coeff:
     h_out[...,:3] = h_out[...,:3] + x_in[...,:3] + vel_coeff*(x_in[...,3:])
     """
-    v_init = tf.glorot_normal_initializer()
+    #v_init = tf.glorot_normal_initializer()
+    v_init = tf.random_uniform_initializer(0,1)
     tf.get_variable(VEL_COEFF_TAG, (1,), dtype=tf.float32, initializer=v_init)
 
 # Model init wrappers ========================================================

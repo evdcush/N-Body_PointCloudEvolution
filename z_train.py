@@ -88,7 +88,7 @@ utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 # init network params
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params(channels, graph_model=use_graph, var_scope=vscope, restore=restore)
+utils.init_params(channels, graph_model=use_graph, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
 
 
 # INPUTS
@@ -125,7 +125,8 @@ H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
 
 # error and optimizer
-error = nn.pbc_loss(X_pred, X_truth[...,:-1])
+#error = nn.pbc_loss(X_pred, X_truth[...,:-1])
+error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 val_error = nn.pbc_loss(X_pred, X_truth[...,:-1]) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
@@ -140,13 +141,12 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.8
+gpu_frac = 0.7
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
 if restore:
     utils.load_graph(sess, model_path)
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 # Save
 train_loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
