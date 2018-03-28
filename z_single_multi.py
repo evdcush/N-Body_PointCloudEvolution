@@ -106,8 +106,8 @@ adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 
 
 def alist_func(h_in): # for tf.py_func
-    return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
-    #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
+    #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
+    return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
 
 # multi stuff
 rs_adj_list = tf.placeholder(tf.int32, shape=(num_rs_layers,) + alist_shape, name='rs_adj_list')
@@ -126,6 +126,9 @@ else:
 X_pred     = nn.zuni_multi_single_fwd(X_rs, num_layers, rs_adj_list, K, vscopes)
 #X_pred_val = nn.zuni_multi_single_fwd_val(X_rs, num_layers, alist_func, K, vscopes)
 X_pred_val = nn.zuni_multi_single_fwd_val_all(X_rs, num_layers, alist_func, K, vscopes)
+
+# vel loss
+
 
 # Training error and optimizer
 error = nn.pbc_loss(X_pred, X_rs[-1,:,:,:-1])
@@ -147,7 +150,7 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.9
+gpu_frac = 0.8
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
