@@ -146,8 +146,9 @@ def zuni_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel
         h_coo += x_coo
         h_vel += x_vel
         if vel_coeff:
-            vel_co = utils.get_vel_coeff(var_scope)
-            h_coo += vel_co * x_vel
+            vel_co1, vel_co2 = utils.get_2vel_coeff(var_scope)
+            h_coo += vel_co1 * x_vel
+            h_vel += vel_co2 * x_vel
         h_out = tf.concat((h_coo, h_vel), axis=-1)
         #h_out += x_in[...,:-1]
     return h_out

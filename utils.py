@@ -86,8 +86,10 @@ def init_vel_coeff():
     h_out[...,:3] = h_out[...,:3] + x_in[...,:3] + vel_coeff*(x_in[...,3:])
     """
     #v_init = tf.glorot_normal_initializer()
-    v_init = tf.random_uniform_initializer(0,1)
-    tf.get_variable(VEL_COEFF_TAG, (1,), dtype=tf.float32, initializer=v_init)
+    v_init1 = tf.random_uniform_initializer(0,1)
+    v_init2 = tf.random_uniform_initializer(0,1)
+    tf.get_variable(VEL_COEFF_TAG + '1', (1,), dtype=tf.float32, initializer=v_init1)
+    tf.get_variable(VEL_COEFF_TAG + '2', (1,), dtype=tf.float32, initializer=v_init2)
     print('INIT VCOEFF')
 
 # Model init wrappers ========================================================
@@ -152,6 +154,13 @@ def get_vel_coeff(var_scope):
     with tf.variable_scope(var_scope, reuse=True):
         vel_coeff = tf.get_variable(VEL_COEFF_TAG)
     return vel_coeff
+
+def get_2vel_coeff(var_scope):
+    with tf.variable_scope(var_scope, reuse=True):
+        vel_coeff1 = tf.get_variable(VEL_COEFF_TAG + '1')
+        vel_coeff2 = tf.get_variable(VEL_COEFF_TAG + '2')
+    return vel_coeff1, vel_coeff2
+
 
 #=============================================================================
 # graph save and restore
