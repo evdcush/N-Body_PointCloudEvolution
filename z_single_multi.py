@@ -82,7 +82,7 @@ model_path, loss_path, cube_path = paths
 restore = True
 
 # save test data
-utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
+#utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 
 
 #=============================================================================
@@ -92,7 +92,7 @@ utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 #vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
 vscopes = [utils.VAR_SCOPE_SINGLE_MULTI.format(tup[0], tup[1]) for tup in rs_tups]
-utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=restore)
+utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=restore, vel_coeff=vcoeff)
 
 
 # INPUTS
@@ -123,15 +123,16 @@ else:
     margs = (X_input, num_layers)
 
 # network out
-X_pred     = nn.zuni_multi_single_fwd(X_rs, num_layers, rs_adj_list, K, vscopes)
+#X_pred     = nn.zuni_multi_single_fwd(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
+X_pred, error = nn.zuni_multi_single_fwd_vel_losses(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
 #X_pred_val = nn.zuni_multi_single_fwd_val(X_rs, num_layers, alist_func, K, vscopes)
-X_pred_val = nn.zuni_multi_single_fwd_val_all(X_rs, num_layers, alist_func, K, vscopes)
+X_pred_val = nn.zuni_multi_single_fwd_val_all(X_rs, num_layers, alist_func, K, vscopes, vel_coeff=vcoeff)
 
 # vel loss
 
 
 # Training error and optimizer
-error = nn.pbc_loss(X_pred, X_rs[-1,:,:,:-1])
+#error = nn.pbc_loss(X_pred, X_rs[-1,:,:,:-1])
 #error = nn.pbc_loss_vel(X_pred, X_rs[-1,:,:,:-1])
 train = tf.train.AdamOptimizer(learning_rate, name='AdamMulti').minimize(error)
 
@@ -158,7 +159,8 @@ sess.run(tf.global_variables_initializer())
 # RESTORE
  # restore individually trained params for new aggregate model
 if pargs['restore_single']: #
-    mp = './Model/M_ZG_{}-{}/Session/'
+    mp = './Model/V_ZG_{}-{}/Session/'
+    print('restore from: {}'.format(mp))
     mpaths = [mp.format(tup[0], tup[1]) for tup in rs_tups]
     utils.load_multi_graph(sess, vscopes, num_layers, mpaths, use_graph=use_graph)
  # restore previously trained aggregate model
@@ -233,7 +235,8 @@ for j in range(X_test.shape[1]):
 test_median = np.median(test_loss_history)
 inputs_median = np.median(inputs_loss_history)
 #print('test median: {}'.format(test_median))
-print('test median: {}, input median: {}'.format(test_median, inputs_median))
+#print('test median: {}, input median: {}'.format(test_median, inputs_median))
+print('{:<12} median: {}, {}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)

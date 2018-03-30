@@ -88,6 +88,7 @@ def init_vel_coeff():
     #v_init = tf.glorot_normal_initializer()
     v_init = tf.random_uniform_initializer(0,1)
     tf.get_variable(VEL_COEFF_TAG, (1,), dtype=tf.float32, initializer=v_init)
+    print('INIT VCOEFF')
 
 # Model init wrappers ========================================================
 
@@ -123,14 +124,14 @@ def init_params_multi(channels, num_rs, graph_model=True,
         cur_scope = var_scope.format(j) #
         init_params(channels, graph_model=graph_model, var_scope=cur_scope, restore=restore)
 
-def init_zuni_params_multi(channels, vscopes, graph_model=True, seed=None, restore=False):
+def init_zuni_params_multi(channels, vscopes, graph_model=True, seed=None, restore=False, vel_coeff=False):
     """ Initialize network parameters for multi-step model, for predicting
     across multiple redshifts. (eg 6.0 -> 4.0 -> ... -> <target rs>)
     Multi-step model is network where each layer is a single-step model
     """
     for scope in vscopes:
         tf.set_random_seed(seed) # ensure each sub-model has same weight init
-        init_params(channels, graph_model=graph_model, var_scope=scope, restore=restore)
+        init_params(channels, graph_model=graph_model, var_scope=scope, restore=restore, vel_coeff=vel_coeff)
 
 #=============================================================================
 # var gets

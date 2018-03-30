@@ -200,7 +200,7 @@ test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 
-print('\nEvaluation:\n==============================================================================')
+#print('\nEvaluation:\n==============================================================================')
 for j in range(X_test.shape[1]):
     # validation inputs
     x_in   = X_test[0, j:j+1] # (1, n_P, 6)
@@ -219,13 +219,13 @@ for j in range(X_test.shape[1]):
     test_loss_history[j] = v_error
     inputs_loss_history[j] = truth_error
     test_predictions[j] = x_pred[0]
-    print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
+    #print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
 
 # median test error
 test_median = np.median(test_loss_history)
 inputs_median = np.median(inputs_loss_history)
 #print('test median: {}'.format(test_median))
-print('test median: {}, input median: {}'.format(test_median, inputs_median))
+print('{:<12} median: {}, {}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
