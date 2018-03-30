@@ -229,6 +229,25 @@ def zuni_multi_single_fwd_vel_losses(x_rs, num_layers, rs_adj_list, K, var_scope
         #vel_error += verror(h, x_rs[i])
     return h, error
 
+def EXTRAzuni_multi_single_fwd_vel_losses(x_rs, num_layers, rs_adj_list, K, var_scopes, num_agg_layers, vel_coeff=False):
+    # helpers
+    concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
+    fwd = lambda x, a, v: get_readout_vel(zuni_model_fwd(x, num_layers, a, K, var_scope=v, vel_coeff=vel_coeff))
+    interm = lambda x: get_readout_vel(zuni_model_fwd(x, num_agg_layers, var_scope=utils.AGG_PSCOPE, vel_coeff=vel_coeff))
+
+    h = fwd(x_rs[0], rs_adj_list[0], var_scopes[0])
+    error = pbc_loss_vel(h, x_rs[1,:,:,:-1])
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    h_interm = interm(concat_rs(h, x_rs[0,:,:,-1:]))
+
+    for i in range(1, len(var_scopes)):
+        vscope = var_scopes[i]
+        h = fwd(concat_rs(h_interm, x_rs[i,:,:,-1:]), rs_adj_list[i], vscope)
+        error += pbc_loss_vel(h, x_rs[i+1,:,:,:-1])
+        h_interm = interm(concat_rs(h, x_rs[i,:,:,-1:]))
+        #vel_error += verror(h, x_rs[i])
+    return h, error
+
 def zuni_multi_single_fwd_val(x_rs, num_layers, adj_fn, K, var_scopes, vel_coeff=False):
     # helpers
     concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
@@ -258,6 +277,27 @@ def zuni_multi_single_fwd_val_all(x_rs, num_layers, adj_fn, K, var_scopes, vel_c
         adj = tf.py_func(adj_fn, [h_in], tf.int32)
         h = fwd(h_in, adj, vscope)
         preds.append(h)
+    return preds
+
+def EXTRAzuni_multi_single_fwd_val_all(x_rs, num_layers, adj_fn, K, var_scopes, num_agg_layers, vel_coeff=False):
+    preds = []
+    # helpers
+    concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
+    fwd = lambda x, a, v: get_readout_vel(zuni_model_fwd(x, num_layers, a, K, var_scope=v, vel_coeff=vel_coeff))
+    interm = lambda x: get_readout_vel(zuni_model_fwd(x, num_agg_layers, var_scope=utils.AGG_PSCOPE, vel_coeff=vel_coeff))
+    adj = tf.py_func(adj_fn, [x_rs[0]], tf.int32)
+
+    h = fwd(x_rs[0], adj, var_scopes[0])
+    preds.append(h)
+    h_interm = interm(concat_rs(h, x_rs[0,:,:,-1:]))
+
+    for i in range(1, len(var_scopes)):
+        vscope = var_scopes[i]
+        h_in = concat_rs(h_interm, x_rs[i,:,:,-1:])
+        adj = tf.py_func(adj_fn, [h_in], tf.int32)
+        h = fwd(h_in, adj, vscope)
+        preds.append(h)
+        h_interm = interm(concat_rs(h, x_rs[i,:,:,-1:]))
     return preds
 
 '''

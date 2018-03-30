@@ -46,6 +46,7 @@ VEL_COEFF_TAG = 'V'
 VAR_SCOPE  = 'params'
 VAR_SCOPE_MULTI = 'params_{}'
 VAR_SCOPE_SINGLE_MULTI = 'params_{}-{}'
+AGG_PSCOPE = 'params_agg'
 
 
 

@@ -80,6 +80,8 @@ model_path, loss_path, cube_path = paths
 # restore
 #restore = pargs['restore'] == 1
 restore = True
+restore_agg = pargs['restore_agg'] == 1
+restore_single = pargs['restore_single'] == 1
 
 # save test data
 #utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
@@ -93,6 +95,12 @@ restore = True
 tf.set_random_seed(utils.PARAMS_SEED)
 vscopes = [utils.VAR_SCOPE_SINGLE_MULTI.format(tup[0], tup[1]) for tup in rs_tups]
 utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=restore, vel_coeff=vcoeff)
+
+''' EXPERIMENTAL EXTRA LAYERS
+'''
+agg_scope = utils.AGG_PSCOPE
+channels_agg = [7, 64, 128, 256, 64, 32, 6]
+utils.init_params(channels_agg, graph_model=False, vel_coeff=vcoeff, restore=restore_agg, var_scope=agg_scope)
 
 
 # INPUTS
@@ -124,9 +132,12 @@ else:
 
 # network out
 #X_pred     = nn.zuni_multi_single_fwd(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
-X_pred, error = nn.zuni_multi_single_fwd_vel_losses(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
+#X_pred, error = nn.zuni_multi_single_fwd_vel_losses(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
+X_pred, error = nn.EXTRAzuni_multi_single_fwd_vel_losses(X_rs, num_layers, rs_adj_list, K, vscopes, len(channels_agg)-1, vel_coeff=vcoeff)
 #X_pred_val = nn.zuni_multi_single_fwd_val(X_rs, num_layers, alist_func, K, vscopes)
-X_pred_val = nn.zuni_multi_single_fwd_val_all(X_rs, num_layers, alist_func, K, vscopes, vel_coeff=vcoeff)
+#X_pred_val = nn.zuni_multi_single_fwd_val_all(X_rs, num_layers, alist_func, K, vscopes, vel_coeff=vcoeff)
+X_pred_val = nn.EXTRAzuni_multi_single_fwd_val_all(X_rs, num_layers, alist_func, K, vscopes, len(channels_agg)-1, vel_coeff=vcoeff)
+
 
 # vel loss
 
@@ -158,13 +169,13 @@ sess.run(tf.global_variables_initializer())
 
 # RESTORE
  # restore individually trained params for new aggregate model
-if pargs['restore_single']: #
-    mp = './Model/V_ZG_{}-{}/Session/'
+if restore_single: #
+    mp = './Model/V2_ZG_{}-{}/Session/'
     print('restore from: {}'.format(mp))
     mpaths = [mp.format(tup[0], tup[1]) for tup in rs_tups]
     utils.load_multi_graph(sess, vscopes, num_layers, mpaths, use_graph=use_graph)
  # restore previously trained aggregate model
-elif pargs['restore_agg']:
+elif restore_agg:
     utils.load_graph(sess, model_path)
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
