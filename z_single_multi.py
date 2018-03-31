@@ -160,7 +160,7 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.7
+gpu_frac = 0.8
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())

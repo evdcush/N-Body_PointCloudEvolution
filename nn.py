@@ -251,7 +251,7 @@ def zuni_multi_single_fwd_velLayer(x_rs, num_layers, rs_adj_list, K, var_scopes,
     h_vel = get_vel(h_pre, 0)
     h = tf.concat((h_pre[...,:3], h_vel), axis=-1)
     vel_error = vel_loss(h_vel, x_rs[1,:,:,3:-1])
-    error = pbc_loss_vel(h, x_rs[1,:,:,:-1])
+    error = pbc_loss(h, x_rs[1,:,:,:-1])
 
     for i in range(1, len(var_scopes)):
         vscope = var_scopes[i]
@@ -259,10 +259,10 @@ def zuni_multi_single_fwd_velLayer(x_rs, num_layers, rs_adj_list, K, var_scopes,
         h_pre = fwd(h_in, rs_adj_list[i], vscope)
         h_vel = get_vel(h_pre, i)
         h = tf.concat((h_pre[...,:3], h_vel), axis=-1)
-        error += pbc_loss_vel(h, x_rs[i+1,:,:,:-1])
+        error += pbc_loss(h, x_rs[i+1,:,:,:-1])
 
         vel_error += vel_loss(h_vel, x_rs[i+1,:,:,3:-1])
-    return h, error + vel_error
+    return h, error * vel_error
 
 
 def zuni_multi_single_fwd_velLayer_val(x_rs, num_layers, adj_fn, K, var_scopes, num_agg_layers, vel_coeff=False):
