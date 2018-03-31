@@ -101,11 +101,6 @@ X_truth = tf.placeholder(tf.float32, shape=data_shape, name='X_truth')
 alist_shape = (None, 2)
 adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 
-# loss scaling weights
-#scale_weights = tf.placeholder(tf.float32, shape=(num_rs_layers,), name='scale_weights')
-
-# scheduled sampling probs
-#sampling_probs = tf.placeholder(tf.bool, shape=(num_rs_layers-1,), name='sampling_probs')
 
 def alist_func(h_in): # for tf.py_func
     #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
@@ -121,7 +116,7 @@ else:
     margs = (X_input, num_layers)
 
 # network out
-H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
+H_out  = nn.model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
 
 # error and optimizer
@@ -225,7 +220,7 @@ for j in range(X_test.shape[1]):
 test_median = np.median(test_loss_history)
 inputs_median = np.median(inputs_loss_history)
 #print('test median: {}'.format(test_median))
-print('{:<12} median: {}, {}'.format(model_name, test_median, inputs_median))
+print('{:<12} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)

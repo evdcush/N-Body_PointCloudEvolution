@@ -96,12 +96,6 @@ tf.set_random_seed(utils.PARAMS_SEED)
 vscopes = [utils.VAR_SCOPE_SINGLE_MULTI.format(tup[0], tup[1]) for tup in rs_tups]
 utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=restore, vel_coeff=vcoeff)
 
-''' EXPERIMENTAL EXTRA LAYERS
-'''
-agg_scope = utils.AGG_PSCOPE
-channels_agg = [5, 64, 128, 32, 3]
-utils.init_params(channels_agg, graph_model=False, vel_coeff=vcoeff, restore=restore_agg, var_scope=agg_scope)
-
 
 # INPUTS
 #data_shape = (None, num_particles**3, 6)
@@ -130,22 +124,23 @@ if use_graph:
 else:
     margs = (X_input, num_layers)
 
-# network out
+# ==== Network outputs
+ # Train
 #X_pred     = nn.zuni_multi_single_fwd(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
-#X_pred, error = nn.zuni_multi_single_fwd_vel_losses(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
-X_pred, error = nn.zuni_multi_single_fwd_velLayer(X_rs, num_layers, rs_adj_list, K, vscopes, len(channels_agg)-1, vel_coeff=vcoeff)
+X_pred, error = nn.zuni_multi_single_fwd_vel_losses(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
+
+ # Validation
 #X_pred_val = nn.zuni_multi_single_fwd_val(X_rs, num_layers, alist_func, K, vscopes)
-#X_pred_val = nn.zuni_multi_single_fwd_val_all(X_rs, num_layers, alist_func, K, vscopes, vel_coeff=vcoeff)
-X_pred_val = nn.zuni_multi_single_fwd_velLayer_val(X_rs, num_layers, alist_func, K, vscopes, len(channels_agg)-1, vel_coeff=vcoeff)
+X_pred_val = nn.zuni_multi_single_fwd_val_all(X_rs, num_layers, alist_func, K, vscopes, vel_coeff=vcoeff)
 
 
-# vel loss
-# Training error and optimizer
+# ==== Error and optimizer
+ # Training
 #error = nn.pbc_loss(X_pred, X_rs[-1,:,:,:-1])
 #error = nn.pbc_loss_vel(X_pred, X_rs[-1,:,:,:-1])
 train = tf.train.AdamOptimizer(learning_rate, name='AdamMulti').minimize(error)
 
-# Validation error
+ # Validation
 #val_error = nn.pbc_loss(X_pred_val, X_rs[-1,:,:,:-1]) # since training loss fn not always same
 val_error = nn.pbc_loss(X_pred_val[-1], X_rs[-1,:,:,:-1]) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_rs[-2,:,:,:-1], X_rs[-1,:,:,:-1])
