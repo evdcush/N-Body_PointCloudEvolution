@@ -79,7 +79,6 @@ model_path, loss_path, cube_path = paths
 
 # restore
 #restore = pargs['restore'] == 1
-restore = True
 restore_agg = pargs['restore_agg'] == 1
 restore_single = pargs['restore_single'] == 1
 
@@ -94,7 +93,7 @@ restore_single = pargs['restore_single'] == 1
 #vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
 vscopes = [utils.VAR_SCOPE_SINGLE_MULTI.format(tup[0], tup[1]) for tup in rs_tups]
-utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=restore, vel_coeff=vcoeff)
+utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=(restore_single or restore_agg), vel_coeff=vcoeff)
 
 
 # INPUTS
@@ -112,8 +111,8 @@ def alist_func(h_in): # for tf.py_func
     return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
 
 # multi stuff
-rs_adj_list = tf.placeholder(tf.int32, shape=(num_rs_layers,) + alist_shape, name='rs_adj_list')
-X_rs = tf.placeholder(tf.float32, shape=(num_rs,) + data_shape, name='X_input')
+rs_adj_list = tf.placeholder(tf.int32, shape=(num_rs_layers,) + alist_shape)
+X_rs = tf.placeholder(tf.float32, shape=(num_rs,) + data_shape)
 
 #=============================================================================
 # Model predictions and optimizer
@@ -126,12 +125,10 @@ else:
 
 # ==== Network outputs
  # Train
-#X_pred     = nn.zuni_multi_single_fwd(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
-X_pred, error = nn.zuni_multi_single_fwd_vel_losses(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
+X_pred, error = nn.aggregate_multiStep_fwd(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
 
  # Validation
-#X_pred_val = nn.zuni_multi_single_fwd_val(X_rs, num_layers, alist_func, K, vscopes)
-X_pred_val = nn.zuni_multi_single_fwd_val_all(X_rs, num_layers, alist_func, K, vscopes, vel_coeff=vcoeff)
+X_pred_val = nn.aggregate_multiStep_fwd_validation(X_rs, num_layers, alist_func, K, vscopes, vel_coeff=vcoeff)
 
 
 # ==== Error and optimizer

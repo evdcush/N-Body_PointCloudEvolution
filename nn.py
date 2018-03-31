@@ -185,7 +185,7 @@ def multi_model_fwd_val(x_in, num_layers, adj_fn, K, var_scopes):
 #=============================================================================
 # multi fns for single step trained models
 def zuni_multi_single_fwd(x_rs, num_layers, rs_adj_list, K, var_scopes, vel_coeff=False):
-    print('zuni_multi_single_fwd, vel_coeff={}'.format(vel_coeff))
+    #print('zuni_multi_single_fwd, vel_coeff={}'.format(vel_coeff))
     concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
     fwd = lambda x, a, v: get_readout_vel(model_fwd(x, num_layers, a, K, var_scope=v, vel_coeff=vel_coeff))
     h = fwd(x_rs[0], rs_adj_list[0], var_scopes[0])
@@ -194,6 +194,44 @@ def zuni_multi_single_fwd(x_rs, num_layers, rs_adj_list, K, var_scopes, vel_coef
         h_in = concat_rs(h, x_rs[i,:,:,-1:])
         h = fwd(h_in, rs_adj_list[i], vscope)
     return h
+
+def aggregate_multiStep_fwd(x_rs, num_layers, rs_adj_list, K, var_scopes, vel_coeff=False):
+    """ Multi-step function for aggregate model
+    Aggregate model uses a different sub-model for each redshift
+    """
+    # Helpers
+    concat_rs = lambda h, i: tf.concat((h, x_rs[i,:,:,-1:]), axis=-1)
+    fwd = lambda h, i: get_readout_vel(model_fwd(h, num_layers, rs_adj_list[i], K, var_scope=var_scopes[i], vel_coeff=vel_coeff))
+    loss = lambda h, x: pbc_loss_vel(h, x[...,:-1])
+
+    # forward pass
+    h = fwd(x_rs[0], 0)
+    error = loss(h, x_rs[1])
+    for i in range(1, len(var_scopes)):
+        h_in = concat_rs(h, i)
+        h = fwd(h_in, i)
+        error += loss(h, x_rs[i+1])
+    return h, error
+
+def aggregate_multiStep_fwd_validation(x_rs, num_layers, adj_fn, K, var_scopes, vel_coeff=False):
+    """ Multi-step function for aggregate model
+    Aggregate model uses a different sub-model for each redshift
+    """
+    preds = []
+    # Helpers
+    concat_rs = lambda h, i: tf.concat((h, x_rs[i,:,:,-1:]), axis=-1)
+    fwd = lambda h, a, i: get_readout_vel(model_fwd(h, num_layers, a, K, var_scope=var_scopes[i], vel_coeff=vel_coeff))
+
+    # forward pass
+    adj = tf.py_func(adj_fn, [x_rs[0]], tf.int32)
+    h = fwd(x_rs[0], adj, 0)
+    preds.append(h)
+    for i in range(1, len(var_scopes)):
+        h_in = concat_rs(h, i)
+        adj = tf.py_func(adj_fn, [h_in], tf.int32)
+        h = fwd(h_in, adj, i)
+        preds.append(h)
+    return preds
 
 
 #=============================================================================
