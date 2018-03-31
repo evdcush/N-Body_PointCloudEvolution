@@ -99,7 +99,7 @@ utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=r
 ''' EXPERIMENTAL EXTRA LAYERS
 '''
 agg_scope = utils.AGG_PSCOPE
-channels_agg = [7, 64, 128, 256, 64, 32, 6]
+channels_agg = [5, 64, 128, 32, 3]
 utils.init_params(channels_agg, graph_model=False, vel_coeff=vcoeff, restore=restore_agg, var_scope=agg_scope)
 
 
@@ -133,15 +133,13 @@ else:
 # network out
 #X_pred     = nn.zuni_multi_single_fwd(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
 #X_pred, error = nn.zuni_multi_single_fwd_vel_losses(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
-X_pred, error = nn.EXTRAzuni_multi_single_fwd_vel_losses(X_rs, num_layers, rs_adj_list, K, vscopes, len(channels_agg)-1, vel_coeff=vcoeff)
+X_pred, error = nn.zuni_multi_single_fwd_velLayer(X_rs, num_layers, rs_adj_list, K, vscopes, len(channels_agg)-1, vel_coeff=vcoeff)
 #X_pred_val = nn.zuni_multi_single_fwd_val(X_rs, num_layers, alist_func, K, vscopes)
 #X_pred_val = nn.zuni_multi_single_fwd_val_all(X_rs, num_layers, alist_func, K, vscopes, vel_coeff=vcoeff)
-X_pred_val = nn.EXTRAzuni_multi_single_fwd_val_all(X_rs, num_layers, alist_func, K, vscopes, len(channels_agg)-1, vel_coeff=vcoeff)
+X_pred_val = nn.zuni_multi_single_fwd_velLayer_val(X_rs, num_layers, alist_func, K, vscopes, len(channels_agg)-1, vel_coeff=vcoeff)
 
 
 # vel loss
-
-
 # Training error and optimizer
 #error = nn.pbc_loss(X_pred, X_rs[-1,:,:,:-1])
 #error = nn.pbc_loss_vel(X_pred, X_rs[-1,:,:,:-1])
@@ -162,7 +160,7 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.8
+gpu_frac = 0.7
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())

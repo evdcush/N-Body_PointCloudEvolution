@@ -146,9 +146,8 @@ def zuni_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel
         h_coo += x_coo
         h_vel += x_vel
         if vel_coeff:
-            vel_co1, vel_co2 = utils.get_2vel_coeff(var_scope)
-            h_coo += vel_co1 * x_vel
-            h_vel += vel_co2 * x_vel
+            vel_co = utils.get_vel_coeff(var_scope)
+            h_coo += vel_co * x_vel
         h_out = tf.concat((h_coo, h_vel), axis=-1)
         #h_out += x_in[...,:-1]
     return h_out
@@ -210,6 +209,19 @@ def zuni_multi_single_fwd(x_rs, num_layers, rs_adj_list, K, var_scopes, vel_coef
         h = fwd(h_in, rs_adj_list[i], vscope)
     return h
 
+def vel_intermediate_layer_fwd(x_pred, x_rs, layer_idx, num_layers, var_scope=utils.AGG_PSCOPE):
+    """
+    Only receives velocities, predict velocities
+    [5] in, [:3] predicted vel, [3] input rs, [4] output rs
+    """
+    vel = x_pred[...,3:]
+    rs_in  = x_rs[layer_idx,:,:,-1:]
+    rs_out = x_rs[layer_idx+1,:,:,-1:]
+    h_in = tf.concat((vel, rs_in, rs_out), axis=-1)
+    h_out = network_fwd(h_in, num_layers, var_scope)
+    return h_out
+
+
 
 def zuni_multi_single_fwd_vel_losses(x_rs, num_layers, rs_adj_list, K, var_scopes, vel_coeff=False):
     # helpers
@@ -228,6 +240,54 @@ def zuni_multi_single_fwd_vel_losses(x_rs, num_layers, rs_adj_list, K, var_scope
         error += pbc_loss_vel(h, x_rs[i+1,:,:,:-1])
         #vel_error += verror(h, x_rs[i])
     return h, error
+
+def zuni_multi_single_fwd_velLayer(x_rs, num_layers, rs_adj_list, K, var_scopes, num_agg_layers, vel_coeff=False):
+    concat_rs = lambda x, i: tf.concat((x, x_rs[i,:,:,-1:]), axis=-1)
+    fwd = lambda x, a, v: get_readout_vel(zuni_model_fwd(x, num_layers, a, K, var_scope=v, vel_coeff=vel_coeff))
+    concat_vars = lambda h, vel, i: tf.concat((h[...,:3], vel, x_rs[i,:,:,-1:]), axis=-1)
+    get_vel = lambda h, i: vel_intermediate_layer_fwd(h, x_rs, i, num_agg_layers)
+
+    h_pre = fwd(x_rs[0], rs_adj_list[0], var_scopes[0])
+    h_vel = get_vel(h_pre, 0)
+    h = tf.concat((h_pre[...,:3], h_vel), axis=-1)
+    vel_error = vel_loss(h_vel, x_rs[1,:,:,3:-1])
+    error = pbc_loss_vel(h, x_rs[1,:,:,:-1])
+
+    for i in range(1, len(var_scopes)):
+        vscope = var_scopes[i]
+        h_in = concat_rs(h, i)
+        h_pre = fwd(h_in, rs_adj_list[i], vscope)
+        h_vel = get_vel(h_pre, i)
+        h = tf.concat((h_pre[...,:3], h_vel), axis=-1)
+        error += pbc_loss_vel(h, x_rs[i+1,:,:,:-1])
+
+        vel_error += vel_loss(h_vel, x_rs[i+1,:,:,3:-1])
+    return h, error + vel_error
+
+
+def zuni_multi_single_fwd_velLayer_val(x_rs, num_layers, adj_fn, K, var_scopes, num_agg_layers, vel_coeff=False):
+    preds = []
+    concat_rs = lambda x, i: tf.concat((x, x_rs[i,:,:,-1:]), axis=-1)
+    fwd = lambda x, a, v: get_readout_vel(zuni_model_fwd(x, num_layers, a, K, var_scope=v, vel_coeff=vel_coeff))
+    get_vel = lambda h, i: vel_intermediate_layer_fwd(h, x_rs, i, num_agg_layers)
+
+    adj = tf.py_func(adj_fn, [x_rs[0]], tf.int32)
+    h_pre = fwd(x_rs[0], adj, var_scopes[0])
+    h_vel = get_vel(h_pre, 0)
+    h = tf.concat((h_pre[...,:3], h_vel), axis=-1)
+    preds.append(h)
+
+    for i in range(1, len(var_scopes)):
+        vscope = var_scopes[i]
+        h_in = concat_rs(h, i)
+        adj = tf.py_func(adj_fn, [h_in], tf.int32)
+        h_pre = fwd(h_in, adj, vscope)
+        h_vel = get_vel(h_pre, i)
+        h = tf.concat((h_pre[...,:3], h_vel), axis=-1)
+        preds.append(h)
+    return preds
+
+
 
 def EXTRAzuni_multi_single_fwd_vel_losses(x_rs, num_layers, rs_adj_list, K, var_scopes, num_agg_layers, vel_coeff=False):
     # helpers
@@ -248,19 +308,6 @@ def EXTRAzuni_multi_single_fwd_vel_losses(x_rs, num_layers, rs_adj_list, K, var_
         #vel_error += verror(h, x_rs[i])
     return h, error
 
-def zuni_multi_single_fwd_val(x_rs, num_layers, adj_fn, K, var_scopes, vel_coeff=False):
-    # helpers
-    concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
-    fwd = lambda x, a, v: get_readout_vel(zuni_model_fwd(x, num_layers, a, K, var_scope=v, vel_coeff=vel_coeff))
-    adj = tf.py_func(adj_fn, [x_rs[0]], tf.int32)
-
-    h = fwd(x_rs[0], adj, var_scopes[0])
-    for i in range(1, len(var_scopes)):
-        vscope = var_scopes[i]
-        h_in = concat_rs(h, x_rs[i,:,:,-1:])
-        adj = tf.py_func(adj_fn, [h_in], tf.int32)
-        h = fwd(h_in, adj, vscope)
-    return h
 
 def zuni_multi_single_fwd_val_all(x_rs, num_layers, adj_fn, K, var_scopes, vel_coeff=False):
     preds = []
@@ -541,6 +588,10 @@ def periodic_boundary_dist_vel(readout, x_truth):
     # combined dist
     dist = tf.concat([dist_coo, dist_vel], -1)
     return dist
+
+def vel_loss(vel_pred, vel_true):
+    dist_vel = tf.squared_difference(vel_pred, vel_true)
+    return tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1))
 
 def pbc_loss(readout, x_truth):
     """ MSE (coo only) with periodic boundary conditions
