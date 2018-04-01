@@ -93,7 +93,11 @@ restore_single = pargs['restore_single'] == 1
 #vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
 vscopes = [utils.VAR_SCOPE_SINGLE_MULTI.format(tup[0], tup[1]) for tup in rs_tups]
-utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=(restore_single or restore_agg), vel_coeff=vcoeff)
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+#utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=(restore_single or restore_agg), vel_coeff=vcoeff)
+z_idx = -3
+utils.init_zuni_params_multi(channels, vscopes[z_idx:], graph_model=use_graph, restore=True, vel_coeff=vcoeff)
+utils.init_zuni_params_multi(channels, vscopes[0:z_idx], graph_model=use_graph, restore=False, vel_coeff=vcoeff)
 
 
 # INPUTS
@@ -160,10 +164,12 @@ sess.run(tf.global_variables_initializer())
 # RESTORE
  # restore individually trained params for new aggregate model
 if restore_single: #
-    mp = './Model/V2_ZG_{}-{}/Session/'
+    #mp = './Model/Agg_ZG_{}-{}/Session/'
+    mp = './Model/Agg3_ZG_7-19/Session/'
     print('restore from: {}'.format(mp))
-    mpaths = [mp.format(tup[0], tup[1]) for tup in rs_tups]
-    utils.load_multi_graph(sess, vscopes, num_layers, mpaths, use_graph=use_graph)
+    #mpaths = [mp.format(tup[0], tup[1]) for tup in rs_tups[-2:]]
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    utils.load_multi_graph(sess, vscopes[z_idx:], num_layers, [mp], use_graph=use_graph)
  # restore previously trained aggregate model
 elif restore_agg:
     utils.load_graph(sess, model_path)

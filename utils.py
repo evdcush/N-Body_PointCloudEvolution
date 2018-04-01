@@ -172,8 +172,9 @@ def load_graph(sess, save_dir):
     path = tf.train.get_checkpoint_state(save_dir)
     saver.restore(sess, path.model_checkpoint_path)
 
-def load_multi_graph(sess, vscopes, num_layers, save_dir, use_graph=False):
-    for vidx, vscope in enumerate(vscopes):
+def _load_multi_graph(sess, vscopes, num_layers, save_dir, use_graph=False):
+    #for vidx, vscope in enumerate(vscopes):
+    for vscope in vscopes:
         sdict = {}
         for layer_idx in range(num_layers):
             if use_graph:
@@ -190,9 +191,33 @@ def load_multi_graph(sess, vscopes, num_layers, save_dir, use_graph=False):
                 sdict[btag] = B
         saver = tf.train.Saver(sdict)
         #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        path = tf.train.get_checkpoint_state(save_dir[vidx])
+        #path = tf.train.get_checkpoint_state(save_dir[vidx])
+        path = tf.train.get_checkpoint_state(save_dir[0])
         saver.restore(sess, path.model_checkpoint_path)
 
+def load_multi_graph(sess, vscopes, num_layers, save_dir, use_graph=False):
+    #for vidx, vscope in enumerate(vscopes):
+    for vscope in vscopes:
+        sdict = {}
+        for layer_idx in range(num_layers):
+            if use_graph:
+                wtag = vscope + '/' + WEIGHT_TAG.format(layer_idx)
+                gtag = vscope + '/' +  GRAPH_TAG.format(layer_idx)
+                W, Wg = get_graph_layer_vars(layer_idx, vscope)
+                sdict[wtag] = W
+                sdict[gtag] = Wg
+            else:
+                wtag = vscope + '/' + WEIGHT_TAG.format(layer_idx)
+                btag = vscope + '/' +   BIAS_TAG.format(layer_idx)
+                W, B = get_layer_vars(layer_idx, vscope)
+                sdict[wtag] = W
+                sdict[btag] = B
+
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        #path = tf.train.get_checkpoint_state(save_dir[vidx])
+    saver = tf.train.Saver(sdict)
+    path = tf.train.get_checkpoint_state(save_dir[0])
+    saver.restore(sess, path.model_checkpoint_path)
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 # END TF-related utils
