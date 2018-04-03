@@ -81,6 +81,7 @@ model_path, loss_path, cube_path = paths
 #restore = pargs['restore'] == 1
 restore_agg = pargs['restore_agg'] == 1
 restore_single = pargs['restore_single'] == 1
+restore = restore_agg or restore_single
 
 # save test data
 #utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
@@ -96,8 +97,9 @@ vscopes = [utils.VAR_SCOPE_SINGLE_MULTI.format(tup[0], tup[1]) for tup in rs_tup
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 #utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=(restore_single or restore_agg), vel_coeff=vcoeff)
 z_idx = -3
-utils.init_zuni_params_multi(channels, vscopes[z_idx:], graph_model=use_graph, restore=True, vel_coeff=vcoeff)
-utils.init_zuni_params_multi(channels, vscopes[0:z_idx], graph_model=use_graph, restore=False, vel_coeff=vcoeff)
+#utils.init_zuni_params_multi(channels, vscopes[z_idx:], graph_model=use_graph, restore=True, vel_coeff=vcoeff)
+#utils.init_zuni_params_multi(channels, vscopes[0:z_idx], graph_model=use_graph, restore=False, vel_coeff=vcoeff)
+utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=restore, vel_coeff=vcoeff)
 
 
 # INPUTS
@@ -156,7 +158,7 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.8
+gpu_frac = 0.7
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
