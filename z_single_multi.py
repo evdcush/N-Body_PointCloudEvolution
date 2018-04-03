@@ -141,7 +141,9 @@ X_pred_val = nn.aggregate_multiStep_fwd_validation(X_rs, num_layers, alist_func,
  # Training
 #error = nn.pbc_loss(X_pred, X_rs[-1,:,:,:-1])
 #error = nn.pbc_loss_vel(X_pred, X_rs[-1,:,:,:-1])
-train = tf.train.AdamOptimizer(learning_rate, name='AdamMulti').minimize(error)
+#train = tf.train.AdamOptimizer(learning_rate, name='AdamMulti').minimize(error)
+train = tf.train.AdamOptimizer(0.001, name='AdamMulti').minimize(error)
+#train = tf.train.AdamOptimizer(0.001, name='AdamAgg4').minimize(error)
 
  # Validation
 #val_error = nn.pbc_loss(X_pred_val, X_rs[-1,:,:,:-1]) # since training loss fn not always same
@@ -158,7 +160,7 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.7
+gpu_frac = 0.9
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
@@ -175,6 +177,9 @@ if restore_single: #
  # restore previously trained aggregate model
 elif restore_agg:
     utils.load_graph(sess, model_path)
+    #utils.load_graph(sess, './Model/Agg4_ZG_3-19/Session/')
+    #utils.load_multi_graph(sess, vscopes, num_layers, ['./Model/Agg4_ZG_3-19/Session/'], use_graph=use_graph)
+
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 # Save
