@@ -124,6 +124,7 @@ X_pred = nn.get_readout_vel(H_out)
 #error = nn.pbc_loss(X_pred, X_truth[...,:-1])
 #error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
 error = nn.pbc_loss_vel(X_pred, X_truth)
+#error = nn.pbc_loss(X_pred, X_truth)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 #val_error = nn.pbc_loss(X_pred, X_truth[...,:-1]) # since training loss fn not always same
 val_error = nn.pbc_loss(X_pred, X_truth) # since training loss fn not always same
@@ -163,7 +164,8 @@ print('\nTraining:\n============================================================
 for step in range(num_iters):
     # data batching
     #_x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
-    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
+    #_x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
+    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False)
     x_in    = _x_batch[0]
     x_truth = _x_batch[1]
     fdict = {X_input: x_in, X_truth: x_truth}

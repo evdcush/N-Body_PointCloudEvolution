@@ -80,14 +80,15 @@ def equivariant_fwd(h_in, W1, W2, W3, pool=tf.reduce_mean):
     return h_out
 
 
-def equivariant_layer(h, layer_idx, var_scope):
+def equivariant_layer(h, layer_idx, var_scope, *args):
     W = utils.get_equivariant_layer_vars(layer_idx, var_scope=var_scope)
     h_out = equivariant_fwd(h, *W)
     return h_out
 
 def eqvar_network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    layer = kgraph_layer if len(args) != 0 else set_layer
+    #layer = kgraph_layer if len(args) != 0 else set_layer
+    layer = equivariant_layer
     H = x_in
     for i in range(num_layers):
         H = layer(H, i, var_scope, *args)
@@ -97,9 +98,8 @@ def eqvar_network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu)
 
 # ==== Model fn
 def eqvar_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
-    h_out = network_fwd(x_in, num_layers, var_scope, *args, activation=activation)
-    if add:
-        h_out = skip_connection(x_in, h_out, vel_coeff, var_scope)
+    h_out = eqvar_network_fwd(x_in, num_layers, var_scope, *args, activation=activation)
+    #if add: h_out = skip_connection(x_in, h_out, vel_coeff, var_scope)
     return h_out
 
 

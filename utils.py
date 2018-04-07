@@ -40,6 +40,7 @@ NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S'},
 LEARNING_RATE = 0.01
 
 WEIGHT_TAG = 'W_{}'
+EQ_WEIGHT_TAG = 'W{}_{}'
 GRAPH_TAG  = 'Wg_{}'
 BIAS_TAG   = 'B_{}'
 VEL_COEFF_TAG = 'V'
@@ -151,6 +152,13 @@ def get_graph_layer_vars(layer_idx, var_scope=VAR_SCOPE):
         Wg = tf.get_variable(GRAPH_TAG.format(layer_idx))
     return W, Wg
 
+def get_equivariant_layer_vars(layer_idx, var_scope=VAR_SCOPE):
+    with tf.variable_scope(var_scope, reuse=True):
+        W1 = tf.get_variable(EQ_WEIGHT_TAG.format(1, layer_idx))
+        W2 = tf.get_variable(EQ_WEIGHT_TAG.format(2, layer_idx))
+        W3 = tf.get_variable(EQ_WEIGHT_TAG.format(3, layer_idx))
+    return W1, W2, W3
+
 def get_vel_coeff(var_scope):
     with tf.variable_scope(var_scope, reuse=True):
         vel_coeff = tf.get_variable(VEL_COEFF_TAG)
@@ -161,6 +169,7 @@ def get_2vel_coeff(var_scope):
         vel_coeff1 = tf.get_variable(VEL_COEFF_TAG + '1')
         vel_coeff2 = tf.get_variable(VEL_COEFF_TAG + '2')
     return vel_coeff1, vel_coeff2
+
 
 
 #=============================================================================
