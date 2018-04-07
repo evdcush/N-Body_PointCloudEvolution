@@ -25,16 +25,83 @@ def linear(h_in, W, b=None):
     """
     mu = tf.reduce_mean(h_in, axis=1, keepdims=True)
     h = h_in - mu
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    '''
+    if len(h_in.get_shape()) > 3:
+        h_out = left_mult_exch(h, W)
+    else:
+        h_out = left_mult(h, W)
+    '''
     h_out = left_mult(h, W)
     if b is not None:
         h_out += b
     return h_out
+
 
 def set_layer(h, layer_idx, var_scope, *args):
     """ Set layer
     """
     W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
     return linear(h, W, B)
+
+#=============================================================================
+# Equivariant stuff
+
+def left_mult_eqvar(h, W):
+    """ batch matmul for set-based data
+    """
+    return tf.einsum('bndk,kq->bndq', h, W)
+
+
+def equivariant_fwd(h_in, W1, W2, W3, pool=tf.reduce_mean):
+    """ space permutation equivariant linear layer
+    Args:
+        h_in: (mb_size, N, D, k) data tensor
+        W*: (k, j) weight
+    """
+    h_shape = tf.shape(h_in)
+    N = shape[1]
+    D = shape[2]
+
+    # set pooling
+    pooled_set = pool(h_in, axis=1, keepdims=True) # (b, 1, D, k)
+    ones_set   = tf.ones([N, 1], tf.float32)
+    h_set = tf.einsum("ni,bidk->bndk", ones_set, pooled_set)
+
+    # space pooling
+    pooled_space = pool(h_in, axis=2, keepdims=True) # (b, N, 1, k)
+    ones_space   = tf.ones([D, 1], tf.float32)
+    h_set = tf.einsum("di,bnik->bndk", ones_space, pooled_space)
+
+    # W transformations
+    h_out = tf.add_n([left_mult_eqvar(h_in, W1),
+                      left_mult_eqvar(pooled_set, W2),
+                      left_mult_eqvar(pooled_space, W3),])
+    return h_out
+
+
+def equivariant_layer(h, layer_idx, var_scope):
+    W = utils.get_equivariant_layer_vars(layer_idx, var_scope=var_scope)
+    h_out = equivariant_fwd(h, *W)
+    return h_out
+
+def eqvar_network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    layer = kgraph_layer if len(args) != 0 else set_layer
+    H = x_in
+    for i in range(num_layers):
+        H = layer(H, i, var_scope, *args)
+        if i != num_layers - 1:
+            H = activation(H)
+    return H
+
+# ==== Model fn
+def eqvar_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
+    h_out = network_fwd(x_in, num_layers, var_scope, *args, activation=activation)
+    if add:
+        h_out = skip_connection(x_in, h_out, vel_coeff, var_scope)
+    return h_out
+
 
 #=============================================================================
 # graph

@@ -408,6 +408,31 @@ def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
         X[...,:3] = X[...,:3] / 32.0
     return X
 
+def load_zuni_npy_data_exchangeable(redshifts=None, norm_coo=False, norm_vel=False):
+    """ Loads new uniformly timestep data serialized as np array of np.float32
+    Args:
+        redshifts (list int): list of indices into redshifts in order
+        norm_coo: normalize coordinate values to [0,1]
+        norm_vel: normalize vel values (only norm'd if coord norm'd)
+    """
+    if redshifts is None:
+        redshifts = list(range(len(REDSHIFTS_ZUNI))) # copy
+    num_rs = len(redshifts)
+    N = 1000
+    M = 32**3
+    D = k
+    X = np.zeros((num_rs, N, M, D)).astype(np.float32)
+    for idx, z_idx in enumerate(redshifts):
+        z_rs   = REDSHIFTS_ZUNI[z_idx]
+        z_path = DATA_PATH_ZUNI_NPY.format(z_rs)
+        print('LD: {}'.format(z_path[-13:]))
+        X[idx,:,:,:-1] = np.load(z_path)
+        X[idx,:,:,-1] = z_rs
+    if norm_coo:
+        X[...,:3] = X[...,:3] / 32.0
+    return X
+
+
 def normalize_zuni_vel(vel_in, rescale=True):
     """ Normalize velocity, either by population statistics (mean, std) or
     by rescaling to be within a range
