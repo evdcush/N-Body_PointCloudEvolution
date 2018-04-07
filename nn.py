@@ -71,12 +71,12 @@ def equivariant_fwd(h_in, W1, W2, W3, pool=tf.reduce_mean):
     # space pooling
     pooled_space = pool(h_in, axis=2, keepdims=True) # (b, N, 1, k)
     ones_space   = tf.ones([D, 1], tf.float32)
-    h_set = tf.einsum("di,bnik->bndk", ones_space, pooled_space)
+    h_space = tf.einsum("di,bnik->bndk", ones_space, pooled_space)
 
     # W transformations
     h_out = left_mult_eqvar(h_in, W1)
-    h_out += left_mult_eqvar(h_in, W2)
-    h_out += left_mult_eqvar(h_in, W3)
+    h_out += left_mult_eqvar(h_set, W2)
+    h_out += left_mult_eqvar(h_space, W3)
 
     return h_out
 
