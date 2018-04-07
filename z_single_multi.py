@@ -141,9 +141,7 @@ X_pred_val = nn.aggregate_multiStep_fwd_validation(X_rs, num_layers, alist_func,
  # Training
 #error = nn.pbc_loss(X_pred, X_rs[-1,:,:,:-1])
 #error = nn.pbc_loss_vel(X_pred, X_rs[-1,:,:,:-1])
-#train = tf.train.AdamOptimizer(learning_rate, name='AdamMulti').minimize(error)
-train = tf.train.AdamOptimizer(0.01, name='AdamMulti').minimize(error)
-#train = tf.train.AdamOptimizer(0.001, name='AdamAgg4').minimize(error)
+train = tf.train.AdamOptimizer(learning_rate, name='AdamMulti').minimize(error)
 
  # Validation
 #val_error = nn.pbc_loss(X_pred_val, X_rs[-1,:,:,:-1]) # since training loss fn not always same
