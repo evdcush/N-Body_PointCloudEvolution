@@ -60,8 +60,8 @@ def equivariant_fwd(h_in, W1, W2, W3, pool=tf.reduce_mean):
         W*: (k, j) weight
     """
     h_shape = tf.shape(h_in)
-    N = shape[1]
-    D = shape[2]
+    N = h_shape[1]
+    D = h_shape[2]
 
     # set pooling
     pooled_set = pool(h_in, axis=1, keepdims=True) # (b, 1, D, k)
@@ -74,9 +74,10 @@ def equivariant_fwd(h_in, W1, W2, W3, pool=tf.reduce_mean):
     h_set = tf.einsum("di,bnik->bndk", ones_space, pooled_space)
 
     # W transformations
-    h_out = tf.add_n([left_mult_eqvar(h_in, W1),
-                      left_mult_eqvar(pooled_set, W2),
-                      left_mult_eqvar(pooled_space, W3),])
+    h_out = left_mult_eqvar(h_in, W1)
+    h_out += left_mult_eqvar(h_in, W2)
+    h_out += left_mult_eqvar(h_in, W3)
+
     return h_out
 
 

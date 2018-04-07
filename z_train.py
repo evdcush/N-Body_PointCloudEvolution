@@ -227,7 +227,7 @@ for j in range(X_test.shape[1]):
 test_median = np.median(test_loss_history)
 inputs_median = np.median(inputs_loss_history)
 #print('test median: {}'.format(test_median))
-print('{:<12} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
+print('{:<18} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)

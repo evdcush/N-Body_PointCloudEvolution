@@ -47,7 +47,8 @@ X = None # reduce memory overhead
 #=============================================================================
 # model vars
 model_type = pargs['model_type'] # 0: set, 1: graph
-model_vars = utils.NBODY_MODELS[model_type]
+#model_vars = utils.NBODY_MODELS[model_type]
+model_vars = utils.NBODY_MODELS[1]
 
 # network kernel sizes and depth
 channels = model_vars['channels']
@@ -162,7 +163,7 @@ print('\nTraining:\n============================================================
 for step in range(num_iters):
     # data batching
     #_x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
-    _x_batch = utils.next_exch_minibatch(X_train, batch_size)
+    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False)
     x_in    = _x_batch[0]
     x_truth = _x_batch[1]
     fdict = {X_input: x_in, X_truth: x_truth}
@@ -195,7 +196,7 @@ X_train = None # reduce memory overhead
 # data containers
 num_test_samples = X_test.shape[1]
 #test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
-test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
+test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 

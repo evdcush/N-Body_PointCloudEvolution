@@ -460,8 +460,8 @@ def load_zuni_npy_data_eqvar(redshifts=None, norm_coo=False, norm_vel=False):
         z_path = DATA_PATH_ZUNI_NPY.format(z_rs)
         print('LD: {}'.format(z_path[-13:]))
         x = np.load(z_path)
-        x[idx,:,:,:,0] = x[...,:3]
-        x[idx,:,:,:,1] = x[...,3:]
+        X[idx,:,:,:,0] = x[...,:3]
+        X[idx,:,:,:,1] = x[...,3:]
     if norm_coo:
         X[...,0] = X[...,0] / 32.0
     return X
