@@ -116,6 +116,29 @@ def init_params(channels, graph_model=False, vel_coeff=False,
         if vel_coeff: # scalar weight for simulating timestep, only one
             init_vel_coeff()
 
+def init_eqvar_params(channels, graph_model=False, vel_coeff=False,
+                var_scope=VAR_SCOPE, seed=None, restore=False):
+    """ Initialize network parameters
+    graph model has extra weight, no bias
+    set model has bias
+    """
+    # get (k_in, k_out) tuples from channels
+    kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
+    with tf.variable_scope(var_scope):
+        # initialize variables for each layer
+        for idx, ktup in enumerate(kdims):
+            init_weight(*ktup, EQ_WEIGHT_TAG.format(1,idx), seed=seed, restore=restore)
+            init_weight(*ktup, EQ_WEIGHT_TAG.format(2,idx), seed=seed, restore=restore)
+            init_weight(*ktup, EQ_WEIGHT_TAG.format(3,idx), seed=seed, restore=restore)
+        '''
+            if graph_model: # graph
+                init_weight(*ktup, GRAPH_TAG.format(idx), seed=seed, restore=restore)
+            else: # set
+                init_bias(*ktup, BIAS_TAG.format(idx), restore=restore)
+        if vel_coeff: # scalar weight for simulating timestep, only one
+            init_vel_coeff()
+        '''
+
 # Multi-step
 def init_params_multi(channels, num_rs, graph_model=True,
                       var_scope=VAR_SCOPE_MULTI, seed=None, restore=False):
@@ -417,7 +440,7 @@ def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
         X[...,:3] = X[...,:3] / 32.0
     return X
 
-def load_zuni_npy_data_exchangeable(redshifts=None, norm_coo=False, norm_vel=False):
+def load_zuni_npy_data_eqvar(redshifts=None, norm_coo=False, norm_vel=False):
     """ Loads new uniformly timestep data serialized as np array of np.float32
     Args:
         redshifts (list int): list of indices into redshifts in order
@@ -427,18 +450,20 @@ def load_zuni_npy_data_exchangeable(redshifts=None, norm_coo=False, norm_vel=Fal
     if redshifts is None:
         redshifts = list(range(len(REDSHIFTS_ZUNI))) # copy
     num_rs = len(redshifts)
-    N = 1000
-    M = 32**3
-    D = k
-    X = np.zeros((num_rs, N, M, D)).astype(np.float32)
+    M = 1000
+    N = 32**3
+    D = 3
+    k = 2
+    X = np.zeros((num_rs, M, N, D, k)).astype(np.float32)
     for idx, z_idx in enumerate(redshifts):
         z_rs   = REDSHIFTS_ZUNI[z_idx]
         z_path = DATA_PATH_ZUNI_NPY.format(z_rs)
         print('LD: {}'.format(z_path[-13:]))
-        X[idx,:,:,:-1] = np.load(z_path)
-        X[idx,:,:,-1] = z_rs
+        x = np.load(z_path)
+        x[idx,:,:,:,0] = x[...,:3]
+        x[idx,:,:,:,1] = x[...,3:]
     if norm_coo:
-        X[...,:3] = X[...,:3] / 32.0
+        X[...,0] = X[...,0] / 32.0
     return X
 
 

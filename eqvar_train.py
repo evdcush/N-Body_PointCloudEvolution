@@ -37,7 +37,7 @@ num_rs_layers = num_rs - 1
 # Load data
 num_val_samples = 200
 #X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True)
-X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True)[...,:-1]
+X = utils.load_zuni_npy_data_eqvar(redshifts=redshift_steps, norm_coo=True)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
 
@@ -51,13 +51,14 @@ model_vars = utils.NBODY_MODELS[model_type]
 
 # network kernel sizes and depth
 channels = model_vars['channels']
-channels[-1] = 6
-#channels[0] = 7
+channels[-1] = 2
+channels[0] = 2
 num_layers = len(channels) - 1
 
 # model features
 use_graph = model_type == 1
-vcoeff = pargs['vel_coeff'] == 1
+#vcoeff = pargs['vel_coeff'] == 1
+vcoeff = False
 
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
@@ -89,7 +90,7 @@ restore = pargs['restore'] == 1
 # init network params
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params(channels, graph_model=use_graph, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
+utils.init_eqvar_params(channels, graph_model=use_graph, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
 
 
 # INPUTS
@@ -118,15 +119,15 @@ else:
     margs = (X_input, num_layers)
 
 # network out
-H_out  = nn.model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
+H_out  = nn.eqvar_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
 
 # error and optimizer
 #error = nn.pbc_loss(X_pred, X_truth[...,:-1])
-error = nn.pbc_loss_vel(X_pred, X_truth)
+error = nn.pbc_loss_eqvar(X_pred, X_truth)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
-val_error = nn.pbc_loss(X_pred, X_truth) # since training loss fn not always same
-ground_truth_error = nn.pbc_loss(X_input, X_truth)
+val_error = nn.pbc_loss_eqvar(X_pred, X_truth) # since training loss fn not always same
+ground_truth_error = nn.pbc_loss_eqvar(X_input, X_truth)
 
 
 #=============================================================================

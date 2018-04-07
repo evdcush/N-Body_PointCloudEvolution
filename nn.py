@@ -470,3 +470,23 @@ def pbc_loss_vel(readout, x_truth):
     error_coo = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1), name='loss')
     error_vel = tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1), name='loss')
     return error_coo * error_vel
+
+def pbc_loss_eqvar(readout_in, x_truth):
+    """ MSE over full dims with periodic boundary conditions
+    Args:
+        readout (tensor): model prediction which has been remapped to inner cube
+        x_truth (tensor): ground truth (mb_size, N, 6)
+    """
+    readout = readout_in[...,0]
+    x_truth_coo = x_truth[...,0]
+    d1 = tf.squared_difference(readout, x_truth_coo)
+    d2 = tf.squared_difference(readout, (1 + x_truth_coo))
+    d3 = tf.squared_difference((1 + readout),  x_truth_coo)
+    dist = tf.minimum(tf.minimum(d1, d2), d3)
+
+    #pbc_dist  = periodic_boundary_dist(readout, x_truth)
+    #dist_vel = tf.squared_difference(readout[...,3:], x_truth[...,3:])
+
+    error_coo = tf.reduce_mean(tf.reduce_sum(dist, axis=-1), name='loss')
+    #error_vel = tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1), name='loss')
+    return error_coo #* error_vel
