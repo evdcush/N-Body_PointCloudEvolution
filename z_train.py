@@ -123,7 +123,8 @@ X_pred = nn.get_readout_vel(H_out)
 # error and optimizer
 #error = nn.pbc_loss(X_pred, X_truth[...,:-1])
 #error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
-error = nn.pbc_loss_vel(X_pred, X_truth)
+#error = nn.pbc_loss_vel(X_pred, X_truth)
+error = nn.pbc_loss(X_pred, X_truth)
 #error = nn.pbc_loss(X_pred, X_truth)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 #val_error = nn.pbc_loss(X_pred, X_truth[...,:-1]) # since training loss fn not always same

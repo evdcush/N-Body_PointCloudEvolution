@@ -47,8 +47,8 @@ X = None # reduce memory overhead
 #=============================================================================
 # model vars
 model_type = pargs['model_type'] # 0: set, 1: graph
-#model_vars = utils.NBODY_MODELS[model_type]
-model_vars = utils.NBODY_MODELS[1]
+model_vars = utils.NBODY_MODELS[model_type]
+#model_vars = utils.NBODY_MODELS[1]
 
 # network kernel sizes and depth
 channels = model_vars['channels']

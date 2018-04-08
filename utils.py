@@ -128,8 +128,8 @@ def init_eqvar_params(channels, graph_model=False, vel_coeff=False,
         # initialize variables for each layer
         for idx, ktup in enumerate(kdims):
             init_weight(*ktup, EQ_WEIGHT_TAG.format(1,idx), seed=seed, restore=restore)
-            init_weight(*ktup, EQ_WEIGHT_TAG.format(2,idx), seed=seed, restore=restore)
-            init_weight(*ktup, EQ_WEIGHT_TAG.format(3,idx), seed=seed, restore=restore)
+            #init_weight(*ktup, EQ_WEIGHT_TAG.format(2,idx), seed=seed, restore=restore)
+            #init_weight(*ktup, EQ_WEIGHT_TAG.format(3,idx), seed=seed, restore=restore)
         '''
             if graph_model: # graph
                 init_weight(*ktup, GRAPH_TAG.format(idx), seed=seed, restore=restore)
@@ -178,9 +178,9 @@ def get_graph_layer_vars(layer_idx, var_scope=VAR_SCOPE):
 def get_equivariant_layer_vars(layer_idx, var_scope=VAR_SCOPE):
     with tf.variable_scope(var_scope, reuse=True):
         W1 = tf.get_variable(EQ_WEIGHT_TAG.format(1, layer_idx))
-        W2 = tf.get_variable(EQ_WEIGHT_TAG.format(2, layer_idx))
-        W3 = tf.get_variable(EQ_WEIGHT_TAG.format(3, layer_idx))
-    return W1, W2, W3
+        #W2 = tf.get_variable(EQ_WEIGHT_TAG.format(2, layer_idx))
+        #W3 = tf.get_variable(EQ_WEIGHT_TAG.format(3, layer_idx))
+    return W1#, W2, W3
 
 def get_vel_coeff(var_scope):
     with tf.variable_scope(var_scope, reuse=True):

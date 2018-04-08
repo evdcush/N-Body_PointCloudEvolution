@@ -53,7 +53,7 @@ def left_mult_eqvar(h, W):
     return tf.einsum('bndk,kq->bndq', h, W)
 
 
-def equivariant_fwd(h_in, W1, W2, W3, pool=tf.reduce_mean):
+def equivariant_fwd_worse(h_in, W1, W2, W3, pool=tf.reduce_mean):
     """ space permutation equivariant linear layer
     Args:
         h_in: (mb_size, N, D, k) data tensor
@@ -65,25 +65,44 @@ def equivariant_fwd(h_in, W1, W2, W3, pool=tf.reduce_mean):
 
     # set pooling
     pooled_set = pool(h_in, axis=1, keepdims=True) # (b, 1, D, k)
-    ones_set   = tf.ones([N, 1], tf.float32)
-    h_set = tf.einsum("ni,bidk->bndk", ones_set, pooled_set)
+    ones_set   = tf.ones([1, N], tf.float32)
+    h_set = tf.einsum("bidk,in->bndk", pooled_set, ones_set)
+    #h_set = pool(h_in, axis=1, keepdims=True)
 
     # space pooling
-    pooled_space = pool(h_in, axis=2, keepdims=True) # (b, N, 1, k)
-    ones_space   = tf.ones([D, 1], tf.float32)
-    h_space = tf.einsum("di,bnik->bndk", ones_space, pooled_space)
+    #pooled_space = pool(h_in, axis=2, keepdims=True) # (b, N, 1, k)
+    #ones_space   = tf.ones([1,D], tf.float32)
+    #h_space = tf.einsum("bnik,id->bndk", pooled_space, ones_space)
+    #h_space = pool(h_in, axis=2, keepdims=True)
 
     # W transformations
-    h_out = left_mult_eqvar(h_in, W1)
-    h_out += left_mult_eqvar(h_set, W2)
-    h_out += left_mult_eqvar(h_space, W3)
-
+    h_out = left_mult_eqvar(h_in - h_set, W1)
+    #h_out = left_mult_eqvar(h_in - h_set, W1)
+    #h_out -= left_mult_eqvar(h_set, W2)
+    #h_out += left_mult_eqvar(h_space, W3)
     return h_out
 
+def equivariant_fwd(h_in, W1, *args, pool=tf.reduce_mean):
+    """ space permutation equivariant linear layer
+    Args:
+        h_in: (mb_size, N, D, k) data tensor
+        W*: (k, j) weight
+    """
+    h_shape = tf.shape(h_in)
+    N = h_shape[1]
+    D = h_shape[2]
+
+    # set pooling
+    h_set = pool(h_in, axis=1, keepdims=True)
+
+    # W transformations
+    h_out = left_mult_eqvar(h_in - h_set, W1)
+    return h_out
 
 def equivariant_layer(h, layer_idx, var_scope, *args):
     W = utils.get_equivariant_layer_vars(layer_idx, var_scope=var_scope)
-    h_out = equivariant_fwd(h, *W)
+    #h_out = equivariant_fwd(h, *W)
+    h_out = equivariant_fwd(h, W)
     return h_out
 
 def eqvar_network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
