@@ -53,7 +53,7 @@ def left_mult_eqvar(h, W):
     return tf.einsum('bndk,kq->bndq', h, W)
 
 
-def equivariant_fwd_worse(h_in, W1, W2, W3, pool=tf.reduce_mean):
+def equivariant_fwd_Daniele(h_in, W1, W2, W3, pool=tf.reduce_mean):
     """ space permutation equivariant linear layer
     Args:
         h_in: (mb_size, N, D, k) data tensor
@@ -67,19 +67,16 @@ def equivariant_fwd_worse(h_in, W1, W2, W3, pool=tf.reduce_mean):
     pooled_set = pool(h_in, axis=1, keepdims=True) # (b, 1, D, k)
     ones_set   = tf.ones([1, N], tf.float32)
     h_set = tf.einsum("bidk,in->bndk", pooled_set, ones_set)
-    #h_set = pool(h_in, axis=1, keepdims=True)
 
     # space pooling
-    #pooled_space = pool(h_in, axis=2, keepdims=True) # (b, N, 1, k)
-    #ones_space   = tf.ones([1,D], tf.float32)
-    #h_space = tf.einsum("bnik,id->bndk", pooled_space, ones_space)
-    #h_space = pool(h_in, axis=2, keepdims=True)
+    pooled_space = pool(h_in, axis=2, keepdims=True) # (b, N, 1, k)
+    ones_space   = tf.ones([1,D], tf.float32)
+    h_space = tf.einsum("bnik,id->bndk", pooled_space, ones_space)
 
     # W transformations
-    h_out = left_mult_eqvar(h_in - h_set, W1)
-    #h_out = left_mult_eqvar(h_in - h_set, W1)
-    #h_out -= left_mult_eqvar(h_set, W2)
-    #h_out += left_mult_eqvar(h_space, W3)
+    h_out  = left_mult_eqvar(h_in, W1)
+    h_out += left_mult_eqvar(h_set, W2)
+    h_out += left_mult_eqvar(h_space, W3)
     return h_out
 
 def equivariant_fwd(h_in, W1, *args, pool=tf.reduce_mean):
