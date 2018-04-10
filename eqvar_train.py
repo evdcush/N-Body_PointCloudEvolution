@@ -29,7 +29,7 @@ start_time = time.time()
 # nbody Data
 #=============================================================================
 # nbody data params
-num_particles = 32 #pargs['particles']
+num_particles = pargs['particles']
 redshift_steps = pargs['redshifts']
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
@@ -37,7 +37,7 @@ num_rs_layers = num_rs - 1
 # Load data
 num_val_samples = 200
 #X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True)
-X = utils.load_zuni_npy_data_eqvar(redshifts=redshift_steps, norm_coo=True)
+X = utils.load_thinkpad_eqvar(redshift_steps, norm_coo=True)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
 
@@ -51,7 +51,9 @@ model_vars = utils.NBODY_MODELS[model_type]
 #model_vars = utils.NBODY_MODELS[1]
 
 # network kernel sizes and depth
-channels = model_vars['channels']
+#channels = model_vars['channels']
+#channels = [6, 8, 16, 32, 8, 16, 8, 4, 3]
+channels = [6, 8, 16, 4, 3]
 channels[-1] = 2
 channels[0] = 2
 num_layers = len(channels) - 1
@@ -121,7 +123,7 @@ else:
 
 # network out
 H_out  = nn.eqvar_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
-X_pred = nn.get_readout_vel(H_out)
+X_pred = nn.get_readout_vel_eqvar(H_out)
 
 # error and optimizer
 #error = nn.pbc_loss(X_pred, X_truth[...,:-1])
@@ -140,9 +142,10 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.8
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
-sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+#gpu_frac = 0.8
+#gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
+#sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+sess = tf.InteractiveSession()
 sess.run(tf.global_variables_initializer())
 if restore:
     utils.load_graph(sess, model_path)
@@ -186,7 +189,7 @@ for step in range(num_iters):
 print('elapsed time: {}'.format(time.time() - start_time))
 
 # save
-saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
+#saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
 #if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
 X_train = None # reduce memory overhead
 
@@ -228,7 +231,7 @@ inputs_median = np.median(inputs_loss_history)
 print('{:<12} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
-utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
-utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
+#utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
+#utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use

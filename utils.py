@@ -128,8 +128,10 @@ def init_eqvar_params(channels, graph_model=False, vel_coeff=False,
         # initialize variables for each layer
         for idx, ktup in enumerate(kdims):
             init_weight(*ktup, EQ_WEIGHT_TAG.format(1,idx), seed=seed, restore=restore)
-            #init_weight(*ktup, EQ_WEIGHT_TAG.format(2,idx), seed=seed, restore=restore)
-            #init_weight(*ktup, EQ_WEIGHT_TAG.format(3,idx), seed=seed, restore=restore)
+            init_weight(*ktup, EQ_WEIGHT_TAG.format(2,idx), seed=seed, restore=restore)
+            init_weight(*ktup, EQ_WEIGHT_TAG.format(3,idx), seed=seed, restore=restore)
+            init_weight(*ktup, EQ_WEIGHT_TAG.format(4,idx), seed=seed, restore=restore)
+            init_bias(*ktup, BIAS_TAG.format(idx), restore=restore)
         '''
             if graph_model: # graph
                 init_weight(*ktup, GRAPH_TAG.format(idx), seed=seed, restore=restore)
@@ -178,9 +180,11 @@ def get_graph_layer_vars(layer_idx, var_scope=VAR_SCOPE):
 def get_equivariant_layer_vars(layer_idx, var_scope=VAR_SCOPE):
     with tf.variable_scope(var_scope, reuse=True):
         W1 = tf.get_variable(EQ_WEIGHT_TAG.format(1, layer_idx))
-        #W2 = tf.get_variable(EQ_WEIGHT_TAG.format(2, layer_idx))
-        #W3 = tf.get_variable(EQ_WEIGHT_TAG.format(3, layer_idx))
-    return W1#, W2, W3
+        W2 = tf.get_variable(EQ_WEIGHT_TAG.format(2, layer_idx))
+        W3 = tf.get_variable(EQ_WEIGHT_TAG.format(3, layer_idx))
+        W4 = tf.get_variable(EQ_WEIGHT_TAG.format(4, layer_idx))
+        B = tf.get_variable(BIAS_TAG.format(layer_idx))
+    return W1, W2, W3, W4, B
 
 def get_vel_coeff(var_scope):
     with tf.variable_scope(var_scope, reuse=True):
@@ -356,7 +360,7 @@ def thinkpadx201_load_npy(redshifts, norm_coo=False, norm_vel=False):
     X = np.zeros((num_rs, N, M, D)).astype(np.float32)
     for idx, z_idx in enumerate(redshifts):
         z_rs   = REDSHIFTS[z_idx]
-        z_path = DATA_PATH_NPY.format(z_rs)
+        z_path = DATA_PATH_THINKPAD.format(z_rs)
         print('LD: {}'.format(z_path[-13:]))
         X[idx, :, :, :-1] = np.load(z_path)
         X[idx, :, :,-1] = z_rs
@@ -379,7 +383,7 @@ def load_thinkpad_eqvar(redshifts, norm_coo=True, norm_vel=False):
     X = np.zeros((num_rs, M, N, D, k)).astype(np.float32)
     for idx, z_idx in enumerate(redshifts):
         z_rs   = REDSHIFTS[z_idx]
-        z_path = DATA_PATH_NPY.format(z_rs)
+        z_path = DATA_PATH_THINKPAD.format(z_rs)
         print('LD: {}'.format(z_path[-13:]))
         x = np.load(z_path)
         X[idx,:,:,:,0] = x[...,:3] # coo

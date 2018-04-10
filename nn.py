@@ -79,6 +79,39 @@ def equivariant_fwd_Daniele(h_in, W1, W2, W3, pool=tf.reduce_mean):
     h_out += left_mult_eqvar(h_space, W3)
     return h_out
 
+def equivariant_fwd_Daniele2(h_in, W1, W2, W3, W4, B, pool=tf.reduce_mean):
+    """ space permutation equivariant linear layer
+    Args:
+        h_in: (mb_size, N, D, k) data tensor
+        W*: (k, j) weight
+    """
+    h_shape = tf.shape(h_in)
+    N = h_shape[1]
+    D = h_shape[2]
+
+    # set pooling
+    pooled_set = pool(h_in, axis=1, keepdims=True) # (b, 1, D, k)
+    ones_set   = tf.ones([1, N], tf.float32)
+    h_set = tf.einsum("bidk,in->bndk", pooled_set, ones_set)
+
+    # space pooling
+    pooled_space = pool(h_in, axis=2, keepdims=True) # (b, N, 1, k)
+    ones_space   = tf.ones([1,D], tf.float32)
+    h_space = tf.einsum("bnik,id->bndk", pooled_space, ones_space)
+
+    # set-space pooling
+    pooled_setspace = pool(h_set, axis=2, keepdims=True) # (b, N, 1, k)
+    ones_setspace   = tf.ones([1,D], tf.float32)
+    h_setspace = tf.einsum("bnik,id->bndk", pooled_space, ones_setspace)
+
+    # W transformations
+    h_out  = left_mult_eqvar(h_in, W1)
+    h_out += left_mult_eqvar(h_set, W2)
+    h_out += left_mult_eqvar(h_space, W3)
+    h_out += left_mult_eqvar(h_setspace, W4)
+    h_out += B
+    return h_out
+
 def equivariant_fwd(h_in, W1, *args, pool=tf.reduce_mean):
     """ space permutation equivariant linear layer
     Args:
@@ -98,8 +131,8 @@ def equivariant_fwd(h_in, W1, *args, pool=tf.reduce_mean):
 
 def equivariant_layer(h, layer_idx, var_scope, *args):
     W = utils.get_equivariant_layer_vars(layer_idx, var_scope=var_scope)
-    #h_out = equivariant_fwd(h, *W)
-    h_out = equivariant_fwd(h, W)
+    h_out = equivariant_fwd_Daniele2(h, *W)
+    #h_out = equivariant_fwd(h, W)
     return h_out
 
 def eqvar_network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
@@ -446,6 +479,20 @@ def get_readout_vel(h_out):
     ls_zero = -(tf.sign(h_out_coo) - 1) / 2
     rest = 1 - gt_one - ls_zero
     readout_coo = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo)
+    readout = tf.concat([readout_coo, h_out_vel], -1)
+    return readout
+
+def get_readout_vel_eqvar(h_out):
+    """ For when the network also predicts velocity
+    velocities remain unchanged
+    """
+    h_out_coo = h_out[...,0]
+    h_out_vel = h_out[...,1:]
+    gt_one  = (tf.sign(h_out_coo - 1) + 1) / 2
+    ls_zero = -(tf.sign(h_out_coo) - 1) / 2
+    rest = 1 - gt_one - ls_zero
+    readout_coo = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo)
+    readout_coo = tf.expand_dims(readout_coo, -1)
     readout = tf.concat([readout_coo, h_out_vel], -1)
     return readout
 
