@@ -12,7 +12,7 @@ import tensorflow as tf
 # dataset
 DATA_PATH     = '/home/evan/Data/nbody_simulations/N_{0}/DM*/{1}_dm.z=0{2}000'
 DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/nbody_{}.npy'
-#DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/npy_data/X_{:.4f}_.npy'
+DATA_PATH_THINKPAD = '/home/evan/Data/nbody_simulations/npy_data/X_{:.4f}_.npy'
 
 REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
 RS_TAGS = {6.0:'60', 4.0:'40', 2.0:'20', 1.5:'15', 1.2:'12', 1.0:'10',
@@ -362,6 +362,30 @@ def thinkpadx201_load_npy(redshifts, norm_coo=False, norm_vel=False):
         X[idx, :, :,-1] = z_rs
     if norm_coo:
         X[...,:3] = X[...,:3] / 32.0
+    return X
+
+def load_thinkpad_eqvar(redshifts, norm_coo=True, norm_vel=False):
+    """ Loads new uniformly timestep data serialized as np array of np.float32
+    Args:
+        redshifts (list int): list of indices into redshifts in order
+        norm_coo: normalize coordinate values to [0,1]
+        norm_vel: normalize vel values (only norm'd if coord norm'd)
+    """
+    num_rs = len(redshifts)
+    M = 1000
+    N = 16**3
+    D = 3
+    k = 2
+    X = np.zeros((num_rs, M, N, D, k)).astype(np.float32)
+    for idx, z_idx in enumerate(redshifts):
+        z_rs   = REDSHIFTS[z_idx]
+        z_path = DATA_PATH_NPY.format(z_rs)
+        print('LD: {}'.format(z_path[-13:]))
+        x = np.load(z_path)
+        X[idx,:,:,:,0] = x[...,:3] # coo
+        X[idx,:,:,:,1] = x[...,3:] # vel
+    if norm_coo:
+        X[...,0] = X[...,0] / 32.0
     return X
 
 def load_rs_old_npy_data(redshifts, norm_coo=False, norm_vel=False):
