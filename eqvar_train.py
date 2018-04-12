@@ -36,8 +36,8 @@ num_rs_layers = num_rs - 1
 
 # Load data
 num_val_samples = 200
-#X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True)
-X = utils.load_thinkpad_eqvar(redshift_steps, norm_coo=True)
+X = utils.load_zuni_npy_data_eqvar(redshifts=redshift_steps, norm_coo=True)
+#X = utils.load_thinkpad_eqvar(redshift_steps, norm_coo=True)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
 
@@ -53,6 +53,9 @@ model_vars = utils.NBODY_MODELS[model_type]
 # network kernel sizes and depth
 #channels = model_vars['channels']
 #channels = [6, 8, 16, 32, 8, 16, 8, 4, 3]
+'''
+Channel sizes makes a HUGE difference now
+'''
 channels = [6, 8, 16, 4, 3]
 channels[-1] = 2
 channels[0] = 2
@@ -142,10 +145,10 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-#gpu_frac = 0.8
-#gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
-#sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
-sess = tf.InteractiveSession()
+gpu_frac = 0.8
+gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
+sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+#sess = tf.InteractiveSession()
 sess.run(tf.global_variables_initializer())
 if restore:
     utils.load_graph(sess, model_path)
