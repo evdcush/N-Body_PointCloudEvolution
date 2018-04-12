@@ -191,13 +191,6 @@ def get_vel_coeff(var_scope):
         vel_coeff = tf.get_variable(VEL_COEFF_TAG)
     return vel_coeff
 
-def get_2vel_coeff(var_scope):
-    with tf.variable_scope(var_scope, reuse=True):
-        vel_coeff1 = tf.get_variable(VEL_COEFF_TAG + '1')
-        vel_coeff2 = tf.get_variable(VEL_COEFF_TAG + '2')
-    return vel_coeff1, vel_coeff2
-
-
 
 #=============================================================================
 # graph save and restore
@@ -207,29 +200,6 @@ def load_graph(sess, save_dir):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     path = tf.train.get_checkpoint_state(save_dir)
     saver.restore(sess, path.model_checkpoint_path)
-
-def _load_multi_graph(sess, vscopes, num_layers, save_dir, use_graph=False):
-    #for vidx, vscope in enumerate(vscopes):
-    for vscope in vscopes:
-        sdict = {}
-        for layer_idx in range(num_layers):
-            if use_graph:
-                wtag = vscope + '/' + WEIGHT_TAG.format(layer_idx)
-                gtag = vscope + '/' +  GRAPH_TAG.format(layer_idx)
-                W, Wg = get_graph_layer_vars(layer_idx, vscope)
-                sdict[wtag] = W
-                sdict[gtag] = Wg
-            else:
-                wtag = vscope + '/' + WEIGHT_TAG.format(layer_idx)
-                btag = vscope + '/' +   BIAS_TAG.format(layer_idx)
-                W, B = get_layer_vars(layer_idx, vscope)
-                sdict[wtag] = W
-                sdict[btag] = B
-        saver = tf.train.Saver(sdict)
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        #path = tf.train.get_checkpoint_state(save_dir[vidx])
-        path = tf.train.get_checkpoint_state(save_dir[0])
-        saver.restore(sess, path.model_checkpoint_path)
 
 def load_multi_graph(sess, vscopes, num_layers, save_dir, use_graph=False):
     #for vidx, vscope in enumerate(vscopes):
@@ -493,32 +463,6 @@ def load_zuni_npy_data_eqvar(redshifts=None, norm_coo=False, norm_vel=False):
     if norm_coo:
         X[...,0] = X[...,0] / 32.0
     return X
-
-
-def normalize_zuni_vel(vel_in, rescale=True):
-    """ Normalize velocity, either by population statistics (mean, std) or
-    by rescaling to be within a range
-    Uses population features from ALL redshifts
-    vel_pop_stat == {'max':  max over all redshifts
-                     'min':  min "
-                      'mu': mean ",
-                     'std': stdv ",}
-    NB: vel_pop_stat['mu'] == -9.8190285e-06, vel_pop_stat['std'] == 0.9580899
-    so the velocities are already in gaussian distribution
-    Args:
-        vel_in (ndarray): data to be normalized, of shape (num_rs*N*D, 6)
-    """
-    vel_pop_stat = np.load('./Data/zuni_vel_population_statistics.npy').item()
-
-    if rescale:
-        vel_max = vel_pop_stat['max']
-        vel_min = vel_pop_stat['min']
-        vel_out = (vel_in - vel_min) / (vel_max - vel_min)
-    else:
-        vel_mean = vel_pop_stat['mu']
-        vel_std  = vel_pop_stat['std']
-        vel_out  = (vel_in - vel_mean) / vel_std
-    return vel_out
 
 def normalize_zuni(X_in, norm_vel=False):
     """ Normalize data features
