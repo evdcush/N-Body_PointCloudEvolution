@@ -44,114 +44,6 @@ def set_layer(h, layer_idx, var_scope, *args):
     W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
     return linear(h, W, B)
 
-#=============================================================================
-# Equivariant stuff
-
-def left_mult_eqvar(h, W):
-    """ batch matmul for set-based data
-    """
-    return tf.einsum('bndk,kq->bndq', h, W)
-
-
-def equivariant_fwd_Daniele(h_in, W1, W2, W3, pool=tf.reduce_mean):
-    """ space permutation equivariant linear layer
-    Args:
-        h_in: (mb_size, N, D, k) data tensor
-        W*: (k, j) weight
-    """
-    h_shape = tf.shape(h_in)
-    N = h_shape[1]
-    D = h_shape[2]
-
-    # set pooling
-    pooled_set = pool(h_in, axis=1, keepdims=True) # (b, 1, D, k)
-    ones_set   = tf.ones([1, N], tf.float32)
-    h_set = tf.einsum("bidk,in->bndk", pooled_set, ones_set)
-
-    # space pooling
-    pooled_space = pool(h_in, axis=2, keepdims=True) # (b, N, 1, k)
-    ones_space   = tf.ones([1,D], tf.float32)
-    h_space = tf.einsum("bnik,id->bndk", pooled_space, ones_space)
-
-    # W transformations
-    h_out  = left_mult_eqvar(h_in, W1)
-    h_out += left_mult_eqvar(h_set, W2)
-    h_out += left_mult_eqvar(h_space, W3)
-    return h_out
-
-def equivariant_fwd_Daniele2(h_in, W1, W2, W3, W4, B, pool=tf.reduce_mean):
-    """ space permutation equivariant linear layer
-    Args:
-        h_in: (mb_size, N, D, k) data tensor
-        W*: (k, j) weight
-    """
-    h_shape = tf.shape(h_in)
-    N = h_shape[1]
-    D = h_shape[2]
-
-    # set pooling
-    pooled_set = pool(h_in, axis=1, keepdims=True) # (b, 1, D, k)
-    ones_set   = tf.ones([1, N], tf.float32)
-    h_set = tf.einsum("bidk,in->bndk", pooled_set, ones_set)
-
-    # space pooling
-    pooled_space = pool(h_in, axis=2, keepdims=True) # (b, N, 1, k)
-    ones_space   = tf.ones([1,D], tf.float32)
-    h_space = tf.einsum("bnik,id->bndk", pooled_space, ones_space)
-
-    # set-space pooling
-    pooled_setspace = pool(h_set, axis=2, keepdims=True) # (b, N, 1, k)
-    ones_setspace   = tf.ones([1,D], tf.float32)
-    h_setspace = tf.einsum("bnik,id->bndk", pooled_space, ones_setspace)
-
-    # W transformations
-    h_out  = left_mult_eqvar(h_in, W1)
-    h_out += left_mult_eqvar(h_set, W2)
-    h_out += left_mult_eqvar(h_space, W3)
-    h_out += left_mult_eqvar(h_setspace, W4)
-    h_out += B
-    return h_out
-
-def equivariant_fwd(h_in, W1, *args, pool=tf.reduce_mean):
-    """ space permutation equivariant linear layer
-    Args:
-        h_in: (mb_size, N, D, k) data tensor
-        W*: (k, j) weight
-    """
-    h_shape = tf.shape(h_in)
-    N = h_shape[1]
-    D = h_shape[2]
-
-    # set pooling
-    h_set = pool(h_in, axis=1, keepdims=True)
-
-    # W transformations
-    h_out = left_mult_eqvar(h_in - h_set, W1)
-    return h_out
-
-def equivariant_layer(h, layer_idx, var_scope, *args):
-    W = utils.get_equivariant_layer_vars(layer_idx, var_scope=var_scope)
-    h_out = equivariant_fwd_Daniele2(h, *W)
-    #h_out = equivariant_fwd(h, W)
-    return h_out
-
-def eqvar_network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    #layer = kgraph_layer if len(args) != 0 else set_layer
-    layer = equivariant_layer
-    H = x_in
-    for i in range(num_layers):
-        H = layer(H, i, var_scope, *args)
-        if i != num_layers - 1:
-            H = activation(H)
-    return H
-
-# ==== Model fn
-def eqvar_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
-    h_out = eqvar_network_fwd(x_in, num_layers, var_scope, *args, activation=activation)
-    #if add: h_out = skip_connection(x_in, h_out, vel_coeff, var_scope)
-    return h_out
-
 
 #=============================================================================
 # graph
@@ -212,6 +104,135 @@ def kgraph_layer(h, layer_idx, var_scope, alist, K):
     h_w = linear(h, W)
     h_g = linear(nn_graph, Wg)
     h_out = h_w + h_g
+    return h_out
+
+
+#=============================================================================
+# Equivariant stuff
+
+def left_mult_eqvar(h, W):
+    """ batch matmul for set-based data
+    """
+    return tf.einsum('bndk,kq->bndq', h, W)
+
+
+def equivariant_fwd_Daniele(h_in, W1, W2, W3, pool=tf.reduce_mean):
+    """ space permutation equivariant linear layer
+    Args:
+        h_in: (mb_size, N, D, k) data tensor
+        W*: (k, j) weight
+    """
+    h_shape = tf.shape(h_in)
+    N = h_shape[1]
+    D = h_shape[2]
+
+    # set pooling
+    pooled_set = pool(h_in, axis=1, keepdims=True) # (b, 1, D, k)
+    ones_set   = tf.ones([1, N], tf.float32)
+    h_set = tf.einsum("bidk,in->bndk", pooled_set, ones_set)
+
+    # space pooling
+    pooled_space = pool(h_in, axis=2, keepdims=True) # (b, N, 1, k)
+    ones_space   = tf.ones([1,D], tf.float32)
+    h_space = tf.einsum("bnik,id->bndk", pooled_space, ones_space)
+
+    # W transformations
+    h_out  = left_mult_eqvar(h_in, W1)
+    h_out += left_mult_eqvar(h_set, W2)
+    h_out += left_mult_eqvar(h_space, W3)
+    return h_out
+
+def kgraph_conv_eqv(h, adj, K):
+    """ Graph convolution op for KNN-based adjacency lists
+    build graph tensor with gather_nd, and take
+    mean on KNN dim: mean((mb_size, N, K, k_in), axis=2)
+    Args:
+        h: data tensor, (mb_size, N, k_in)
+        adj: adjacency index list, for gather_nd (*, 2)
+        K (int): num nearest neighbors
+    """
+    dims = tf.shape(h)
+    mb = dims[0]; n  = dims[1]; d  = dims[2]; k = dims[3]
+    rdim = [mb,n,K,d,k]
+    nn_graph = tf.reduce_mean(tf.reshape(tf.gather_nd(h, adj), rdim), axis=2)
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    return nn_graph
+
+def equivariant_fwd_Daniele2(h_in, W1, W2, W3, W4, B, *args, pool=tf.reduce_mean, graph=False):
+    """ space permutation equivariant linear layer
+    Args:
+        h_in: (mb_size, N, D, k) data tensor
+        W*: (k, j) weight
+    """
+    h_shape = tf.shape(h_in)
+    N = h_shape[1]
+    D = h_shape[2]
+
+    # set pooling
+    if args:
+        h_set = kgraph_conv_eqv(h_in, *args)
+        #h_set = tf.einsum("bnidk,")
+    else:
+        pooled_set = pool(h_in, axis=1, keepdims=True) # (b, 1, D, k)
+        ones_set   = tf.ones([1, N], tf.float32)
+        h_set = tf.einsum("bidk,in->bndk", pooled_set, ones_set)
+
+    # space pooling
+    pooled_space = pool(h_in, axis=2, keepdims=True) # (b, N, 1, k)
+    ones_space   = tf.ones([1,D], tf.float32)
+    h_space = tf.einsum("bnik,id->bndk", pooled_space, ones_space)
+
+    # set-space pooling
+    pooled_setspace = pool(h_set, axis=2, keepdims=True) # (b, N, 1, k)
+    ones_setspace   = tf.ones([1,D], tf.float32)
+    h_setspace = tf.einsum("bnik,id->bndk", pooled_space, ones_setspace)
+
+    # W transformations
+    h_out  = left_mult_eqvar(h_in, W1)
+    h_out += left_mult_eqvar(h_set, W2)
+    h_out += left_mult_eqvar(h_space, W3)
+    h_out += left_mult_eqvar(h_setspace, W4)
+    h_out += B
+    return h_out
+
+def equivariant_fwd(h_in, W1, *args, pool=tf.reduce_mean):
+    """ space permutation equivariant linear layer
+    Args:
+        h_in: (mb_size, N, D, k) data tensor
+        W*: (k, j) weight
+    """
+    h_shape = tf.shape(h_in)
+    N = h_shape[1]
+    D = h_shape[2]
+
+    # set pooling
+    h_set = pool(h_in, axis=1, keepdims=True)
+
+    # W transformations
+    h_out = left_mult_eqvar(h_in - h_set, W1)
+    return h_out
+
+def equivariant_layer(h, layer_idx, var_scope, *args):
+    W = utils.get_equivariant_layer_vars(layer_idx, var_scope=var_scope)
+    h_out = equivariant_fwd_Daniele2(h, *W, *args)
+    #h_out = equivariant_fwd(h, W)
+    return h_out
+
+def eqvar_network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    #layer = kgraph_layer if len(args) != 0 else set_layer
+    layer = equivariant_layer
+    H = x_in
+    for i in range(num_layers):
+        H = layer(H, i, var_scope, *args)
+        if i != num_layers - 1:
+            H = activation(H)
+    return H
+
+# ==== Model fn
+def eqvar_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
+    h_out = eqvar_network_fwd(x_in, num_layers, var_scope, *args, activation=activation)
+    #if add: h_out = skip_connection(x_in, h_out, vel_coeff, var_scope)
     return h_out
 
 #=============================================================================
@@ -355,6 +376,22 @@ def get_kneighbor_alist(X_in, K=14):
     for i in range(mb_size):
         # this returns indices of the nn
         graph_idx = kneighbors_graph(X_in[i, :, :3], K, include_self=True).indices
+        graph_idx = graph_idx.reshape([N, K]) #+ (N * i)  # offset idx for batches
+        adj_list[i] = graph_idx
+    return adj_list
+
+def get_kneighbor_alist_eqvar(X_in, K=14):
+    """ search for K nneighbors, and return offsetted indices in adjacency list
+    No periodic boundary conditions used
+
+    Args:
+        X_in (numpy ndarray): input data of shape (mb_size, N, 6)
+    """
+    mb_size, N, D, k = X_in.shape
+    adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
+    for i in range(mb_size):
+        # this returns indices of the nn
+        graph_idx = kneighbors_graph(X_in[i, :, :,0], K, include_self=True).indices
         graph_idx = graph_idx.reshape([N, K]) #+ (N * i)  # offset idx for batches
         adj_list[i] = graph_idx
     return adj_list

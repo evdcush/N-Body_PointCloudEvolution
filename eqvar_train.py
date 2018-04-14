@@ -96,7 +96,7 @@ restore = pargs['restore'] == 1
 # init network params
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_eqvar_params(channels, graph_model=use_graph, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
+utils.init_eqvar_params(channels, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
 
 
 # INPUTS
@@ -113,7 +113,7 @@ adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
 
 def alist_func(h_in): # for tf.py_func
     #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
-    return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
+    return nn.alist_to_indexlist(nn.get_kneighbor_alist_eqvar(h_in, K))
 
 #=============================================================================
 # Model predictions and optimizer
@@ -176,7 +176,8 @@ for step in range(num_iters):
 
     # feed graph model data
     if use_graph:
-        alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+        #alist = nn.alist_to_indexlist(nn.get_kneighbor_alist_eqvar(x_in, K))
+        alist = alist_func(x_in)
         #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
         fdict[adj_list] = alist
 
@@ -215,7 +216,8 @@ for j in range(X_test.shape[1]):
 
     # feed graph data inputs
     if use_graph:
-        alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
+        #alist = nn.alist_to_indexlist(nn.get_kneighbor_alist_eqvar(x_in, K))
+        alist = alist_func(x_in)
         #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
         fdict[adj_list] = alist
 

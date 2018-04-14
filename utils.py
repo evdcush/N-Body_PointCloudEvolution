@@ -116,7 +116,7 @@ def init_params(channels, graph_model=False, vel_coeff=False,
         if vel_coeff: # scalar weight for simulating timestep, only one
             init_vel_coeff()
 
-def init_eqvar_params(channels, graph_model=False, vel_coeff=False,
+def init_eqvar_params(channels, vel_coeff=False,
                 var_scope=VAR_SCOPE, seed=None, restore=False):
     """ Initialize network parameters
     graph model has extra weight, no bias
