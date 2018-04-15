@@ -438,7 +438,7 @@ def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
         X[...,:3] = X[...,:3] / 32.0
     return X
 
-def load_zuni_npy_data_eqvar(redshifts=None, norm_coo=False, norm_vel=False):
+def load_zuni_npy_data_eqvar(redshifts=None, norm_coo=False, norm_vel=False, rs=False):
     """ Loads new uniformly timestep data serialized as np array of np.float32
     Args:
         redshifts (list int): list of indices into redshifts in order
@@ -451,7 +451,7 @@ def load_zuni_npy_data_eqvar(redshifts=None, norm_coo=False, norm_vel=False):
     M = 1000
     N = 32**3
     D = 3
-    k = 2
+    k = 2 if not rs else 3
     X = np.zeros((num_rs, M, N, D, k)).astype(np.float32)
     for idx, z_idx in enumerate(redshifts):
         z_rs   = REDSHIFTS_ZUNI[z_idx]
@@ -460,6 +460,8 @@ def load_zuni_npy_data_eqvar(redshifts=None, norm_coo=False, norm_vel=False):
         x = np.load(z_path)
         X[idx,:,:,:,0] = x[...,:3]
         X[idx,:,:,:,1] = x[...,3:]
+        if rs:
+            X[idx,:,:,:,2] = z_rs
     if norm_coo:
         X[...,0] = X[...,0] / 32.0
     return X
