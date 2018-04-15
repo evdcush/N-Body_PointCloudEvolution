@@ -236,7 +236,7 @@ def eqvar_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, ve
     return h_out
 
 def multi_eqvar_model_fwd(x_in, num_rs_layers, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
-    cat_rs = lambda h, i: tf.concat((h, x_in[...,i:i+1]), axis=-1)
+    cat_rs = lambda h, i: tf.concat((h, x_in[i,:,:,:,-1:]), axis=-1)
     if args:
         alist = args[0]
         K = args[-1]
@@ -251,15 +251,18 @@ def multi_eqvar_model_fwd(x_in, num_rs_layers, num_layers, *args, activation=tf.
     return h
 
 def multi_eqvar_model_fwd_val(x_in, num_rs_layers, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
-    cat_rs = lambda h, i: tf.concat((h, x_in[...,i:i+1]), axis=-1)
+    cat_rs = lambda h, i: tf.concat((h, x_in[i,:,:,:,-1:]), axis=-1)
     if args:
         alist_fn = args[0]
         K = args[-1]
         def fwd(h, i):
+            adj = tf.py_func(alist_fn, [h], tf.int32)
+            '''
             if i == 0:
-                adj = tf.py_func(alist_fn, [h[0]], tf.int32)
+                adj = tf.py_func(alist_fn, [h], tf.int32)
             else:
                 adj = tf.py_func(alist_fn, [h], tf.int32)
+            '''
             return get_readout_vel_eqvar(eqvar_network_fwd(h, num_layers, var_scope, adj, K))
     else:
         fwd = lambda h, i: get_readout_vel_eqvar(eqvar_network_fwd(h, num_layers, var_scope))

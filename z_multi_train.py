@@ -58,7 +58,7 @@ model_vars = utils.NBODY_MODELS[model_type]
 #channels[0] = 7
 channels = [6, 8, 16, 4, 3]
 channels[-1] = 2
-channels[0] = 2
+channels[0] = 3
 
 
 num_layers = len(channels) - 1
@@ -115,7 +115,7 @@ adj_list2 = tf.placeholder(tf.int32, shape=(num_rs_layers, None, 2), name='adj_l
 
 def alist_func(h_in): # for tf.py_func
     #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
-    return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
+    return nn.alist_to_indexlist(nn.get_kneighbor_alist_eqvar(h_in, K))
 
 
 #=============================================================================
@@ -125,7 +125,7 @@ def alist_func(h_in): # for tf.py_func
 if use_graph:
     margs = (X_input[0], num_layers, adj_list, K)
     multi_args_val = (X_input, num_rs_layers, num_layers, alist_func, K)
-    multi_args = (X_input, num_rs_layers, num_layers, adj_list, K)
+    multi_args = (X_input, num_rs_layers, num_layers, adj_list2, K)
 else:
     margs = (X_input[0], num_layers)
     multi_args_val = (X_input, num_rs_layers, num_layers)
@@ -186,16 +186,17 @@ np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
     # data batching
     #print('STEP: {}'.format(step))
-    _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
+    _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=False)
     #_x_batch = _x_batch[...,:-1]
     np.random.shuffle(rs_tups)
     for tup in rs_tups:
         # data inputs
-        x_in    = _x_batch[tup]
+        x_in    = _x_batch[[tup]]
         fdict = {X_input: x_in}
 
         # feed graph model data
         if use_graph:
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
             alist = alist_func(x_in[0])
             fdict[adj_list] = alist
 
@@ -214,12 +215,12 @@ for step in range(num_iters):
     #print('SCHED STEP: {}'.format(step))
 
     # data batching: (num_rs, mb_size, N, 7)
-    _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
+    _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=False)
     #_x_batch = _x_batch[...,:-1]
 
     # feed data
     x_in = _x_batch
-    fdict = {X_rs: x_in}
+    fdict = {X_input: x_in}
 
     if use_graph:
         adj_lists = np.array([alist_func(x_in[i]) for i in range(num_rs_layers)])
