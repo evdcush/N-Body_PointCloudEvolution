@@ -362,27 +362,6 @@ def load_thinkpad_eqvar(redshifts, norm_coo=True, norm_vel=False):
         X[...,0] = X[...,0] / 32.0
     return X
 
-def load_rs_old_npy_data(redshifts, norm_coo=False, norm_vel=False):
-    """ Loads new uniformly timestep data serialized as np array of np.float32
-    Args:
-        redshifts (list int): list of indices into redshifts in order
-        norm_coo: normalize coordinate values to [0,1]
-        norm_vel: normalize vel values (only norm'd if coord norm'd)
-    """
-    n_P = 32
-    X_all_rs = load_npy_data(n_P, normalize=False)[redshifts]
-    num_rs, N, M, D = X_all_rs.shape
-    X = np.zeros((num_rs, N, M, D+1)).astype(np.float32)
-    X[...,:-1] = X_all_rs
-    X_all_rs = None # reduce memory overhead
-
-    for idx, z_idx in enumerate(redshifts):
-        z_rs = REDSHIFTS[z_idx]
-        print('broadcasted rs: {}'.format(z_rs))
-        X[idx,:,:,-1] = z_rs
-    if norm_coo:
-        X[...,:3] = X[...,:3] / 32.0
-    return X
 
 def load_rs_npy_data(redshifts, norm_coo=False, norm_vel=False, old_dataset=False):
     """ Loads new uniformly timestep data serialized as np array of np.float32
