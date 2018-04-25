@@ -91,7 +91,7 @@ def get_rad_sparse_batch_mat(x, R=RAD):
 
     for i in range(1, b):
         # get coo, offset indices
-        coo = get_rad_sparse_mat(x[0], R)
+        coo = get_rad_sparse_mat(x[i], R)
         row = coo.row + (N * i)
         col = coo.col + (N * i)
         datum = coo.data
@@ -126,13 +126,15 @@ def get_rad_sparse_batch_tensor(x, R=RAD):
 def tf_sparse_matmul(sparse_mat, x):
     return tf.sparse_tensor_dense_matmul(sparse_mat, x)
 
-spt1 = get_rad_sparse_tensor(np.copy(X[1]))
-y1 = tf_sparse_matmul(spt1, np.copy(X[1])).eval()
+j = 1
+spt1 = get_rad_sparse_tensor(np.copy(X[j]))
+y1 = tf_sparse_matmul(spt1, np.copy(X[j])).eval()
 
 mb_size = 3
 batch_spt = get_rad_sparse_batch_tensor(np.copy(X[:mb_size]))
-batch_x = np.copy(X[:mb_size]).reshape(mb_size*N, 6)
-batch_y = tf.sparse_tensor_dense_matmul(batch_spt, batch_x)
+batch_x = np.copy(X[:mb_size]).reshape(-1,6)
+batch_y = tf.sparse_tensor_dense_matmul(batch_spt, batch_x).eval()
+y2 = batch_y.reshape(mb_size, N, 6)
 
 # np.allclose(y1.eval(), y1_control.eval(), atol=1e-06) == True # atol default 1e-08
 # np.sum(np.abs(y1.eval() - y1_control.eval())) == 0.01489
