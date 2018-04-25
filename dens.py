@@ -4,6 +4,7 @@ import numpy as np
 import sklearn.neighbors as skn
 from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
 import tensorflow as tf
+from scipy.sparse import coo_matrix, csr_matrix
 
 import utils
 import nn
@@ -20,23 +21,15 @@ num_rs_layers = num_rs - 1
 X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True)[...,:-1]
 Y = X[1]
 X = X[0]
+
 print('X.shape: {}'.format(X.shape))
 RAD = 0.08
 
 def rad_fn(h_in, rad=RAD):
     return radius_neighbors_graph(h_in[...,:3], rad, include_self=True).astype(np.float32)
 
-#
-R = RAD
-j = 375
-x = X[j]
-
 N = 32**3
 sess = tf.InteractiveSession()
-
-x_r = rad_fn(np.copy(x), R)
-r_indptr = x_r.indptr
-r_indices = x_r.indices
 
 
 def convert_sparse_matrix_to_sparse_tensor(X):
@@ -72,38 +65,74 @@ def get_rad_sparse_tensor(x, R=RAD):
     rad_sparse_tensor = tf.SparseTensor(idx, coo_data, rad_coo.shape)
     return rad_sparse_tensor
 
+def get_rad_sparse_mat(x, R=RAD):
+    N = x.shape[0]
+    # just easier to diff indptr for now
+    # get csr
+    rad_csr = rad_fn(x, R)
+    rad_coo = rad_csr.tocoo()
 
+    # diff data for matmul op select
+    div_diff = np.diff(rad_csr.indptr)
+    coo_data_divisor = np.repeat(div_diff, div_diff).astype(np.float32)
+    coo_data = rad_coo.data / coo_data_divisor
+
+    new_coo = coo_matrix((coo_data, (rad_coo.row, rad_coo.col)), shape=(N,N)).astype(np.float32)
+    return new_coo
+
+
+def get_rad_sparse_batch_mat(x, R=RAD):
+    b, N = x.shape[:2]
+    # just easier to diff indptr for now
+    coo = get_rad_sparse_mat(x[0], R)
+    rows = coo.row
+    cols = coo.col
+    data = coo.data
+
+    for i in range(1, b):
+        # get coo, offset indices
+        coo = get_rad_sparse_mat(x[0], R)
+        row = coo.row + (N * i)
+        col = coo.col + (N * i)
+        datum = coo.data
+
+        # concat to what we have
+        rows = np.concatenate((rows, row))
+        cols = np.concatenate((cols, col))
+        data = np.concatenate((data, datum))
+
+    coo = coo_matrix((data, (rows, cols)), shape=(N*b, N*b)).astype(np.float32)
+    return coo
+
+
+def get_rad_sparse_tensor(x, R=RAD):
+    # get rad sparse coo
+    coo = get_rad_sparse_mat(x, R)
+
+    # construct sparse tensor
+    idx = np.mat([coo.row, coo.col]).transpose()
+    rad_sparse_tensor = tf.SparseTensor(idx, coo.data, coo.shape)
+    return rad_sparse_tensor
+
+def get_rad_sparse_batch_tensor(x, R=RAD):
+    # get rad sparse coo
+    coo = get_rad_sparse_batch_mat(x, R)
+
+    # construct sparse tensor
+    idx = np.mat([coo.row, coo.col]).transpose()
+    rad_sparse_tensor = tf.SparseTensor(idx, coo.data, coo.shape)
+    return rad_sparse_tensor
 
 def tf_sparse_matmul(sparse_mat, x):
     return tf.sparse_tensor_dense_matmul(sparse_mat, x)
 
-r1 = rad_fn(np.copy(X[1]), R)
-r2 = rad_fn(np.copy(X[2]), R)
-r3 = rad_fn(np.copy(X[3]), R)
-r4 = rad_fn(np.copy(X[4]), R)
+spt1 = get_rad_sparse_tensor(np.copy(X[1]))
+y1 = tf_sparse_matmul(spt1, np.copy(X[1])).eval()
 
-
-r1coo = r1.tocoo()
-r1row = r1coo.row
-r1col = r1coo.col
-
-#r2coo = r2.tocoo()
-#r2row = r2coo.row
-#r2col = r2coo.col
-
-#print('r1row.shape: {}, r2row.shape: {}'.format(r1row.shape, r2row.shape))
-
-idx1 = np.mat([r1row, r1col]).transpose()
-#idx2 = np.mat([r2row, r2col]).transpose()
-
-spt1 = tf.SparseTensor(idx1, r1coo.data, r1coo.shape)
-#spt2 = tf.SparseTensor(idx2, r2coo.data, r2coo.shape)
-diffs = np.diff(r1.indptr).astype(np.float32)[:,None]
-y1 = tf.sparse_tensor_dense_matmul(spt1, np.copy(X[1])) / diffs
-
-
-spt1_control = get_rad_sparse_tensor(np.copy(X[1]))
-y1_control = tf_sparse_matmul(spt1_control, np.copy(X[1]))
+mb_size = 3
+batch_spt = get_rad_sparse_batch_tensor(np.copy(X[:mb_size]))
+batch_x = np.copy(X[:mb_size]).reshape(mb_size*N, 6)
+batch_y = tf.sparse_tensor_dense_matmul(batch_spt, batch_x)
 
 # np.allclose(y1.eval(), y1_control.eval(), atol=1e-06) == True # atol default 1e-08
 # np.sum(np.abs(y1.eval() - y1_control.eval())) == 0.01489
