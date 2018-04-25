@@ -2,11 +2,14 @@ import os, code, sys, time
 
 import numpy as np
 from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
+from scipy.sparse import coo_matrix
 import tensorflow as tf
 
 import utils
 from utils import VAR_SCOPE, VAR_SCOPE_MULTI
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+
+RADIUS = 0.08
 
 #=============================================================================
 # LAYER OPS
@@ -278,7 +281,14 @@ def multi_eqvar_model_fwd_val(x_in, num_rs_layers, num_layers, *args, activation
 #=============================================================================
 def network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    layer = kgraph_layer if len(args) != 0 else set_layer
+    if len(args) > 0:
+        if len(args) == 1:
+            layer = radgraph_layer
+        else:
+            layer = kgraph_layer
+    else:
+        layer = set_layer
+    #layer = kgraph_layer if len(args)  0 else set_layer
     H = x_in
     for i in range(num_layers):
         H = layer(H, i, var_scope, *args)
@@ -433,6 +443,68 @@ def get_kneighbor_alist_eqvar(X_in, K=14):
         graph_idx = graph_idx.reshape([N, K]) #+ (N * i)  # offset idx for batches
         adj_list[i] = graph_idx
     return adj_list
+
+#=============================================================================
+# RADIUS graph ops
+#=============================================================================
+
+def radius_graph_fn(x, R):
+    """ Wrapper for sklearn.Neighbors.radius_neighbors_graph function
+
+    Args:
+        x (ndarray): input data of shape (N, D), where x[:,:3] == coordinates
+        R (float): radius for search
+    """
+    return radius_neighbors_graph(x[...,:3], R, include_self=True).astype(np.float32)
+
+def get_radNeighbor_coo(X_in, R=RADIUS):
+    N = X_in.shape[0]
+    # just easier to diff indptr for now
+    # get csr
+    rad_csr = radius_graph_fn(X_in, R)
+    rad_coo = rad_csr.tocoo()
+
+    # diff data for matmul op select
+    div_diff = np.diff(rad_csr.indptr)
+    coo_data_divisor = np.repeat(div_diff, div_diff).astype(np.float32)
+    coo_data = rad_coo.data / coo_data_divisor
+
+    coo = coo_matrix((coo_data, (rad_coo.row, rad_coo.col)), shape=(N, N)).astype(np.float32)
+    return coo
+
+def get_radNeighbor_coo_batch(X_in, R=RADIUS):
+    b, N = X_in.shape[:2]
+
+    # accumulators
+    coo = get_radNeighbor_coo(X_in[0], R)
+    rows = coo.row
+    cols = coo.col
+    data = coo.data
+
+    for i in range(1, b):
+        # get coo, offset indices
+        coo = get_radNeighbor_coo(X_in[i], R)
+        row = coo.row + (N * i)
+        col = coo.col + (N * i)
+        datum = coo.data
+
+        # concat to what we have
+        rows = np.concatenate((rows, row))
+        cols = np.concatenate((cols, col))
+        data = np.concatenate((data, datum))
+
+    coo = coo_matrix((data, (rows, cols)), shape=(N*b, N*b)).astype(np.float32)
+    return coo
+
+def get_radNeighbor_sparseT_attributes(coo):
+    idx = np.mat([coo.row, coo.col]).transpose()
+    return idx, coo.data, coo.shape
+
+def get_radius_graph_input(X_in, R=RADIUS):
+    coo = get_radNeighbor_coo_batch(X_in, R)
+    sparse_tensor_attributes = get_radNeighbor_sparseT_attributes(coo)
+    return sparse_tensor_attributes
+
 
 
 #=============================================================================
