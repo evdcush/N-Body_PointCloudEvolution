@@ -49,8 +49,8 @@ model_type = pargs['model_type'] # 0: set, 1: graph
 model_vars = utils.NBODY_MODELS[model_type]
 
 # network kernel sizes and depth
-channels = model_vars['channels']
-#channels = [6, 8, 16, 4, 3]
+#channels = model_vars['channels']
+channels = [6, 8, 16, 4, 3]
 channels[-1] = 6
 channels[0] = 7
 num_layers = len(channels) - 1
@@ -134,7 +134,7 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.8
+gpu_frac = 0.85
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())

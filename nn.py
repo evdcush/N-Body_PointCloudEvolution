@@ -478,7 +478,7 @@ def radius_graph_fn(x, R):
         x (ndarray): input data of shape (N, D), where x[:,:3] == coordinates
         R (float): radius for search
     """
-    return radius_neighbors_graph(x[...,:3], R, include_self=True).astype(np.float32)
+    return radius_neighbors_graph(x[:,:3], R, include_self=True).astype(np.float32)
 
 def get_radNeighbor_coo(X_in, R=RADIUS):
     N = X_in.shape[0]
