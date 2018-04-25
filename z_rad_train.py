@@ -49,8 +49,8 @@ model_type = pargs['model_type'] # 0: set, 1: graph
 model_vars = utils.NBODY_MODELS[model_type]
 
 # network kernel sizes and depth
-#channels = model_vars['channels']
-channels = [6, 8, 16, 4, 3]
+#channels = model_vars['channels'] # OOM with sparse graph
+channels = [6, 32, 16, 8, 3]#, 8, 16, 12, 16, 8, 3]
 channels[-1] = 6
 channels[0] = 7
 num_layers = len(channels) - 1
@@ -119,7 +119,7 @@ H_out  = nn.model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
 
 # error and optimizer
-error = nn.pbc_loss(X_pred, X_truth[...,:-1])
+error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 val_error = nn.pbc_loss(X_pred, X_truth[...,:-1]) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
@@ -156,9 +156,8 @@ print('\nTraining:\n============================================================
 # START
 for step in range(num_iters):
     # data batching
-    #_x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
+    _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
     #_x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
-    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False)
     x_in    = _x_batch[0]
     x_truth = _x_batch[1]
     fdict = {X_input: x_in, X_truth: x_truth}
