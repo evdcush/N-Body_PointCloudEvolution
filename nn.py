@@ -118,9 +118,11 @@ def rad_graph_conv(h, spT):
         h: tensor of shape (b, N, D)
         spT: sparse_tensor of shape (b*N, b*N)
     """
-    out_shape = h.shape
-    h_flat = tf.reshape(h, (-1, out_shape[-1]))
-    rad_conv = tf.reshape(tf.sparse_tensor_dense_matmul(spT, h_flat), out_shape)
+    dims = tf.shape(h)
+    #mb = dims[0]; n  = dims[1]; d  = dims[2];
+    #rdim = [mb,n,d]
+    h_flat = tf.reshape(h, (-1, dims[-1]))
+    rad_conv = tf.reshape(tf.sparse_tensor_dense_matmul(spT, h_flat), dims)
     return rad_conv
 
 def rad_graph_layer(h, layer_idx, var_scope, spT):
