@@ -123,18 +123,51 @@ def get_rad_sparse_batch_tensor(x, R=RAD):
     rad_sparse_tensor = tf.SparseTensor(idx, coo.data, coo.shape)
     return rad_sparse_tensor
 
+def get_rad_sparse_batch_tensor_FROMCOO(coo, R=RAD):
+    # get rad sparse coo
+    #coo = get_rad_sparse_batch_mat(x, R)
+
+    # construct sparse tensor
+    idx = np.mat([coo.row, coo.col]).transpose()
+    rad_sparse_tensor = tf.SparseTensor(idx, coo.data, coo.shape)
+    return rad_sparse_tensor
+
 def tf_sparse_matmul(sparse_mat, x):
     return tf.sparse_tensor_dense_matmul(sparse_mat, x)
+
+def tf_sparse_batch_matmul(sparse_mat, x):
+    out_shape = x.shape
+    xflat = tf.reshape(x, (-1, out_shape[-1]))
+    out = tf.sparse_tensor_dense_matmul(sparse_mat, xflat)
+    return tf.reshape(out, out_shape)
 
 j = 1
 spt1 = get_rad_sparse_tensor(np.copy(X[j]))
 y1 = tf_sparse_matmul(spt1, np.copy(X[j])).eval()
 
-mb_size = 3
-batch_spt = get_rad_sparse_batch_tensor(np.copy(X[:mb_size]))
-batch_x = np.copy(X[:mb_size]).reshape(-1,6)
-batch_y = tf.sparse_tensor_dense_matmul(batch_spt, batch_x).eval()
-y2 = batch_y.reshape(mb_size, N, 6)
+mb_size = 8
+#batch_spt = get_rad_sparse_batch_tensor(np.copy(X[:mb_size]))
+#batch_x = np.copy(X[:mb_size]).reshape(-1,6)
+#batch_y = tf.sparse_tensor_dense_matmul(batch_spt, batch_x).eval()
+#y2 = batch_y.reshape(mb_size, N, 6)
+#y2 = tf_sparse_batch_matmul(batch_spt, np.copy(X[:mb_size])).eval()
+
+X_in = tf.placeholder(tf.float32, shape=(mb_size, N, 6), name='X_in')
+#S_in = tf.sparse_placeholder(tf.float32, shape=(mb_size*N, mb_size*N), name='S_in')
+S_in = tf.sparse_placeholder(tf.float32)
+
+#sparse_T = get_rad_sparse_batch_tensor_FROMCOO(S_in)
+
+sparse_batch_MM = tf_sparse_batch_matmul(S_in, X_in)
+
+x_batch = X[:mb_size]
+#s_in = get_rad_sparse_batch_tensor(np.copy(x_batch)).eval()
+s_coo = get_rad_sparse_batch_mat(np.copy(x_batch))
+idx = np.mat([s_coo.row, s_coo.col]).transpose()
+s_in = (idx, s_coo.data, s_coo.shape)
+y2 = sess.run(sparse_batch_MM, feed_dict={X_in: x_batch, S_in: s_in})
+
+
 
 # np.allclose(y1.eval(), y1_control.eval(), atol=1e-06) == True # atol default 1e-08
 # np.sum(np.abs(y1.eval() - y1_control.eval())) == 0.01489
@@ -167,8 +200,6 @@ use `_, counts = np.unique(row, return_counts=True)` for your matmul div
    counts_broadcasted = np.repeat(counts, counts).astype(np.float32)
    coo_data = coo_data / counts_broadcasted
 
-
-
-
+# Scratch that, just diff on csr.indptr, its far simpler
 
 """
