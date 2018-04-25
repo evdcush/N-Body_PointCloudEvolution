@@ -109,6 +109,27 @@ def kgraph_layer(h, layer_idx, var_scope, alist, K):
     h_out = h_w + h_g
     return h_out
 
+def rad_graph_conv(h, spT):
+    """ graph conv for radius neighbors graph
+    NB: the sparse tensor for the radius graph has ALREADY been processed
+    such that the mean pooling is performed in the matmul
+
+    Args:
+        h: tensor of shape (b, N, D)
+        spT: sparse_tensor of shape (b*N, b*N)
+    """
+    out_shape = h.shape
+    h_flat = tf.reshape(h, (-1, out_shape[-1]))
+    rad_conv = tf.reshape(tf.sparse_tensor_dense_matmul(spT, h_flat), out_shape)
+    return rad_conv
+
+def rad_graph_layer(h, layer_idx, var_scope, spT):
+    W, Wg = utils.get_graph_layer_vars(layer_idx, var_scope=var_scope)
+    nn_graph = rad_graph_conv(h, spT)
+    h_w = linear(h, W)
+    h_g = linear(nn_graph, Wg)
+    h_out = h_w + h_g
+    return h_out
 
 #=============================================================================
 # Equivariant stuff
@@ -283,7 +304,7 @@ def network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     if len(args) > 0:
         if len(args) == 1:
-            layer = radgraph_layer
+            layer = rad_graph_layer
         else:
             layer = kgraph_layer
     else:
