@@ -82,16 +82,14 @@ def init_bias(k_in, k_out, name, restore=False):
     else:
         tf.get_variable(name, (k_out,), dtype=tf.float32, initializer=None)
 
-def init_vel_coeff():
+def init_vel_coeff(restore=False):
     """ scalar weight used in skip connection, for adjusting locations by
     velocity scaled by this coeff:
     h_out[...,:3] = h_out[...,:3] + x_in[...,:3] + vel_coeff*(x_in[...,3:])
     """
     #v_init = tf.glorot_normal_initializer()
-    v_init = tf.random_uniform_initializer(0,1)
-    #v_init2 = tf.random_uniform_initializer(0,1)
+    v_init = tf.random_uniform_initializer(0,1) if not restore else None
     tf.get_variable(VEL_COEFF_TAG, (1,), dtype=tf.float32, initializer=v_init)
-    #tf.get_variable(VEL_COEFF_TAG + '2', (1,), dtype=tf.float32, initializer=v_init2)
     print('INIT VCOEFF')
 
 # Model init wrappers ========================================================
@@ -114,7 +112,7 @@ def init_params(channels, graph_model=False, vel_coeff=False,
             else: # set
                 init_bias(*ktup, BIAS_TAG.format(idx), restore=restore)
         if vel_coeff: # scalar weight for simulating timestep, only one
-            init_vel_coeff()
+            init_vel_coeff(restore)
 
 def init_eqvar_params(channels, vel_coeff=False,
                 var_scope=VAR_SCOPE, seed=None, restore=False):
@@ -211,9 +209,11 @@ There were a few things wrong with this function, and it's usage at caller level
     loaded to the wrong redshift model
  - take a look at the git diff before the commit tagged with 'UTILS.LMG'
    shit was fucked
+
+# Have confirmed now that variables do change value after saver.restore
 '''
 #=============================================================================
-def load_multi_graph(sess, vscopes, num_layers, save_paths, use_graph=False):
+def load_multi_graph(sess, vscopes, num_layers, save_paths, use_graph=False, vel_coeff=False):
     #for vidx, vscope in enumerate(vscopes):
     for spath, vscope in zip(save_paths, vscopes):
         sdict = {}
@@ -230,6 +230,9 @@ def load_multi_graph(sess, vscopes, num_layers, save_paths, use_graph=False):
                 W, B = get_layer_vars(layer_idx, vscope)
                 sdict[wtag] = W
                 sdict[btag] = B
+            if vel_coeff:
+                vtag = vscope + '/' + VEL_COEFF_TAG
+                sdict[vtag] = get_vel_coeff(vscope)
         print('loading pretrained params for scope {} @ {}'.format(vscope, spath))
         saver = tf.train.Saver(sdict)
         path = tf.train.get_checkpoint_state(spath)

@@ -178,7 +178,7 @@ if restore_single: #
     print('restore from: {}'.format(mp))
     mpaths = [mp.format(tup[0], tup[1]) for tup in rs_tups]
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    utils.load_multi_graph(sess, vscopes, num_layers, mpaths, use_graph=init_use_graph)
+    utils.load_multi_graph(sess, vscopes, num_layers, mpaths, use_graph=init_use_graph, vel_coeff=vcoeff)
  # restore previously trained aggregate model
 elif restore_agg:
     utils.load_graph(sess, model_path)
