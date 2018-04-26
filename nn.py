@@ -109,6 +109,27 @@ def kgraph_layer(h, layer_idx, var_scope, alist, K):
     h_out = h_w + h_g
     return h_out
 
+def kgraph_layer_noPop(h, layer_idx, var_scope, alist, K):
+    """ Graph layer for KNN
+    Graph layer has two sets of weights for data:
+      W: for connections to all other particles
+     Wg: for connections to nearest neighbor particles
+    Unlike the set layer, no biases are used. Have tried h_w + h_g + B, but
+    error was worse.
+    Args:
+        h: data tensor, (mb_size, N, k_in)
+        layer_idx (int): layer index for params
+        var_scope (str): variable scope for get variables from graph
+        alist: adjacency index list tensor (*, 2), of tf.int32
+        K (int): number of nearest neighbors in KNN
+    RETURNS: (mb_size, N, k_out)
+    """
+    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
+    graph_mu = kgraph_conv(h, alist, K)
+
+    h_out = left_mult(h - graph_mu, W) + B
+    return h_out
+
 def rad_graph_conv(h, spT):
     """ graph conv for radius neighbors graph
     NB: the sparse tensor for the radius graph has ALREADY been processed
@@ -131,6 +152,14 @@ def rad_graph_layer(h, layer_idx, var_scope, spT):
     h_w = linear(h, W)
     h_g = linear(nn_graph, Wg)
     h_out = h_w + h_g
+    return h_out
+
+def rad_graph_layer_noPop(h, layer_idx, var_scope, spT):
+    #W, Wg = utils.get_graph_layer_vars(layer_idx, var_scope=var_scope)
+    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
+    graph_mu = rad_graph_conv(h, spT)
+
+    h_out = left_mult(h - graph_mu, W) + B
     return h_out
 
 #=============================================================================
@@ -306,9 +335,11 @@ def network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     if len(args) > 0:
         if len(args) == 1:
-            layer = rad_graph_layer
+            #layer = rad_graph_layer
+            layer = rad_graph_layer_noPop
         else:
-            layer = kgraph_layer
+            #layer = kgraph_layer
+            layer = kgraph_layer_noPop
     else:
         layer = set_layer
     #layer = kgraph_layer if len(args)  0 else set_layer
@@ -485,6 +516,7 @@ def get_radNeighbor_coo(X_in, R=RADIUS):
     # just easier to diff indptr for now
     # get csr
     rad_csr = radius_graph_fn(X_in, R)
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     rad_coo = rad_csr.tocoo()
 
     # diff data for matmul op select

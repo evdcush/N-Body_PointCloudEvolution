@@ -13,7 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--particles', '-p', default=32,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
 parser.add_argument('--redshifts', '-z', default=[18,19], nargs='+', type=int, help='redshift tuple, predict z[1] from z[0]')
 parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
-parser.add_argument('--knn',       '-k', default=14,          type=int, help='number of nearest neighbors for graph model')
+parser.add_argument('--graph_var', '-k', default=0.03,          type=float, help='number of nearest neighbors for graph model')
 parser.add_argument('--restore_single', '-rs', default=0,          type=int,  help='resume training from serialized params')
 parser.add_argument('--restore_agg',    '-ra', default=0,          type=int,  help='resume training from serialized params')
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
@@ -166,8 +166,7 @@ sess.run(tf.global_variables_initializer())
 # RESTORE
  # restore individually trained params for new aggregate model
 if restore_single: #
-    #mp = './Model/Agg_ZG_{}-{}/Session/'
-    mp = './Model/Agg3_ZG_7-19/Session/'
+    mp = './Model/Rad_short_ZG_{}-{}/Session/'
     print('restore from: {}'.format(mp))
     #mpaths = [mp.format(tup[0], tup[1]) for tup in rs_tups[-2:]]
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use

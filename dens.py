@@ -202,4 +202,8 @@ use `_, counts = np.unique(row, return_counts=True)` for your matmul div
 
 # Scratch that, just diff on csr.indptr, its far simpler
 
+# Num neighbors for radius graph:
+ - number of neighbors can be extreme, on one sample (rad 0.04, 15 19), the max num neighbors
+   was 763, while the min was 1 (itself), and median (19)
+
 """

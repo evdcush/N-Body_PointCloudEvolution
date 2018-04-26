@@ -51,6 +51,7 @@ model_vars = utils.NBODY_MODELS[model_type]
 # network kernel sizes and depth
 #channels = model_vars['channels'] # OOM with sparse graph
 channels = [6, 32, 16, 8, 3]#, 8, 16, 12, 16, 8, 3]
+#channels = [6, 8, 12, 8, 4, 8, 12, 16, 8, 3]#, 8, 16, 12, 16, 8, 3]
 channels[-1] = 6
 channels[0] = 7
 num_layers = len(channels) - 1
@@ -89,7 +90,8 @@ restore = pargs['restore'] == 1
 # init network params
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params(channels, graph_model=use_graph, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
+#utils.init_params(channels, graph_model=use_graph, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
+utils.init_params(channels, graph_model=False, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
 
 
 # INPUTS

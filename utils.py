@@ -697,7 +697,7 @@ def save_pyfiles(model_dir):
     save_path = model_dir + '.original_files/'
     make_dirs([save_path])
     #file_names = ['train.py', 'utils.py', 'nn.py', 'z_multi_train.py', 'multi_train.py']
-    file_names = ['z_train.py', 'utils.py', 'nn.py', 'z_multi_train.py']
+    file_names = ['z_train.py', 'utils.py', 'nn.py', 'z_multi_train.py', 'z_rad_train.py']
     for fname in file_names:
         src = './{}'.format(fname)
         dst = '{}{}'.format(save_path, fname)
