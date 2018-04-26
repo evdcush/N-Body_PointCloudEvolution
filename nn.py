@@ -413,13 +413,13 @@ def zuni_multi_single_fwd(x_rs, num_layers, rs_adj_list, K, var_scopes, vel_coef
         h = fwd(h_in, rs_adj_list[i], vscope)
     return h
 
-def aggregate_multiStep_fwd(x_rs, num_layers, rs_adj_list, K, var_scopes, vel_coeff=False):
+def aggregate_multiStep_fwd(x_rs, num_layers, var_scopes, nn_graph, *args, vel_coeff=False):
     """ Multi-step function for aggregate model
     Aggregate model uses a different sub-model for each redshift
     """
     # Helpers
     concat_rs = lambda h, i: tf.concat((h, x_rs[i,:,:,-1:]), axis=-1)
-    fwd = lambda h, i: get_readout_vel(model_fwd(h, num_layers, rs_adj_list[i], K, var_scope=var_scopes[i], vel_coeff=vel_coeff))
+    fwd = lambda h, i: get_readout_vel(model_fwd(h, num_layers, nn_graph[i], *args, var_scope=var_scopes[i], vel_coeff=vel_coeff))
     loss = lambda h, x: pbc_loss_vel(h, x[...,:-1])
 
     # forward pass
@@ -431,23 +431,23 @@ def aggregate_multiStep_fwd(x_rs, num_layers, rs_adj_list, K, var_scopes, vel_co
         error += loss(h, x_rs[i+1])
     return h, error
 
-def aggregate_multiStep_fwd_validation(x_rs, num_layers, adj_fn, K, var_scopes, vel_coeff=False):
+def aggregate_multiStep_fwd_validation(x_rs, num_layers, var_scopes, graph_fn, *args, vel_coeff=False):
     """ Multi-step function for aggregate model
     Aggregate model uses a different sub-model for each redshift
     """
     preds = []
     # Helpers
     concat_rs = lambda h, i: tf.concat((h, x_rs[i,:,:,-1:]), axis=-1)
-    fwd = lambda h, a, i: get_readout_vel(model_fwd(h, num_layers, a, K, var_scope=var_scopes[i], vel_coeff=vel_coeff))
+    fwd = lambda h, g, i: get_readout_vel(model_fwd(h, num_layers, g, *args, var_scope=var_scopes[i], vel_coeff=vel_coeff))
 
     # forward pass
-    adj = tf.py_func(adj_fn, [x_rs[0]], tf.int32)
+    adj = tf.py_func(graph_fn, [x_rs[0]], tf.int32)
     h = fwd(x_rs[0], adj, 0)
     preds.append(h)
     for i in range(1, len(var_scopes)):
         h_in = concat_rs(h, i)
-        adj = tf.py_func(adj_fn, [h_in], tf.int32)
-        h = fwd(h_in, adj, i)
+        g = tf.py_func(graph_fn, [h_in], tf.int32)
+        h = fwd(h_in, g, i)
         preds.append(h)
     return preds
 
