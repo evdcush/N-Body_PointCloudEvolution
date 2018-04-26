@@ -87,7 +87,7 @@ restore = restore_agg or restore_single
 # save test data
 #utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 
-
+init_use_graph = False # disgusting, dirty fix. do it right
 #=============================================================================
 # initialize graph and placeholders
 #=============================================================================
@@ -99,7 +99,7 @@ vscopes = [utils.VAR_SCOPE_SINGLE_MULTI.format(tup[0], tup[1]) for tup in rs_tup
 #z_idx = -3
 #utils.init_zuni_params_multi(channels, vscopes[z_idx:], graph_model=use_graph, restore=True, vel_coeff=vcoeff)
 #utils.init_zuni_params_multi(channels, vscopes[0:z_idx], graph_model=use_graph, restore=False, vel_coeff=vcoeff)
-utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=restore, vel_coeff=vcoeff)
+utils.init_zuni_params_multi(channels, vscopes, graph_model=init_use_graph, restore=restore, vel_coeff=vcoeff)
 
 
 # INPUTS
@@ -118,11 +118,10 @@ def graph_func(h_in): # for tf.py_func
     #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
     return nn.get_radius_graph_input(h_in, G)
 
+''' # Cannot use tf.py_func to wrap function that returns attributes for sparse tensor
 def graph_to_tensor_func(h_in):
     return tf.SparseTensor(nn.get_radius_graph_input(h_in, G))
-
-# multi stuff
-
+'''
 
 #=============================================================================
 # Model predictions and optimizer
@@ -132,8 +131,19 @@ def graph_to_tensor_func(h_in):
 X_pred, error = nn.aggregate_multiStep_fwd(X_rs, num_layers, vscopes, graph_in, vel_coeff=vcoeff)
 
  # Validation
-X_pred_val = nn.aggregate_multiStep_fwd_validation(X_rs, num_layers, vscopes, graph_to_tensor_func, vel_coeff=vcoeff)
+val_x_in    = tf.placeholder(tf.float32, shape=data_shape)
+val_x_pred  = tf.placeholder(tf.float32, shape=data_shape[:-1] + (6,))
+val_x_truth = tf.placeholder(tf.float32, shape=data_shape)
 
+val_g_in = tf.sparse_placeholder(tf.float32)
+
+def val_func(i):
+    h_out = nn.model_fwd(val_x_in, num_layers, val_g_in, vel_coeff=vcoeff, var_scope=vscopes[i])
+    val_pred = nn.get_readout_vel(h_out)
+    return val_pred
+
+#X_pred_val = val_func()
+val_error = nn.pbc_loss(val_x_pred, val_x_truth[...,:-1])
 
 # ==== Error and optimizer
  # Training
@@ -143,8 +153,8 @@ train = tf.train.AdamOptimizer(learning_rate, name='AdamMulti').minimize(error)
 
  # Validation
 #val_error = nn.pbc_loss(X_pred_val, X_rs[-1,:,:,:-1]) # since training loss fn not always same
-val_error = nn.pbc_loss(X_pred_val[-1], X_rs[-1,:,:,:-1]) # since training loss fn not always same
-ground_truth_error = nn.pbc_loss(X_rs[-2,:,:,:-1], X_rs[-1,:,:,:-1])
+#val_error = nn.pbc_loss(X_pred_val[-1], X_rs[-1,:,:,:-1]) # since training loss fn not always same
+#ground_truth_error = nn.pbc_loss(X_rs[-2,:,:,:-1], X_rs[-1,:,:,:-1])
 
 
 #=============================================================================
@@ -166,9 +176,9 @@ sess.run(tf.global_variables_initializer())
 if restore_single: #
     mp = './Model/Rad_short_ZG_{}-{}/Session/'
     print('restore from: {}'.format(mp))
-    mpaths = [mp.format(tup[0], tup[1]) for tup in rs_tups[-2:]]
+    mpaths = [mp.format(tup[0], tup[1]) for tup in rs_tups]
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    utils.load_multi_graph(sess, vscopes, num_layers, mpaths, use_graph=use_graph)
+    utils.load_multi_graph(sess, vscopes, num_layers, mpaths, use_graph=init_use_graph)
  # restore previously trained aggregate model
 elif restore_agg:
     utils.load_graph(sess, model_path)
@@ -225,31 +235,53 @@ num_test_samples = X_test.shape[1]
 #test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_predictions  = np.zeros((num_rs_layers,) + X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
-inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
+#inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 
 print('\nEvaluation:\n==============================================================================')
 for j in range(X_test.shape[1]):
+
     # validation inputs
-    x_in   = X_test[:, j:j+1] # (1, n_P, 6)
-    fdict = {X_rs: x_in}
+    x_in   = X_test[0, j:j+1] # (1, n_P, 6)
+    x_true = X_test[-1,j:j+1]
 
     # validation outputs
+    '''
     vals = sess.run([X_pred_val, val_error, ground_truth_error], feed_dict=fdict)
     x_pred, v_error, truth_error = vals
+    for idx, x in enumerate(x_pred):
+        test_predictions[idx,j] = x[0]
     test_loss_history[j] = v_error
     inputs_loss_history[j] = truth_error
     #test_predictions[j] = x_pred[0]
-    for idx, x in enumerate(x_pred):
-        test_predictions[idx,j] = x[0]
+    '''
+    concat_rs = lambda h, i: np.concatenate((h, X_test[i, j:j+1, -1:]), axis=-1)
 
-    print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
+    val_graph = graph_func(x_in)
+    x_pred = sess.run(val_func(0), feed_dict={val_x_in: x_in, val_g_in: val_graph})
+    test_predictions[0, j] = x_pred[0]
+
+    for z in range(1, num_rs_layers):
+        print('Val scope: {}'.format(vscope[z]))
+        x_in = concat_rs(x_pred, z)
+        val_graph = graph_func(x_pred)
+        x_pred = sess.run(val_func(z), feed_dict={val_x_in: x_in, val_g_in: val_graph})
+        test_predictions[0, j] = x_pred[0]
+
+    v_error = sess.run(val_error, feed_dict={val_x_pred: x_pred, val_x_truth: x_true})
+
+    print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error))
+
+
+
+
+    #print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
 
 # median test error
 test_median = np.median(test_loss_history)
-inputs_median = np.median(inputs_loss_history)
-#print('test median: {}'.format(test_median))
+#inputs_median = np.median(inputs_loss_history)
+print('test median: {}'.format(test_median))
 #print('test median: {}, input median: {}'.format(test_median, inputs_median))
-print('{:<12} median: {}, {}'.format(model_name, test_median, inputs_median))
+#print('{:<12} median: {}, {}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)

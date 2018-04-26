@@ -201,9 +201,21 @@ def load_graph(sess, save_dir):
     path = tf.train.get_checkpoint_state(save_dir)
     saver.restore(sess, path.model_checkpoint_path)
 
+
+#=============================================================================
+'''
+There were a few things wrong with this function, and it's usage at caller level:
+ - firstly, it was only loading pretrained weights from the first RS tuple (3-7)
+ - but it was also assigning these params to the final RS tuple (15-19)
+    So both only one set of trained params was being loaded, and it was being
+    loaded to the wrong redshift model
+ - take a look at the git diff before the commit tagged with 'UTILS.LMG'
+   shit was fucked
+'''
+#=============================================================================
 def load_multi_graph(sess, vscopes, num_layers, save_dir, use_graph=False):
     #for vidx, vscope in enumerate(vscopes):
-    for vscope in vscopes:
+    for vidx, vscope in enumerate(vscopes):
         sdict = {}
         for layer_idx in range(num_layers):
             if use_graph:
@@ -218,12 +230,10 @@ def load_multi_graph(sess, vscopes, num_layers, save_dir, use_graph=False):
                 W, B = get_layer_vars(layer_idx, vscope)
                 sdict[wtag] = W
                 sdict[btag] = B
-
         #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        #path = tf.train.get_checkpoint_state(save_dir[vidx])
-    saver = tf.train.Saver(sdict)
-    path = tf.train.get_checkpoint_state(save_dir[0])
-    saver.restore(sess, path.model_checkpoint_path)
+        saver = tf.train.Saver(sdict)
+        path = tf.train.get_checkpoint_state(save_dir[vidx])
+        saver.restore(sess, path.model_checkpoint_path)
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 # END TF-related utils
