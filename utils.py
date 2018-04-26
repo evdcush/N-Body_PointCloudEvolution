@@ -213,9 +213,9 @@ There were a few things wrong with this function, and it's usage at caller level
    shit was fucked
 '''
 #=============================================================================
-def load_multi_graph(sess, vscopes, num_layers, save_dir, use_graph=False):
+def load_multi_graph(sess, vscopes, num_layers, save_paths, use_graph=False):
     #for vidx, vscope in enumerate(vscopes):
-    for vidx, vscope in enumerate(vscopes):
+    for spath, vscope in zip(save_paths, vscopes):
         sdict = {}
         for layer_idx in range(num_layers):
             if use_graph:
@@ -230,9 +230,10 @@ def load_multi_graph(sess, vscopes, num_layers, save_dir, use_graph=False):
                 W, B = get_layer_vars(layer_idx, vscope)
                 sdict[wtag] = W
                 sdict[btag] = B
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        print('loading pretrained params for scope {} @ {}'.format(vscope, spath))
         saver = tf.train.Saver(sdict)
-        path = tf.train.get_checkpoint_state(save_dir[vidx])
+        path = tf.train.get_checkpoint_state(spath)
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         saver.restore(sess, path.model_checkpoint_path)
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><

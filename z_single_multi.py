@@ -210,6 +210,7 @@ for step in range(num_iters):
     #adj_lists = np.array([alist_func(x_in[i]) for i in range(num_rs_layers)])
     graph_list = [graph_func(x_in[i]) for i in range(num_rs_layers)]
     fdict = {tensor: sparse_attribs for tensor, sparse_attribs in zip(graph_in, graph_list)}
+    fdict[X_rs] = x_in
 
     train.run(feed_dict=fdict)
 
@@ -254,22 +255,28 @@ for j in range(X_test.shape[1]):
     inputs_loss_history[j] = truth_error
     #test_predictions[j] = x_pred[0]
     '''
-    concat_rs = lambda h, i: np.concatenate((h, X_test[i, j:j+1, -1:]), axis=-1)
+    '''
+    def concat_rs(h, i):
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        cat = np.concatenate((h, X_test[i, j:j+1, :, -1:]), axis=-1)
+        return cat
+    '''
+    concat_rs = lambda h, i: np.concatenate((h, X_test[i, j:j+1, :, -1:]), axis=-1)
 
     val_graph = graph_func(x_in)
     x_pred = sess.run(val_func(0), feed_dict={val_x_in: x_in, val_g_in: val_graph})
     test_predictions[0, j] = x_pred[0]
 
     for z in range(1, num_rs_layers):
-        print('Val scope: {}'.format(vscope[z]))
+        #print('Val scope: {}'.format(vscopes[z]))
         x_in = concat_rs(x_pred, z)
-        val_graph = graph_func(x_pred)
+        val_graph = graph_func(x_in)
         x_pred = sess.run(val_func(z), feed_dict={val_x_in: x_in, val_g_in: val_graph})
-        test_predictions[0, j] = x_pred[0]
+        test_predictions[z, j] = x_pred[0]
 
     v_error = sess.run(val_error, feed_dict={val_x_pred: x_pred, val_x_truth: x_true})
 
-    print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error))
+    print('{:>3d}: {:.6f}'.format(j, v_error))
 
 
 
