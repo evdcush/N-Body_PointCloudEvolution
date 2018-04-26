@@ -51,7 +51,8 @@ model_type = pargs['model_type'] # 0: set, 1: graph
 model_vars = utils.NBODY_MODELS[model_type]
 
 # network kernel sizes and depth
-channels = model_vars['channels']
+rad_channels = [6, 32, 16, 8, 3]
+channels = rad_channels #model_vars['channels']
 channels[-1] = 6
 channels[0] = 7
 num_layers = len(channels) - 1
@@ -62,7 +63,7 @@ vcoeff = pargs['vel_coeff'] == 1
 
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
-K = pargs['knn'] # 14
+G = pargs['graph_var'] # 14
 threshold = 0.08
 
 #=============================================================================
@@ -95,8 +96,7 @@ restore = restore_agg or restore_single
 tf.set_random_seed(utils.PARAMS_SEED)
 vscopes = [utils.VAR_SCOPE_SINGLE_MULTI.format(tup[0], tup[1]) for tup in rs_tups]
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-#utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=(restore_single or restore_agg), vel_coeff=vcoeff)
-z_idx = -3
+#z_idx = -3
 #utils.init_zuni_params_multi(channels, vscopes[z_idx:], graph_model=use_graph, restore=True, vel_coeff=vcoeff)
 #utils.init_zuni_params_multi(channels, vscopes[0:z_idx], graph_model=use_graph, restore=False, vel_coeff=vcoeff)
 utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=restore, vel_coeff=vcoeff)
@@ -105,36 +105,31 @@ utils.init_zuni_params_multi(channels, vscopes, graph_model=use_graph, restore=r
 # INPUTS
 #data_shape = (None, num_particles**3, 6)
 data_shape = (None, num_particles**3, 7)
-X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
+X_rs = tf.placeholder(tf.float32, shape=(num_rs,) + data_shape)
 
 # ADJACENCY LIST
-alist_shape = (None, 2)
-adj_list = tf.placeholder(tf.int32, shape=alist_shape, name='adj_list')
+#alist_shape = (None, 2)
+#rs_adj_list = tf.placeholder(tf.int32, shape=(num_rs_layers,) + alist_shape)
+graph_in = tf.sparse_placeholder(tf.float32, shape=(num_rs_layers, None, None)) # MAY NOT WORK WITH EXPLICIT SHAPE ASSIGNMENT
 
 
-def alist_func(h_in): # for tf.py_func
+def graph_func(h_in): # for tf.py_func
     #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
-    return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
+    #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
+    return nn.get_radius_graph_input(h_in, G)
 
 # multi stuff
-rs_adj_list = tf.placeholder(tf.int32, shape=(num_rs_layers,) + alist_shape)
-X_rs = tf.placeholder(tf.float32, shape=(num_rs,) + data_shape)
+
 
 #=============================================================================
 # Model predictions and optimizer
 #=============================================================================
-# model fwd dispatch args
-if use_graph:
-    margs = (X_input, num_layers, adj_list, K)
-else:
-    margs = (X_input, num_layers)
-
 # ==== Network outputs
  # Train
-X_pred, error = nn.aggregate_multiStep_fwd(X_rs, num_layers, rs_adj_list, K, vscopes, vel_coeff=vcoeff)
+X_pred, error = nn.aggregate_multiStep_fwd(X_rs, num_layers, vscopes, graph_in, vel_coeff=vcoeff)
 
  # Validation
-X_pred_val = nn.aggregate_multiStep_fwd_validation(X_rs, num_layers, alist_func, K, vscopes, vel_coeff=vcoeff)
+X_pred_val = nn.aggregate_multiStep_fwd_validation(X_rs, num_layers, vscopes, graph_func, vel_coeff=vcoeff)
 
 
 # ==== Error and optimizer
@@ -168,9 +163,9 @@ sess.run(tf.global_variables_initializer())
 if restore_single: #
     mp = './Model/Rad_short_ZG_{}-{}/Session/'
     print('restore from: {}'.format(mp))
-    #mpaths = [mp.format(tup[0], tup[1]) for tup in rs_tups[-2:]]
+    mpaths = [mp.format(tup[0], tup[1]) for tup in rs_tups[-2:]]
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    utils.load_multi_graph(sess, vscopes[z_idx:], num_layers, [mp], use_graph=use_graph)
+    utils.load_multi_graph(sess, vscopes, num_layers, mpaths, use_graph=use_graph)
  # restore previously trained aggregate model
 elif restore_agg:
     utils.load_graph(sess, model_path)
@@ -197,8 +192,9 @@ for step in range(num_iters):
 
     # feed data
     x_in = _x_batch
-    adj_lists = np.array([alist_func(x_in[i]) for i in range(num_rs_layers)])
-    fdict = {X_rs: x_in, rs_adj_list:adj_lists}
+    #adj_lists = np.array([alist_func(x_in[i]) for i in range(num_rs_layers)])
+    graph_list = [graph_func(x_in[i]) for i in range(num_rs_layers)]
+    fdict = {X_rs: x_in, graph_in: graph_list}
 
     train.run(feed_dict=fdict)
 
@@ -238,7 +234,8 @@ for j in range(X_test.shape[1]):
     test_loss_history[j] = v_error
     inputs_loss_history[j] = truth_error
     #test_predictions[j] = x_pred[0]
-    for idx, x in enumerate(x_pred): test_predictions[idx,j] = x[0]
+    for idx, x in enumerate(x_pred):
+        test_predictions[idx,j] = x[0]
 
     print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
 
