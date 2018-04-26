@@ -110,13 +110,16 @@ X_rs = tf.placeholder(tf.float32, shape=(num_rs,) + data_shape)
 # ADJACENCY LIST
 #alist_shape = (None, 2)
 #rs_adj_list = tf.placeholder(tf.int32, shape=(num_rs_layers,) + alist_shape)
-graph_in = tf.sparse_placeholder(tf.float32, shape=(num_rs_layers, None, None)) # MAY NOT WORK WITH EXPLICIT SHAPE ASSIGNMENT
-
+#graph_in = tf.sparse_placeholder(tf.float32, shape=(num_rs_layers, None, None)) # indexing no-no for sparse
+graph_in = [tf.sparse_placeholder(tf.float32) for _ in range(num_rs_layers)]
 
 def graph_func(h_in): # for tf.py_func
     #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
     #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, K))
     return nn.get_radius_graph_input(h_in, G)
+
+def graph_to_tensor_func(h_in):
+    return tf.SparseTensor(nn.get_radius_graph_input(h_in, G))
 
 # multi stuff
 
@@ -129,7 +132,7 @@ def graph_func(h_in): # for tf.py_func
 X_pred, error = nn.aggregate_multiStep_fwd(X_rs, num_layers, vscopes, graph_in, vel_coeff=vcoeff)
 
  # Validation
-X_pred_val = nn.aggregate_multiStep_fwd_validation(X_rs, num_layers, vscopes, graph_func, vel_coeff=vcoeff)
+X_pred_val = nn.aggregate_multiStep_fwd_validation(X_rs, num_layers, vscopes, graph_to_tensor_func, vel_coeff=vcoeff)
 
 
 # ==== Error and optimizer
@@ -190,11 +193,13 @@ print('\nTraining:\n============================================================
 for step in range(num_iters):
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
 
-    # feed data
+    # Feed data
     x_in = _x_batch
+
+    # feed graph data
     #adj_lists = np.array([alist_func(x_in[i]) for i in range(num_rs_layers)])
     graph_list = [graph_func(x_in[i]) for i in range(num_rs_layers)]
-    fdict = {X_rs: x_in, graph_in: graph_list}
+    fdict = {tensor: sparse_attribs for tensor, sparse_attribs in zip(graph_in, graph_list)}
 
     train.run(feed_dict=fdict)
 

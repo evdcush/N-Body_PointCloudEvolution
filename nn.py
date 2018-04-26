@@ -441,12 +441,12 @@ def aggregate_multiStep_fwd_validation(x_rs, num_layers, var_scopes, graph_fn, *
     fwd = lambda h, g, i: get_readout_vel(model_fwd(h, num_layers, g, *args, var_scope=var_scopes[i], vel_coeff=vel_coeff))
 
     # forward pass
-    adj = tf.py_func(graph_fn, [x_rs[0]], tf.int32)
+    adj = tf.py_func(graph_fn, [x_rs[0]], tf.float32)
     h = fwd(x_rs[0], adj, 0)
     preds.append(h)
     for i in range(1, len(var_scopes)):
         h_in = concat_rs(h, i)
-        g = tf.py_func(graph_fn, [h_in], tf.int32)
+        g = tf.py_func(graph_fn, [h_in], tf.float32)
         h = fwd(h_in, g, i)
         preds.append(h)
     return preds
