@@ -150,7 +150,7 @@ train_loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
 checkpoint = 500
-save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
+save_checkpoint = lambda step: (step+1) % checkpoint == 0 and step != 0
 
 #=============================================================================
 # TRAINING

@@ -166,7 +166,7 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.9
+gpu_frac = 0.85
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
@@ -182,8 +182,6 @@ if restore_single: #
  # restore previously trained aggregate model
 elif restore_agg:
     utils.load_graph(sess, model_path)
-    #utils.load_graph(sess, './Model/Agg4_ZG_3-19/Session/')
-    #utils.load_multi_graph(sess, vscopes, num_layers, ['./Model/Agg4_ZG_3-19/Session/'], use_graph=use_graph)
 
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
@@ -192,7 +190,7 @@ train_loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
 checkpoint = 500
-save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
+save_checkpoint = lambda step: (step+1) % checkpoint == 0 and step != 0
 
 #=============================================================================
 # TRAINING
@@ -275,6 +273,7 @@ for j in range(X_test.shape[1]):
         test_predictions[z, j] = x_pred[0]
 
     v_error = sess.run(val_error, feed_dict={val_x_pred: x_pred, val_x_truth: x_true})
+    test_loss_history[j] = v_error
 
     print('{:>3d}: {:.6f}'.format(j, v_error))
 

@@ -420,7 +420,8 @@ def aggregate_multiStep_fwd(x_rs, num_layers, var_scopes, nn_graph, *args, vel_c
     # Helpers
     concat_rs = lambda h, i: tf.concat((h, x_rs[i,:,:,-1:]), axis=-1)
     fwd = lambda h, i: get_readout_vel(model_fwd(h, num_layers, nn_graph[i], *args, var_scope=var_scopes[i], vel_coeff=vel_coeff))
-    loss = lambda h, x: pbc_loss_vel(h, x[...,:-1])
+    #loss = lambda h, x: pbc_loss_vel(h, x[...,:-1])
+    loss = lambda h, x: pbc_loss(h, x[...,:-1])
 
     # forward pass
     h = fwd(x_rs[0], 0)

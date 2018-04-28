@@ -121,7 +121,8 @@ H_out  = nn.model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout_vel(H_out)
 
 # error and optimizer
-error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
+#error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
+error = nn.pbc_loss(X_pred, X_truth[...,:-1])
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 val_error = nn.pbc_loss(X_pred, X_truth[...,:-1]) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
@@ -136,7 +137,7 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.85
+gpu_frac = 0.9
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
@@ -147,7 +148,7 @@ train_loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
 checkpoint = 500
-save_checkpoint = lambda step: step % checkpoint == 0 and step != 0
+save_checkpoint = lambda step: (step+1) % checkpoint == 0 and step != 0
 
 #=============================================================================
 # TRAINING
@@ -177,7 +178,7 @@ for step in range(num_iters):
     # save checkpoint
     if save_checkpoint(step):
         tr_error = sess.run(error, feed_dict=fdict)
-        print('checkpoint {:>5}: {}'.format(step, tr_error))
+        print('checkpoint {:>5}: {}'.format(step+1, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 # END
 print('elapsed time: {}'.format(time.time() - start_time))
