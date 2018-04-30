@@ -284,49 +284,6 @@ def eqvar_network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu)
             H = activation(H)
     return H
 
-# ==== Model fn
-def eqvar_model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
-    h_out = eqvar_network_fwd(x_in, num_layers, var_scope, *args, activation=activation)
-    #if add: h_out = skip_connection(x_in, h_out, vel_coeff, var_scope)
-    return h_out
-
-def multi_eqvar_model_fwd(x_in, num_rs_layers, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
-    cat_rs = lambda h, i: tf.concat((h, x_in[i,:,:,:,-1:]), axis=-1)
-    if args:
-        alist = args[0]
-        K = args[-1]
-        fwd = lambda h, i: get_readout_vel_eqvar(eqvar_network_fwd(h, num_layers, var_scope, alist[i], K))
-    else:
-        fwd = lambda h, i: get_readout_vel_eqvar(eqvar_network_fwd(h, num_layers, var_scope))
-
-    h = fwd(x_in[0], 0)
-    for i in range(1, num_rs_layers):
-        h_in = cat_rs(h, i)
-        h = fwd(h_in, i)
-    return h
-
-def multi_eqvar_model_fwd_val(x_in, num_rs_layers, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
-    cat_rs = lambda h, i: tf.concat((h, x_in[i,:,:,:,-1:]), axis=-1)
-    if args:
-        alist_fn = args[0]
-        K = args[-1]
-        def fwd(h, i):
-            adj = tf.py_func(alist_fn, [h], tf.int32)
-            '''
-            if i == 0:
-                adj = tf.py_func(alist_fn, [h], tf.int32)
-            else:
-                adj = tf.py_func(alist_fn, [h], tf.int32)
-            '''
-            return get_readout_vel_eqvar(eqvar_network_fwd(h, num_layers, var_scope, adj, K))
-    else:
-        fwd = lambda h, i: get_readout_vel_eqvar(eqvar_network_fwd(h, num_layers, var_scope))
-
-    h = fwd(x_in[0], 0)
-    for i in range(1, num_rs_layers):
-        h_in = cat_rs(h, i)
-        h = fwd(h_in, i)
-    return h
 
 #=============================================================================
 # Network and model functions

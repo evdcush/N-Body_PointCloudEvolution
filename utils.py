@@ -175,6 +175,7 @@ def get_graph_layer_vars(layer_idx, var_scope=VAR_SCOPE):
         Wg = tf.get_variable(GRAPH_TAG.format(layer_idx))
     return W, Wg
 
+'''
 def get_equivariant_layer_vars(layer_idx, var_scope=VAR_SCOPE):
     with tf.variable_scope(var_scope, reuse=True):
         W1 = tf.get_variable(EQ_WEIGHT_TAG.format(1, layer_idx))
@@ -183,6 +184,7 @@ def get_equivariant_layer_vars(layer_idx, var_scope=VAR_SCOPE):
         W4 = tf.get_variable(EQ_WEIGHT_TAG.format(4, layer_idx))
         B = tf.get_variable(BIAS_TAG.format(layer_idx))
     return W1, W2, W3, W4, B
+'''
 
 def get_vel_coeff(var_scope):
     with tf.variable_scope(var_scope, reuse=True):
