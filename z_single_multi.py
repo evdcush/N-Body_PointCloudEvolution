@@ -166,7 +166,7 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.85
+gpu_frac = 0.95
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
@@ -174,7 +174,7 @@ sess.run(tf.global_variables_initializer())
 # RESTORE
  # restore individually trained params for new aggregate model
 if restore_single: #
-    mp = './Model/Rad_short_ZG_{}-{}/Session/'
+    mp = './Model/Rad_short_coo_ZG_{}-{}/Session/'
     print('restore from: {}'.format(mp))
     mpaths = [mp.format(tup[0], tup[1]) for tup in rs_tups]
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
