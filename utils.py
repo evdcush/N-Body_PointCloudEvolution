@@ -58,23 +58,27 @@ AGG_PSCOPE = 'params_agg'
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 
 #=============================================================================
-# var inits
+# tf.Variable inits, for model parameters
 #=============================================================================
 def init_weight(k_in, k_out, name, seed=None, restore=False):
     """ initialize weight Variable
     Args:
-        k_in, k_out (int): weight sizes
-        name (str): variable name
+        k_in, k_out (int): kernel sizes
+        name (str): variable name"
+        seed (int): random seed
+        restore: if restore, then do not user initializer
     """
     #std = scale * np.sqrt(2. / k_in)
     #henorm = tf.random_normal((k_in, k_out), stddev=std, seed=seed)
-    init = None
-    if not restore:
-        init = tf.glorot_normal_initializer(seed=seed)
+    init = tf.glorot_normal_initializer(seed=seed) if not restore else None
     tf.get_variable(name, (k_in, k_out), dtype=tf.float32, initializer=init)
 
 def init_bias(k_in, k_out, name, restore=False):
     """ biases initialized to be near zero
+    Args:
+        k_in, k_out (int): kernel sizes  (only k_out needed for bias)
+        name (str): variable name
+        restore: if restore, then do not user initializer
     """
     if not restore:
         init = tf.ones((k_out,), dtype=tf.float32) * 1e-8
@@ -83,24 +87,21 @@ def init_bias(k_in, k_out, name, restore=False):
         tf.get_variable(name, (k_out,), dtype=tf.float32, initializer=None)
 
 def init_vel_coeff(restore=False):
-    """ scalar weight used in skip connection, for adjusting locations by
-    velocity scaled by this coeff:
-    h_out[...,:3] = h_out[...,:3] + x_in[...,:3] + vel_coeff*(x_in[...,3:])
+    """ scalar weight used in skip connection, approximates timestep
     """
-    #v_init = tf.glorot_normal_initializer()
-    v_init = tf.random_uniform_initializer(0,1) if not restore else None
-    tf.get_variable(VEL_COEFF_TAG, (1,), dtype=tf.float32, initializer=v_init)
-    print('INIT VCOEFF')
+    init = tf.random_uniform_initializer(0,1) if not restore else None
+    tf.get_variable(VEL_COEFF_TAG, (1,), dtype=tf.float32, initializer=init)
 
 # Model init wrappers ========================================================
 
 # Single-step
-def init_params(channels, graph_model=False, vel_coeff=False,
-                var_scope=VAR_SCOPE, seed=None, restore=False):
-    """ Initialize network parameters
-    graph model has extra weight, no bias
-    set model has bias
+def init_params(channels, var_scope=VAR_SCOPE, vel_coeff=False, seed=None, restore=False):
+    """ Initialize parameters for model
+    Args:
+        channels (list int): list of channel sizes
+
     """
+
     # get (k_in, k_out) tuples from channels
     kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
     with tf.variable_scope(var_scope):

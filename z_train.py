@@ -124,7 +124,7 @@ H_out  = nn.model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout(H_out)
 
 # error and optimizer
-error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
+error = nn.pbc_loss(X_pred, X_truth[...,:-1], vel=True)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 val_error = nn.pbc_loss(X_pred, X_truth[...,:-1]) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])

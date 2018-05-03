@@ -140,8 +140,6 @@ def rad_graph_conv(h, spT):
         spT: sparse_tensor of shape (b*N, b*N)
     """
     dims = tf.shape(h)
-    #mb = dims[0]; n  = dims[1]; d  = dims[2];
-    #rdim = [mb,n,d]
     h_flat = tf.reshape(h, (-1, dims[-1]))
     rad_conv = tf.reshape(tf.sparse_tensor_dense_matmul(spT, h_flat), dims)
     return rad_conv
@@ -213,41 +211,8 @@ def skip_connection(x_in, h, vel_coeff=False, var_scope=VAR_SCOPE):
     h_out = tf.concat((h_coo, h_vel), axis=-1)
     return h_out
 
-
-def multi_fwd_sampling(x_in, num_layers, adj, K, sampling_probs, var_scope=VAR_SCOPE):
-    num_rs_layers = x_in.get_shape().as_list()[0] - 1
-    concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
-    fwd = lambda x, a: get_readout(model_fwd(x, num_layers, a, K, var_scope=var_scope))
-    h = fwd(x_in[0], adj[0])
-    for i in range(1, num_rs_layers):
-        h_in = tf.where(sampling_probs[i], concat_rs(h, x_in[i, :, :, -1:]), x_in[i])
-        h = fwd(h_in, adj[i])
-    return h
-
-def multi_model_fwd_val(x_in, num_layers, adj_fn, K, var_scopes):
-    concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
-    fwd = lambda x, a, v: get_readout(model_fwd(x, num_layers, a, K, var_scope=v))
-    adj = tf.py_func(adj_fn, [x_in[0]], tf.int32)
-    h = fwd(x_in[0], adj, var_scopes[0])
-    for i, vscope in enumerate(var_scopes[1:]):
-        h_in = concat_rs(h, x_in[i,:,:,-1:])
-        adj = tf.py_func(adj_fn, [h_in], tf.int32)
-        h = fwd(h_in, adj, vscope)
-    return h
-
 #=============================================================================
 # multi fns for single step trained models
-def zuni_multi_single_fwd(x_rs, num_layers, rs_adj_list, K, var_scopes, vel_coeff=False):
-    #print('zuni_multi_single_fwd, vel_coeff={}'.format(vel_coeff))
-    concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
-    fwd = lambda x, a, v: get_readout(model_fwd(x, num_layers, a, K, var_scope=v, vel_coeff=vel_coeff))
-    h = fwd(x_rs[0], rs_adj_list[0], var_scopes[0])
-    for i in range(1, len(var_scopes)):
-        vscope = var_scopes[i]
-        h_in = concat_rs(h, x_rs[i,:,:,-1:])
-        h = fwd(h_in, rs_adj_list[i], vscope)
-    return h
-
 def aggregate_multiStep_fwd(x_rs, num_layers, var_scopes, nn_graph, *args, vel_coeff=False):
     """ Multi-step function for aggregate model
     Aggregate model uses a different sub-model for each redshift
@@ -255,8 +220,7 @@ def aggregate_multiStep_fwd(x_rs, num_layers, var_scopes, nn_graph, *args, vel_c
     # Helpers
     concat_rs = lambda h, i: tf.concat((h, x_rs[i,:,:,-1:]), axis=-1)
     fwd = lambda h, i: get_readout(model_fwd(h, num_layers, nn_graph[i], *args, var_scope=var_scopes[i], vel_coeff=vel_coeff))
-    #loss = lambda h, x: pbc_loss_vel(h, x[...,:-1])
-    loss = lambda h, x: pbc_loss(h, x[...,:-1])
+    loss = lambda h, x: pbc_loss(h, x[...,:-1], )#True)
 
     # forward pass
     h = fwd(x_rs[0], 0)
@@ -513,7 +477,7 @@ def get_readout(h_out):
     readout = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo)
 
     if M > 3: # then vel was predicted as well, concat
-        readout = tf.concat([readout, h_out[...,3:]])
+        readout = tf.concat([readout, h_out[...,3:]], axis=-1)
     return readout
 
 def periodic_boundary_dist(readout_full, x_truth):
@@ -530,25 +494,18 @@ def periodic_boundary_dist(readout_full, x_truth):
     return dist
 
 
-def pbc_loss(readout, x_truth):
-    """ MSE (coo only) with periodic boundary conditions
-    Args:
-        readout (tensor): model prediction which has been remapped to inner cube
-        x_truth (tensor): ground truth (mb_size, N, 6)
-    """
-    pbc_dist = periodic_boundary_dist(readout, x_truth) # (mb_size, N, 3)
-    pbc_error = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1), name='loss')
-    return pbc_error
-
-def pbc_loss_vel(readout, x_truth):
+def pbc_loss(readout, x_truth, vel=False):
     """ MSE over full dims with periodic boundary conditions
     Args:
         readout (tensor): model prediction which has been remapped to inner cube
         x_truth (tensor): ground truth (mb_size, N, 6)
+        vel: if vel, then include vel error in loss
     """
     pbc_dist  = periodic_boundary_dist(readout, x_truth)
-    dist_vel = tf.squared_difference(readout[...,3:], x_truth[...,3:])
+    error = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1))
 
-    error_coo = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1), name='loss')
-    error_vel = tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1), name='loss')
-    return error_coo * error_vel
+    if vel:
+        assert readout.get_shape().as_list()[-1] > 3
+        dist_vel = tf.squared_difference(readout[...,3:], x_truth[...,3:])
+        error *=   tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1))
+    return error

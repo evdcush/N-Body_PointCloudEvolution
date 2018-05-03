@@ -90,9 +90,7 @@ restore = pargs['restore'] == 1
 # init network params
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-#utils.init_params(channels, graph_model=use_graph, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
-utils.init_params(channels, graph_model=False, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
-
+utils.init_params(channels, graph_model=use_graph, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
 
 # INPUTS
 #data_shape = (None, num_particles**3, 6)
@@ -121,8 +119,7 @@ H_out  = nn.model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout(H_out)
 
 # error and optimizer
-#error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])
-error = nn.pbc_loss(X_pred, X_truth[...,:-1])
+error = nn.pbc_loss(X_pred, X_truth[...,:-1], )#vel=True)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 val_error = nn.pbc_loss(X_pred, X_truth[...,:-1]) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
