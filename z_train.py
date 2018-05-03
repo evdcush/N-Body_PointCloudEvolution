@@ -63,7 +63,7 @@ vcoeff = pargs['vel_coeff'] == 1
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
 G = pargs['graph_var']
-threshold = 0.08
+threshold = 0.03
 
 #=============================================================================
 # Session save parameters
@@ -105,8 +105,8 @@ graph_in = tf.sparse_placeholder(tf.float32)
 graph_in = tf.placeholder(tf.int32, shape=(None, 2))
 
 def graph_get_func(h_in): # for tf.py_func
-    #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
-    return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, G))
+    return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, G, threshold))
+    #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, G))
     #return nn.get_radius_graph_input(h_in, G)
 
 #=============================================================================

@@ -160,23 +160,17 @@ There were a few things wrong with this function, and it's usage at caller level
 # Have confirmed now that variables do change value after saver.restore
 '''
 #=============================================================================
-def load_multi_graph(sess, vscopes, num_layers, save_paths, use_graph=False, vel_coeff=False):
+def load_multi_graph(sess, vscopes, num_layers, save_paths, vel_coeff=False):
     #for vidx, vscope in enumerate(vscopes):
     for spath, vscope in zip(save_paths, vscopes):
         sdict = {}
         for layer_idx in range(num_layers):
-            if use_graph:
-                wtag = vscope + '/' + WEIGHT_TAG.format(layer_idx)
-                gtag = vscope + '/' +  GRAPH_TAG.format(layer_idx)
-                W, Wg = get_graph_layer_vars(layer_idx, vscope)
-                sdict[wtag] = W
-                sdict[gtag] = Wg
-            else:
-                wtag = vscope + '/' + WEIGHT_TAG.format(layer_idx)
-                btag = vscope + '/' +   BIAS_TAG.format(layer_idx)
-                W, B = get_layer_vars(layer_idx, vscope)
-                sdict[wtag] = W
-                sdict[btag] = B
+            wtag = vscope + '/' + WEIGHT_TAG.format(layer_idx)
+            btag = vscope + '/' +   BIAS_TAG.format(layer_idx)
+            W, B = get_layer_vars(layer_idx, vscope)
+            sdict[wtag] = W
+            sdict[btag] = B
+
             if vel_coeff:
                 vtag = vscope + '/' + VEL_COEFF_TAG
                 sdict[vtag] = get_vel_coeff(vscope)

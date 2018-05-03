@@ -203,16 +203,31 @@ def aggregate_multiStep_fwd_validation(x_rs, num_layers, var_scopes, graph_fn, *
 # numpy adjacency list func wrappers
 #=============================================================================
 
-def get_adj_graph(X_in, k, pbc=False):
+def get_adj_graph(X_in, k, pbc_threshold=None):
     """ neighbor graph interface func
+    NB: kgraph and radgraph have VERY different returns. Not exchangeable.
+
     Args:
         X_in (ndarray): data
         k (int or float): nearest neighbor variable, int is kgraph, float is rad
-        pbc: if pbc, then search under periodic boundary conditions
+        pbc_threshold (float): boundary threshold for pbc
     """
     knn = isinstance(k, int)
-    graph = get_kgraph(X_in, k, pbc) if knn else get_radgraph(X_in, k, pbc)
+    graph = get_kgraph(X_in, k, pbc) if knn else get_radgraph(X_in, k, pbc_threshold)
     return graph
+
+def get_kgraph(X, k, pbc_threshold=None):
+    return alist_to_indexlist(get_kneighbor_alist(X, k))
+
+def get_radgraph(X, k, pbc_threshold=None):
+    return radius_graph_fn(X, k)
+
+
+def get_pbc_graph(x, graph_fn, threshold):
+    """
+    x.shape = (N, 3)
+    """
+    assert False # TODO
 
 
 def alist_to_indexlist(alist):
@@ -345,7 +360,7 @@ def pad_cube_boundaries(x, boundary_threshold):
     Returns: expanded x, index_list
     """
     N, D = x.shape
-    idx_list = np.array([], dtype=np.int32) # keep in mind idx need to be offset by N
+    idx_list = np.array([], dtype=np.int32)
 
     # boundary
     lower = boundary_threshold
