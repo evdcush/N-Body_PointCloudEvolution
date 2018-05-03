@@ -133,9 +133,9 @@ else:
 
 # network out
 #H_out  = nn.zuni_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
-#X_pred = nn.get_readout_vel(H_out)
+#X_pred = nn.get_readout(H_out)
 H_out  = nn.eqvar_model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
-X_pred = nn.get_readout_vel_eqvar(H_out)
+X_pred = nn.get_readout_eqvar(H_out)
 X_pred2 = nn.multi_eqvar_model_fwd(*multi_args, var_scope=vscope)
 X_pred_val = nn.multi_eqvar_model_fwd_val(*multi_args_val, var_scope=vscope)
 

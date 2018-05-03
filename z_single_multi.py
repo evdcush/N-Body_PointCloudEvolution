@@ -139,7 +139,7 @@ val_g_in = tf.sparse_placeholder(tf.float32)
 
 def val_func(i):
     h_out = nn.model_fwd(val_x_in, num_layers, val_g_in, vel_coeff=vcoeff, var_scope=vscopes[i])
-    val_pred = nn.get_readout_vel(h_out)
+    val_pred = nn.get_readout(h_out)
     return val_pred
 
 #X_pred_val = val_func()

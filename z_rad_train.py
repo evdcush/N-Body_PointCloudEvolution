@@ -118,7 +118,7 @@ else:
 
 # network out
 H_out  = nn.model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
-X_pred = nn.get_readout_vel(H_out)
+X_pred = nn.get_readout(H_out)
 
 # error and optimizer
 #error = nn.pbc_loss_vel(X_pred, X_truth[...,:-1])

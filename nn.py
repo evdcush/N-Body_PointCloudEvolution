@@ -162,127 +162,6 @@ def rad_graph_layer_noPop(h, layer_idx, var_scope, spT):
     h_out = left_mult(h - graph_mu, W) + B
     return h_out
 
-#=============================================================================
-# Equivariant stuff
-
-def left_mult_eqvar(h, W):
-    """ batch matmul for set-based data
-    """
-    return tf.einsum('bndk,kq->bndq', h, W)
-
-
-def equivariant_fwd_Daniele(h_in, W1, W2, W3, pool=tf.reduce_mean):
-    """ space permutation equivariant linear layer
-    Args:
-        h_in: (mb_size, N, D, k) data tensor
-        W*: (k, j) weight
-    """
-    h_shape = tf.shape(h_in)
-    N = h_shape[1]
-    D = h_shape[2]
-
-    # set pooling
-    pooled_set = pool(h_in, axis=1, keepdims=True) # (b, 1, D, k)
-    ones_set   = tf.ones([1, N], tf.float32)
-    h_set = tf.einsum("bidk,in->bndk", pooled_set, ones_set)
-
-    # space pooling
-    pooled_space = pool(h_in, axis=2, keepdims=True) # (b, N, 1, k)
-    ones_space   = tf.ones([1,D], tf.float32)
-    h_space = tf.einsum("bnik,id->bndk", pooled_space, ones_space)
-
-    # W transformations
-    h_out  = left_mult_eqvar(h_in, W1)
-    h_out += left_mult_eqvar(h_set, W2)
-    h_out += left_mult_eqvar(h_space, W3)
-    return h_out
-
-def kgraph_conv_eqv(h, adj, K):
-    """ Graph convolution op for KNN-based adjacency lists
-    build graph tensor with gather_nd, and take
-    mean on KNN dim: mean((mb_size, N, K, k_in), axis=2)
-    Args:
-        h: data tensor, (mb_size, N, k_in)
-        adj: adjacency index list, for gather_nd (*, 2)
-        K (int): num nearest neighbors
-    """
-    dims = tf.shape(h)
-    mb = dims[0]; n  = dims[1]; d  = dims[2]; k = dims[3]
-    rdim = [mb,n,K,d,k]
-    nn_graph = tf.reduce_mean(tf.reshape(tf.gather_nd(h, adj), rdim), axis=2)
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    return nn_graph
-
-def equivariant_fwd_Daniele2(h_in, W1, W2, W3, W4, B, *args, pool=tf.reduce_mean, graph=False):
-    """ space permutation equivariant linear layer
-    Args:
-        h_in: (mb_size, N, D, k) data tensor
-        W*: (k, j) weight
-    """
-    h_shape = tf.shape(h_in)
-    N = h_shape[1]
-    D = h_shape[2]
-
-    # set pooling
-    if args:
-        h_set = kgraph_conv_eqv(h_in, *args)
-        #h_set = tf.einsum("bnidk,")
-    else:
-        pooled_set = pool(h_in, axis=1, keepdims=True) # (b, 1, D, k)
-        ones_set   = tf.ones([1, N], tf.float32)
-        h_set = tf.einsum("bidk,in->bndk", pooled_set, ones_set)
-
-    # space pooling
-    pooled_space = pool(h_in, axis=2, keepdims=True) # (b, N, 1, k)
-    ones_space   = tf.ones([1,D], tf.float32)
-    h_space = tf.einsum("bnik,id->bndk", pooled_space, ones_space)
-
-    # set-space pooling
-    pooled_setspace = pool(h_set, axis=2, keepdims=True) # (b, N, 1, k)
-    ones_setspace   = tf.ones([1,D], tf.float32)
-    h_setspace = tf.einsum("bnik,id->bndk", pooled_space, ones_setspace)
-
-    # W transformations
-    h_out  = left_mult_eqvar(h_in, W1)
-    h_out += left_mult_eqvar(h_set, W2)
-    h_out += left_mult_eqvar(h_space, W3)
-    h_out += left_mult_eqvar(h_setspace, W4)
-    h_out += B
-    return h_out
-
-def equivariant_fwd(h_in, W1, *args, pool=tf.reduce_mean):
-    """ space permutation equivariant linear layer
-    Args:
-        h_in: (mb_size, N, D, k) data tensor
-        W*: (k, j) weight
-    """
-    h_shape = tf.shape(h_in)
-    N = h_shape[1]
-    D = h_shape[2]
-
-    # set pooling
-    h_set = pool(h_in, axis=1, keepdims=True)
-
-    # W transformations
-    h_out = left_mult_eqvar(h_in - h_set, W1)
-    return h_out
-
-def equivariant_layer(h, layer_idx, var_scope, *args):
-    W = utils.get_equivariant_layer_vars(layer_idx, var_scope=var_scope)
-    h_out = equivariant_fwd_Daniele2(h, *W, *args)
-    #h_out = equivariant_fwd(h, W)
-    return h_out
-
-def eqvar_network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    #layer = kgraph_layer if len(args) != 0 else set_layer
-    layer = equivariant_layer
-    H = x_in
-    for i in range(num_layers):
-        H = layer(H, i, var_scope, *args)
-        if i != num_layers - 1:
-            H = activation(H)
-    return H
 
 
 #=============================================================================
@@ -335,11 +214,10 @@ def skip_connection(x_in, h, vel_coeff=False, var_scope=VAR_SCOPE):
     return h_out
 
 
-
 def multi_fwd_sampling(x_in, num_layers, adj, K, sampling_probs, var_scope=VAR_SCOPE):
     num_rs_layers = x_in.get_shape().as_list()[0] - 1
     concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
-    fwd = lambda x, a: get_readout_vel(model_fwd(x, num_layers, a, K, var_scope=var_scope))
+    fwd = lambda x, a: get_readout(model_fwd(x, num_layers, a, K, var_scope=var_scope))
     h = fwd(x_in[0], adj[0])
     for i in range(1, num_rs_layers):
         h_in = tf.where(sampling_probs[i], concat_rs(h, x_in[i, :, :, -1:]), x_in[i])
@@ -348,7 +226,7 @@ def multi_fwd_sampling(x_in, num_layers, adj, K, sampling_probs, var_scope=VAR_S
 
 def multi_model_fwd_val(x_in, num_layers, adj_fn, K, var_scopes):
     concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
-    fwd = lambda x, a, v: get_readout_vel(model_fwd(x, num_layers, a, K, var_scope=v))
+    fwd = lambda x, a, v: get_readout(model_fwd(x, num_layers, a, K, var_scope=v))
     adj = tf.py_func(adj_fn, [x_in[0]], tf.int32)
     h = fwd(x_in[0], adj, var_scopes[0])
     for i, vscope in enumerate(var_scopes[1:]):
@@ -362,7 +240,7 @@ def multi_model_fwd_val(x_in, num_layers, adj_fn, K, var_scopes):
 def zuni_multi_single_fwd(x_rs, num_layers, rs_adj_list, K, var_scopes, vel_coeff=False):
     #print('zuni_multi_single_fwd, vel_coeff={}'.format(vel_coeff))
     concat_rs = lambda x, z: tf.concat((x, z), axis=-1)
-    fwd = lambda x, a, v: get_readout_vel(model_fwd(x, num_layers, a, K, var_scope=v, vel_coeff=vel_coeff))
+    fwd = lambda x, a, v: get_readout(model_fwd(x, num_layers, a, K, var_scope=v, vel_coeff=vel_coeff))
     h = fwd(x_rs[0], rs_adj_list[0], var_scopes[0])
     for i in range(1, len(var_scopes)):
         vscope = var_scopes[i]
@@ -376,7 +254,7 @@ def aggregate_multiStep_fwd(x_rs, num_layers, var_scopes, nn_graph, *args, vel_c
     """
     # Helpers
     concat_rs = lambda h, i: tf.concat((h, x_rs[i,:,:,-1:]), axis=-1)
-    fwd = lambda h, i: get_readout_vel(model_fwd(h, num_layers, nn_graph[i], *args, var_scope=var_scopes[i], vel_coeff=vel_coeff))
+    fwd = lambda h, i: get_readout(model_fwd(h, num_layers, nn_graph[i], *args, var_scope=var_scopes[i], vel_coeff=vel_coeff))
     #loss = lambda h, x: pbc_loss_vel(h, x[...,:-1])
     loss = lambda h, x: pbc_loss(h, x[...,:-1])
 
@@ -398,7 +276,7 @@ def aggregate_multiStep_fwd_validation(x_rs, num_layers, var_scopes, graph_fn, *
     preds = []
     # Helpers
     concat_rs = lambda h, i: tf.concat((h, x_rs[i,:,:,-1:]), axis=-1)
-    fwd = lambda h, g, i: get_readout_vel(model_fwd(h, num_layers, g, *args, var_scope=var_scopes[i], vel_coeff=vel_coeff))
+    fwd = lambda h, g, i: get_readout(model_fwd(h, num_layers, g, *args, var_scope=var_scopes[i], vel_coeff=vel_coeff))
 
     # forward pass
     g = tf.py_func(graph_fn, [x_rs[0]], tf.float32)
@@ -625,37 +503,17 @@ def get_pbc_kneighbors(X, K, boundary_threshold):
 # periodic boundary conditions, loss
 #=============================================================================
 def get_readout(h_out):
-    gt_one  = (tf.sign(h_out - 1) + 1) / 2
-    ls_zero = -(tf.sign(h_out) - 1) / 2
-    rest = 1 - gt_one - ls_zero
-    readout = rest*h_out + gt_one*(h_out - 1) + ls_zero*(1 + h_out)
-    return readout
+    M = h_out.get_shape().as_list()[-1]
 
-def get_readout_vel(h_out):
-    """ For when the network also predicts velocity
-    velocities remain unchanged
-    """
+    # bounding coo
     h_out_coo = h_out[...,:3]
-    h_out_vel = h_out[...,3:]
     gt_one  = (tf.sign(h_out_coo - 1) + 1) / 2
     ls_zero = -(tf.sign(h_out_coo) - 1) / 2
     rest = 1 - gt_one - ls_zero
-    readout_coo = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo)
-    readout = tf.concat([readout_coo, h_out_vel], -1)
-    return readout
+    readout = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo)
 
-def get_readout_vel_eqvar(h_out):
-    """ For when the network also predicts velocity
-    velocities remain unchanged
-    """
-    h_out_coo = h_out[...,0]
-    h_out_vel = h_out[...,1:]
-    gt_one  = (tf.sign(h_out_coo - 1) + 1) / 2
-    ls_zero = -(tf.sign(h_out_coo) - 1) / 2
-    rest = 1 - gt_one - ls_zero
-    readout_coo = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo)
-    readout_coo = tf.expand_dims(readout_coo, -1)
-    readout = tf.concat([readout_coo, h_out_vel], -1)
+    if M > 3: # then vel was predicted as well, concat
+        readout = tf.concat([readout, h_out[...,3:]])
     return readout
 
 def periodic_boundary_dist(readout_full, x_truth):
@@ -669,8 +527,6 @@ def periodic_boundary_dist(readout_full, x_truth):
     d2 = tf.squared_difference(readout, (1 + x_truth_coo))
     d3 = tf.squared_difference((1 + readout),  x_truth_coo)
     dist = tf.minimum(tf.minimum(d1, d2), d3)
-    #dist = tf.minimum(tf.square(readout - x_truth_coo), tf.square(readout - (1 + x_truth_coo)))
-    #dist = tf.minimum(dist, tf.square((1 + readout) - x_truth_coo))
     return dist
 
 
@@ -696,23 +552,3 @@ def pbc_loss_vel(readout, x_truth):
     error_coo = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1), name='loss')
     error_vel = tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1), name='loss')
     return error_coo * error_vel
-
-def pbc_loss_eqvar(readout_in, x_truth):
-    """ MSE over full dims with periodic boundary conditions
-    Args:
-        readout (tensor): model prediction which has been remapped to inner cube
-        x_truth (tensor): ground truth (mb_size, N, 6)
-    """
-    readout = readout_in[...,0]
-    x_truth_coo = x_truth[...,0]
-    d1 = tf.squared_difference(readout, x_truth_coo)
-    d2 = tf.squared_difference(readout, (1 + x_truth_coo))
-    d3 = tf.squared_difference((1 + readout),  x_truth_coo)
-    dist = tf.minimum(tf.minimum(d1, d2), d3)
-
-    #pbc_dist  = periodic_boundary_dist(readout, x_truth)
-    #dist_vel = tf.squared_difference(readout[...,3:], x_truth[...,3:])
-
-    error_coo = tf.reduce_mean(tf.reduce_sum(dist, axis=-1), name='loss')
-    #error_vel = tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1), name='loss')
-    return error_coo #* error_vel
