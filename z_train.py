@@ -90,8 +90,7 @@ restore = pargs['restore'] == 1
 # init network params
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-#utils.init_params(channels, graph_model=use_graph, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
-utils.init_params(channels, graph_model=False, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
+utils.init_params(channels, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
 
 
 # INPUTS

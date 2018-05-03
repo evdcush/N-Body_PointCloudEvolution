@@ -99,50 +99,20 @@ def init_params(channels, var_scope=VAR_SCOPE, vel_coeff=False, seed=None, resto
     """ Initialize parameters for model
     Args:
         channels (list int): list of channel sizes
-
+        var_scope (str): variable scope for variables (basically what prefixes var names)
     """
-
     # get (k_in, k_out) tuples from channels
     kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
     with tf.variable_scope(var_scope):
         # initialize variables for each layer
         for idx, ktup in enumerate(kdims):
             init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed, restore=restore)
-            if graph_model: # graph
-                init_weight(*ktup, GRAPH_TAG.format(idx), seed=seed, restore=restore)
-            else: # set
-                init_bias(*ktup, BIAS_TAG.format(idx), restore=restore)
+            init_bias(  *ktup,   BIAS_TAG.format(idx), restore=restore)
         if vel_coeff: # scalar weight for simulating timestep, only one
             init_vel_coeff(restore)
 
-def init_eqvar_params(channels, vel_coeff=False,
-                var_scope=VAR_SCOPE, seed=None, restore=False):
-    """ Initialize network parameters
-    graph model has extra weight, no bias
-    set model has bias
-    """
-    # get (k_in, k_out) tuples from channels
-    kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
-    with tf.variable_scope(var_scope):
-        # initialize variables for each layer
-        for idx, ktup in enumerate(kdims):
-            init_weight(*ktup, EQ_WEIGHT_TAG.format(1,idx), seed=seed, restore=restore)
-            init_weight(*ktup, EQ_WEIGHT_TAG.format(2,idx), seed=seed, restore=restore)
-            init_weight(*ktup, EQ_WEIGHT_TAG.format(3,idx), seed=seed, restore=restore)
-            init_weight(*ktup, EQ_WEIGHT_TAG.format(4,idx), seed=seed, restore=restore)
-            init_bias(*ktup, BIAS_TAG.format(idx), restore=restore)
-        '''
-            if graph_model: # graph
-                init_weight(*ktup, GRAPH_TAG.format(idx), seed=seed, restore=restore)
-            else: # set
-                init_bias(*ktup, BIAS_TAG.format(idx), restore=restore)
-        if vel_coeff: # scalar weight for simulating timestep, only one
-            init_vel_coeff()
-        '''
-
 # Multi-step
-def init_params_multi(channels, num_rs, graph_model=True,
-                      var_scope=VAR_SCOPE_MULTI, seed=None, restore=False):
+def init_params_multi(channels, num_rs, var_scope=VAR_SCOPE_MULTI, seed=None, restore=False):
     """ Initialize network parameters for multi-step model, for predicting
     across multiple redshifts. (eg 6.0 -> 4.0 -> ... -> <target rs>)
     Multi-step model is network where each layer is a single-step model
@@ -150,16 +120,7 @@ def init_params_multi(channels, num_rs, graph_model=True,
     for j in range(num_rs):
         tf.set_random_seed(seed) # ensure each sub-model has same weight init
         cur_scope = var_scope.format(j) #
-        init_params(channels, graph_model=graph_model, var_scope=cur_scope, restore=restore)
-
-def init_zuni_params_multi(channels, vscopes, graph_model=True, seed=None, restore=False, vel_coeff=False):
-    """ Initialize network parameters for multi-step model, for predicting
-    across multiple redshifts. (eg 6.0 -> 4.0 -> ... -> <target rs>)
-    Multi-step model is network where each layer is a single-step model
-    """
-    for scope in vscopes:
-        tf.set_random_seed(seed) # ensure each sub-model has same weight init
-        init_params(channels, graph_model=graph_model, var_scope=scope, restore=restore, vel_coeff=vel_coeff)
+        init_params(channels, var_scope=cur_scope, restore=restore)
 
 #=============================================================================
 # var gets
@@ -169,23 +130,6 @@ def get_layer_vars(layer_idx, var_scope=VAR_SCOPE):
         W = tf.get_variable(WEIGHT_TAG.format(layer_idx))
         B = tf.get_variable(  BIAS_TAG.format(layer_idx))
     return W, B
-
-def get_graph_layer_vars(layer_idx, var_scope=VAR_SCOPE):
-    with tf.variable_scope(var_scope, reuse=True):
-        W  = tf.get_variable(WEIGHT_TAG.format(layer_idx))
-        Wg = tf.get_variable(GRAPH_TAG.format(layer_idx))
-    return W, Wg
-
-'''
-def get_equivariant_layer_vars(layer_idx, var_scope=VAR_SCOPE):
-    with tf.variable_scope(var_scope, reuse=True):
-        W1 = tf.get_variable(EQ_WEIGHT_TAG.format(1, layer_idx))
-        W2 = tf.get_variable(EQ_WEIGHT_TAG.format(2, layer_idx))
-        W3 = tf.get_variable(EQ_WEIGHT_TAG.format(3, layer_idx))
-        W4 = tf.get_variable(EQ_WEIGHT_TAG.format(4, layer_idx))
-        B = tf.get_variable(BIAS_TAG.format(layer_idx))
-    return W1, W2, W3, W4, B
-'''
 
 def get_vel_coeff(var_scope):
     with tf.variable_scope(var_scope, reuse=True):

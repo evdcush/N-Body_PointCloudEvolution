@@ -11,6 +11,12 @@ from utils import VAR_SCOPE, VAR_SCOPE_MULTI
 
 RADIUS = 0.08
 
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+# TF-related ops
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+
 #=============================================================================
 # LAYER OPS
 #=============================================================================
@@ -19,58 +25,24 @@ def left_mult(h, W):
     """
     return tf.einsum('ijl,lq->ijq', h, W)
 
-def linear(h_in, W, b=None):
-    """ permutation equivariant linear transformation
-    Args:
-        h_in: external input, of shape (mb_size, n_P, k_in)
-        W: layer weight, of shape (k_in, k_out)
-        b: bias, of shape (k_out,)
-    """
-    mu = tf.reduce_mean(h_in, axis=1, keepdims=True)
-    h = h_in - mu
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    '''
-    if len(h_in.get_shape()) > 3:
-        h_out = left_mult_exch(h, W)
-    else:
-        h_out = left_mult(h, W)
-    '''
-    h_out = left_mult(h, W)
-    if b is not None:
-        h_out += b
-    return h_out
-
-
+#==== set ops
 def set_layer(h, layer_idx, var_scope, *args):
     """ Set layer
-    """
-    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
-    return linear(h, W, B)
-
-
-#=============================================================================
-# graph
-def no_tiled_kgraph_conv(h, adj):
-    """ Uses gather instead of gather_nd. Idea being you can keep the adj
-    list in it's "natural" shape, and you don't need to pass K as an arg anymore,
-    but tf complains.
-
-    Works, but not using due to tf dense gradient warning:
-    "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
-
+    *args just for convenience, set_layer has no additional
     Args:
         h: data tensor, (mb_size, N, k_in)
-        adj: adjacency index list, for gather (mb_size, N, K)
+        layer_idx (int): layer index for params
+        var_scope (str): variable scope for get variables from graph
+    RETURNS: (mb_size, N, k_out)
     """
-    dims = tf.shape(h)
-    mb = dims[0]; n  = dims[1]; d  = dims[2];
-    K = tf.shape(adj)[-1]
-    alist = tf.reshape(adj, [-1])
-    h_flat = tf.reshape(h, [-1, d])
+    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
+    mu = tf.reduce_mean(h, axis=1, keepdims=True)
+    h_out = left_mult(h - mu, W) + B
+    return h_out
 
-    rdim = [mb,n,K,d]
-    nn_graph = tf.reduce_mean(tf.reshape(tf.gather(h_flat, alist), rdim), axis=2)
-    return nn_graph
+#==== graph ops
+
+# Kgraph ops
 
 def kgraph_conv(h, adj, K):
     """ Graph convolution op for KNN-based adjacency lists
@@ -89,33 +61,7 @@ def kgraph_conv(h, adj, K):
 
 def kgraph_layer(h, layer_idx, var_scope, alist, K):
     """ Graph layer for KNN
-    Graph layer has two sets of weights for data:
-      W: for connections to all other particles
-     Wg: for connections to nearest neighbor particles
-    Unlike the set layer, no biases are used. Have tried h_w + h_g + B, but
-    error was worse.
-    Args:
-        h: data tensor, (mb_size, N, k_in)
-        layer_idx (int): layer index for params
-        var_scope (str): variable scope for get variables from graph
-        alist: adjacency index list tensor (*, 2), of tf.int32
-        K (int): number of nearest neighbors in KNN
-    RETURNS: (mb_size, N, k_out)
-    """
-    W, Wg = utils.get_graph_layer_vars(layer_idx, var_scope=var_scope)
-    nn_graph = kgraph_conv(h, alist, K)
-    h_w = linear(h, W)
-    h_g = linear(nn_graph, Wg)
-    h_out = h_w + h_g
-    return h_out
 
-def kgraph_layer_noPop(h, layer_idx, var_scope, alist, K):
-    """ Graph layer for KNN
-    Graph layer has two sets of weights for data:
-      W: for connections to all other particles
-     Wg: for connections to nearest neighbor particles
-    Unlike the set layer, no biases are used. Have tried h_w + h_g + B, but
-    error was worse.
     Args:
         h: data tensor, (mb_size, N, k_in)
         layer_idx (int): layer index for params
@@ -129,6 +75,8 @@ def kgraph_layer_noPop(h, layer_idx, var_scope, alist, K):
 
     h_out = left_mult(h - graph_mu, W) + B
     return h_out
+
+# Radius graph ops
 
 def rad_graph_conv(h, spT):
     """ graph conv for radius neighbors graph
@@ -145,14 +93,6 @@ def rad_graph_conv(h, spT):
     return rad_conv
 
 def rad_graph_layer(h, layer_idx, var_scope, spT):
-    W, Wg = utils.get_graph_layer_vars(layer_idx, var_scope=var_scope)
-    nn_graph = rad_graph_conv(h, spT)
-    h_w = linear(h, W)
-    h_g = linear(nn_graph, Wg)
-    h_out = h_w + h_g
-    return h_out
-
-def rad_graph_layer_noPop(h, layer_idx, var_scope, spT):
     #W, Wg = utils.get_graph_layer_vars(layer_idx, var_scope=var_scope)
     W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
     graph_mu = rad_graph_conv(h, spT)
@@ -160,23 +100,40 @@ def rad_graph_layer_noPop(h, layer_idx, var_scope, spT):
     h_out = left_mult(h - graph_mu, W) + B
     return h_out
 
-
-
 #=============================================================================
 # Network and model functions
 #=============================================================================
-def network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    if len(args) > 0:
-        if len(args) == 1:
-            #layer = rad_graph_layer
-            layer = rad_graph_layer_noPop
-        else:
-            #layer = kgraph_layer
-            layer = kgraph_layer_noPop
+
+#==== helpers
+def get_layer(args):
+    # hacky dispatch on num of args. set uses no extra, radgraph 1, kgraph 2
+    num_args = len(args)
+    if num_args > 0:
+        layer = rad_graph_layer if num_args == 1 else kgraph_layer
     else:
         layer = set_layer
-    #layer = kgraph_layer if len(args)  0 else set_layer
+    return layer
+
+def skip_connection(x_in, h, vel_coeff=None):
+    # input splits
+    x_coo = x_in[...,:3]
+    x_vel = x_in[...,3:] if x_in.shape[-1] == h.shape[-1] else x_in[...,3:-1]
+    # h splits
+    h_coo = h[...,:3]
+    h_vel = h[...,3:]
+    # add
+    h_coo += x_coo
+    h_vel += x_vel
+
+    if vel_coeff is not None:
+        h_coo += vel_coeff * x_vel
+    h_out = tf.concat((h_coo, h_vel), axis=-1)
+    return h_out
+
+# ==== Network fn
+def network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    layer = get_layer(args)
     H = x_in
     for i in range(num_layers):
         H = layer(H, i, var_scope, *args)
@@ -188,29 +145,12 @@ def network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
 def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
     h_out = network_fwd(x_in, num_layers, var_scope, *args, activation=activation)
     if add:
-        h_out = skip_connection(x_in, h_out, vel_coeff, var_scope)
+        vcoeff = utils.get_vel_coeff(var_scope) if vel_coeff else None
+        h_out = skip_connection(x_in, h_out, vcoeff)
     return h_out
 
 #=============================================================================
-# Multi-step model fns, designed for data with redshift value broadcasted to features dim
-#=============================================================================
-def skip_connection(x_in, h, vel_coeff=False, var_scope=VAR_SCOPE):
-    # input splits
-    x_coo = x_in[...,:3]
-    x_vel = x_in[...,3:] if x_in.shape[-1] == h.shape[-1] else x_in[...,3:-1]
-    # h splits
-    h_coo = h[...,:3]
-    h_vel = h[...,3:]
-    # add
-    h_coo += x_coo
-    h_vel += x_vel
-
-    if vel_coeff:
-        vel_co = utils.get_vel_coeff(var_scope)
-        h_coo += vel_co * x_vel
-    h_out = tf.concat((h_coo, h_vel), axis=-1)
-    return h_out
-
+# Multi-step model functions
 #=============================================================================
 # multi fns for single step trained models
 def aggregate_multiStep_fwd(x_rs, num_layers, var_scopes, nn_graph, *args, vel_coeff=False):
@@ -253,10 +193,28 @@ def aggregate_multiStep_fwd_validation(x_rs, num_layers, var_scopes, graph_fn, *
         preds.append(h)
     return preds
 
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+# END TF-related ops
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 
 #=============================================================================
-# graph ops
+# numpy adjacency list func wrappers
 #=============================================================================
+
+def get_adj_graph(X_in, k, pbc=False):
+    """ neighbor graph interface func
+    Args:
+        X_in (ndarray): data
+        k (int or float): nearest neighbor variable, int is kgraph, float is rad
+        pbc: if pbc, then search under periodic boundary conditions
+    """
+    knn = isinstance(k, int)
+    graph = get_kgraph(X_in, k, pbc) if knn else get_radgraph(X_in, k, pbc)
+    return graph
+
+
 def alist_to_indexlist(alist):
     """ Reshapes adjacency list for tensorflow gather_nd func
     alist.shape: (B, N, K)
@@ -280,22 +238,6 @@ def get_kneighbor_alist(X_in, K=14):
     for i in range(mb_size):
         # this returns indices of the nn
         graph_idx = kneighbors_graph(X_in[i, :, :3], K, include_self=True).indices
-        graph_idx = graph_idx.reshape([N, K]) #+ (N * i)  # offset idx for batches
-        adj_list[i] = graph_idx
-    return adj_list
-
-def get_kneighbor_alist_eqvar(X_in, K=14):
-    """ search for K nneighbors, and return offsetted indices in adjacency list
-    No periodic boundary conditions used
-
-    Args:
-        X_in (numpy ndarray): input data of shape (mb_size, N, 6)
-    """
-    mb_size, N, D, k = X_in.shape
-    adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
-    for i in range(mb_size):
-        # this returns indices of the nn
-        graph_idx = kneighbors_graph(X_in[i, :, :,0], K, include_self=True).indices
         graph_idx = graph_idx.reshape([N, K]) #+ (N * i)  # offset idx for batches
         adj_list[i] = graph_idx
     return adj_list
