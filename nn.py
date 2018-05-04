@@ -93,49 +93,35 @@ def shift_inv_layer(X, L, layer_idx, var_scope):
     return X_out
 
 
-def input_shift_inv_layer(X, V, L, W1, W2, W3, W4, B, activation=tf.nn.relu):
+def input_shift_inv_layer(X, V, L, layer_idx, var_scope):
     """
-    Version of shift-invariant layer that takes as input node features too.
-    This is meant to be used as the the input layer where edge features (X) are relative distances of each particle
-    to its neighbors and node features are velocities.
-
-    Args:
-        X (tensor): has shape (N, M, 3, b) stores shift-invariant relative distance (to its neighbors) vectors
-        V (tensor): has shape (N, 3, b) stores velocity vectors of each particle
-            Note: batch dimension should be last.
-            N = number of particles
-            M = number of neighbors
-            b = mini-batch size
-
-        L (numpy array): NxM matrix of adjacency list. L = get_adjacency_list(A), A = adjacency matrix
-        W1..4 (tensor): weights with shape (9, q)
-            9 = 3 (original edge features, i.e. relative distances) + 2*3 (row+column velocities)
-            q = output channels
-        B (tensor): bias with shape q
-        activation: defaults is tf.nn.relu
+    X: (b, N, M, k)
+    L: (None, 2)
 
     Returns:
         tensor of shape (N, M, q, b)
     """
+    # get dims
+    dims = tf.shape(X) # (b, N, M, k)
+    N = dims[1]
+    M = dims[2]
+    k = dims[3]
 
-    N = L.shape[0]
-    M = L.shape[1]
+    # pooling constants
     ones_m = tf.ones([M, 1], tf.float32)
 
-    # Row features
-    # broadcast to columns
-    # ========================================
-    R1_broad_c = tf.einsum("wr,irjp->iwjp", ones_m, tf.reshape(V, [N, 1, 3, -1]))  # shape=(N, M, 3, b)
+    # Broadcast row features to cols
+    rows = tf.einsum("mi,bnik->bnmk", ones_m, tf.expand_dims(V, -2))
 
-    # Column features
-    # broadcast to rows (according to neighbor indices)
-    # ========================================
-    C1_broad_r = tf.gather_nd(V, np.reshape(L, (N, M, 1)))  # shape=(N, M, 3, b)
+    # Broadcast col features to rows
+    cols = tf.reshape(tf.gather_nd(V, L), tf.shape(X)) # (b, N, 3) -> (b, N, M, 3)
 
-    # Node features >> Edge features
-    X_edges_and_nodes = tf.concat([X, R1_broad_c, C1_broad_r], axis=2)  # shape=(N, M, 9, b)
+    # concat features
+    X_graph = tf.concat([X, rows, cols], axis=-1)
 
-    return shift_inv_layer(X=X_edges_and_nodes, L=L, W1=W1, W2=W2, W3=W3, W4=W4, B=B, activation=activation)
+    return shift_inv_layer(X_graph, L, layer_idx, var_scope)
+
+
 #=============================================================================
 # LAYER OPS
 #=============================================================================
@@ -266,6 +252,25 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
     if add:
         vcoeff = utils.get_vel_coeff(var_scope) if vel_coeff else None
         h_out = skip_connection(x_in, h_out, vcoeff)
+    return h_out
+
+#=============================================================================
+# new perm eqv, shift inv model funcs
+#=============================================================================
+# ==== Network fn
+def sinv_network_fwd(num_layers, var_scope, X, V, L, activation=tf.nn.relu):
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    layer = get_layer(args)
+    H = activation(input_shift_inv_layer(X, V, L, layer_idx, var_scope))
+    for i in range(1, num_layers):
+        H = shift_inv_layer(H, L, i, var_scope)
+        if i != num_layers - 1:
+            H = activation(H)
+    return H
+
+# ==== Model fn
+def sinv_model_fwd(num_layers, X, V, L, activation=tf.nn.relu, vel_coeff=False, var_scope=VAR_SCOPE):
+    h_out = sinv_network_fwd(num_layers, var_scope, X, V, L, activation=activation)
     return h_out
 
 #=============================================================================

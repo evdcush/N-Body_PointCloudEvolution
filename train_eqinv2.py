@@ -51,7 +51,7 @@ model_vars = utils.NBODY_MODELS[model_type]
 
 # network kernel sizes and depth
 channels = model_vars['channels'] # OOM with sparse graph
-channels[0]  = 3
+channels[0]  = 9
 channels[-1] = 3
 num_layers = len(channels) - 1
 
@@ -109,25 +109,13 @@ def graph_get_func(h_in): # for tf.py_func
 #=============================================================================
 # Model predictions and optimizer
 #=============================================================================
+H_out  = nn.sinv_model_fwd(num_layers, X_input_edges, X_input_nodes, Graph_input, var_scope=vscope) # (b, N, M, 3)
+H_pooled = tf.reduce_mean(H_out, axis=2)
+X_pred = nn.get_readout(H_pooled)
 
-
-'''
-# model fwd dispatch args
-if use_graph:
-    margs = (X_input, num_layers, graph_in, M)
-else:
-    margs = (X_input, num_layers)
-
-# network out
-H_out  = nn.model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
-X_pred = nn.get_readout(H_out)
-
-# error and optimizer
-error = nn.pbc_loss(X_pred, X_truth[...,:-1], vel=True)
+# error and opt
+error = nn.pbc_loss(X_pred, X_truth, vel=False)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
-val_error = nn.pbc_loss(X_pred, X_truth[...,:-1]) # since training loss fn not always same
-ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
-'''
 
 #=============================================================================
 # Session and Train setup
@@ -180,12 +168,12 @@ for step in range(num_iters):
     #adj_list = nn.sinv_dim_changes(adj_list)
 
     # get idx list for tf.gather_nd
-    adj_list = nn.alist_to_indexlist(adj_list)
+    idx_list = nn.alist_to_indexlist(adj_list)
 
     fdict = {X_input_edges: x_in_edges,
              X_input_nodes: x_in_nodes,
              X_truth: x_truth,
-             Graph_input: adj_list}
+             Graph_input: idx_list}
 
     # training pass
     train.run(feed_dict=fdict)
@@ -216,29 +204,38 @@ inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 #print('\nEvaluation:\n==============================================================================')
 for j in range(X_test.shape[1]):
     # validation inputs
-    x_in   = X_test[0, j:j+1] # (1, n_P, 6)
-    x_true = X_test[1, j:j+1]
-    fdict = {X_input: x_in, X_truth: x_true}
+    x_in    = X_test[0, j:j+1] # (1, n_P, 6)
+    x_truth = X_test[1, j:j+1]
 
-    # feed graph data inputs
-    if use_graph:
-        #sparse_attribs = graph_get_func(x_in)
-        #fdict[Sparse_in] = sparse_attribs
-        fdict[graph_in] = graph_get_func(x_in)
+    # get adj_list
+    adj_list = graph_get_func(x_in) # (b, N, M)
+
+    # get edges (relative dists) and nodes (velocities)
+    x_in_edges = nn.get_input_edge_features(x_in, adj_list) # (b, N, M, 3)
+    x_in_nodes = nn.get_input_node_features(x_in) # (b, N, 3)
+
+    # get idx list for tf.gather_nd
+    idx_list = nn.alist_to_indexlist(adj_list)
+
+    fdict = {X_input_edges: x_in_edges,
+             X_input_nodes: x_in_nodes,
+             X_truth: x_truth,
+             Graph_input: idx_list}
 
     # validation outputs
-    vals = sess.run([X_pred, val_error, ground_truth_error], feed_dict=fdict)
-    x_pred, v_error, truth_error = vals
+    #vals = sess.run([X_pred, val_error, ground_truth_error], feed_dict=fdict)
+    x_pred, v_error = sess.run([X_pred, error], feed_dict=fdict)
+    #x_pred, v_error, truth_error = vals
     test_loss_history[j] = v_error
-    inputs_loss_history[j] = truth_error
+    #inputs_loss_history[j] = truth_error
     test_predictions[j] = x_pred[0]
     #print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
 
 # median test error
 test_median = np.median(test_loss_history)
-inputs_median = np.median(inputs_loss_history)
-#print('test median: {}'.format(test_median))
-print('{:<18} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
+#inputs_median = np.median(inputs_loss_history)
+print('{:<18} median: {:.9f}'.format(model_name, test_median))
+#print('{:<18} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
