@@ -1,6 +1,7 @@
 import os, code, sys, time, argparse
 
 import numpy as np
+from sklearn.neighbors import kneighbors_graph
 import tensorflow as tf
 
 import utils
@@ -12,7 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--particles', '-p', default=32,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
 parser.add_argument('--redshifts', '-z', default=[18,19], nargs='+', type=int, help='redshift tuple, predict z[1] from z[0]')
 parser.add_argument('--model_type','-m', default=0,          type=int,  help='model type')
-parser.add_argument('--graph_var', '-k', default=0.08,       type=float, help='search parameter for graph model')
+parser.add_argument('--graph_var', '-k', default=14,       type=int, help='search parameter for graph model')
 parser.add_argument('--restore',   '-r', default=0,          type=int,  help='resume training from serialized params')
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
 parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
@@ -35,7 +36,7 @@ num_rs_layers = num_rs - 1
 
 # Load data
 num_val_samples = 200
-X = utils.load_rs_npy_data(redshift_steps, norm_coo=True)
+X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
 
@@ -48,8 +49,8 @@ model_type = pargs['model_type'] # 0: set, 1: graph
 model_vars = utils.NBODY_MODELS[model_type]
 
 # network kernel sizes and depth
-#channels = model_vars['channels'] # OOM with sparse graph
-channels = [6, 32, 16, 8, 3]#, 8, 16, 12, 16, 8, 3]
+channels = model_vars['channels'] # OOM with sparse graph
+#channels = [6, 32, 16, 8, 3]#, 8, 16, 12, 16, 8, 3]
 #channels = [6, 8, 12, 8, 4, 8, 12, 16, 8, 3]#, 8, 16, 12, 16, 8, 3]
 channels[-1] = 6
 channels[0] = 7
@@ -62,7 +63,7 @@ vcoeff = pargs['vel_coeff'] == 1
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
 G = pargs['graph_var']
-threshold = 0.08
+threshold = 0.03
 
 #=============================================================================
 # Session save parameters
@@ -89,7 +90,8 @@ restore = pargs['restore'] == 1
 # init network params
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params(channels, graph_model=use_graph, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
+utils.init_params(channels, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
+
 
 # INPUTS
 #data_shape = (None, num_particles**3, 6)
@@ -98,18 +100,22 @@ X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
 X_truth = tf.placeholder(tf.float32, shape=data_shape, name='X_truth')
 
 # RAD SPARSE TENSOR
-Sparse_in = tf.sparse_placeholder(tf.float32)
+#graph_in = tf.sparse_placeholder(tf.float32)
+graph_in = tf.sparse_placeholder(tf.float32)
+graph_in = tf.placeholder(tf.int32, shape=(None, 2))
 
 def graph_get_func(h_in): # for tf.py_func
-    #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, K, threshold))
-    return nn.get_radius_graph_input(h_in, G)
+    #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, G, threshold))
+    #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, G))
+    #return nn.get_radius_graph_input(h_in, G)
+    return nn.get_adj_graph(h_in, G)
 
 #=============================================================================
 # Model predictions and optimizer
 #=============================================================================
 # model fwd dispatch args
 if use_graph:
-    margs = (X_input, num_layers, Sparse_in)
+    margs = (X_input, num_layers, graph_in, G)
 else:
     margs = (X_input, num_layers)
 
@@ -118,7 +124,7 @@ H_out  = nn.model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout(H_out)
 
 # error and optimizer
-error = nn.pbc_loss(X_pred, X_truth[...,:-1], )#vel=True)
+error = nn.pbc_loss(X_pred, X_truth[...,:-1], vel=True)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 val_error = nn.pbc_loss(X_pred, X_truth[...,:-1]) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
@@ -133,7 +139,7 @@ num_iters  = pargs['num_iters']
 verbose    = pargs['verbose']
 
 # Sess
-gpu_frac = 0.9
+gpu_frac = 0.85
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
@@ -165,8 +171,9 @@ for step in range(num_iters):
     if use_graph:
         #alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
         #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
-        sparse_attribs = graph_get_func(x_in)
-        fdict[Sparse_in] = sparse_attribs
+        #sparse_attribs = graph_get_func(x_in)
+        #fdict[Sparse_in] = sparse_attribs
+        fdict[graph_in] = graph_get_func(x_in)
 
     # training pass
     train.run(feed_dict=fdict)
@@ -174,7 +181,7 @@ for step in range(num_iters):
     # save checkpoint
     if save_checkpoint(step):
         tr_error = sess.run(error, feed_dict=fdict)
-        print('checkpoint {:>5}: {}'.format(step+1, tr_error))
+        print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 # END
 print('elapsed time: {}'.format(time.time() - start_time))
@@ -203,8 +210,9 @@ for j in range(X_test.shape[1]):
 
     # feed graph data inputs
     if use_graph:
-        sparse_attribs = graph_get_func(x_in)
-        fdict[Sparse_in] = sparse_attribs
+        #sparse_attribs = graph_get_func(x_in)
+        #fdict[Sparse_in] = sparse_attribs
+        fdict[graph_in] = graph_get_func(x_in)
 
     # validation outputs
     vals = sess.run([X_pred, val_error, ground_truth_error], feed_dict=fdict)
