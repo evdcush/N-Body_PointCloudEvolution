@@ -82,7 +82,7 @@ def shift_inv_layer(X, L, layer_idx, var_scope):
 
     # W4 - pool all
     X_mu_rows_cols = tf.reduce_mean(X, axis=(1,2), keepdims=True) # (b, 1, 1, k)
-    X_pooled_rows_cols = tf.einsum("ni,biik->bnik", ones_n, X_mu_rows_cols)
+    X_pooled_rows_cols = tf.einsum("ni,bijk->bnjk", ones_n, X_mu_rows_cols)
     X_pooled_rows_cols = tf.einsum("mi,bnik->bnmk", ones_m, X_pooled_rows_cols)
     #H4 = tf.einsum("bnmk,kq->bnmq", X_pooled_rows_cols, W4)
     H4 = left_mult_sinv(X_pooled_rows_cols, W4)
@@ -260,8 +260,7 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
 # ==== Network fn
 def sinv_network_fwd(num_layers, var_scope, X, V, L, activation=tf.nn.relu):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    layer = get_layer(args)
-    H = activation(input_shift_inv_layer(X, V, L, layer_idx, var_scope))
+    H = activation(input_shift_inv_layer(X, V, L, 0, var_scope))
     for i in range(1, num_layers):
         H = shift_inv_layer(H, L, i, var_scope)
         if i != num_layers - 1:
