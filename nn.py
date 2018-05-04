@@ -41,18 +41,25 @@ def kgraph_conv_sinv(h, adj):
 def left_mult_sinv(X, W):
     return tf.einsum("bnmk,kq->bnmq", X, W)
 
-def shift_inv_layer(X, L, W1, W2, W3, W4, B, activation=tf.nn.relu):
+#def shift_inv_layer(X, L, W1, W2, W3, W4, B):
+def shift_inv_layer(X, L, layer_idx, var_scope):
     """
     X: (b, N, M, k)
-    L: (None, )
+    L: (None, 2)
 
     Returns:
         tensor of shape (N, M, q, b)
     """
+    # get layer weights
+    W1, W2, W3, W4, B = utils.get_sinv_layer_vars(layer_idx, var_scope)
+
+    # get dims
     dims = tf.shape(X) # (b, N, M, k)
     N = dims[1]
     M = dims[2]
     k = dims[3]
+
+    # pooling constants
     ones_m = tf.ones([M, 1], tf.float32)
     ones_n = tf.ones([N, 1], tf.float32)
 
