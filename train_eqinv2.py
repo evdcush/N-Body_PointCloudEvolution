@@ -53,6 +53,7 @@ model_vars = utils.NBODY_MODELS[model_type]
 #channels = model_vars['channels'] # OOM with sparse graph
 channels = [6, 32, 16, 8, 3]
 channels[0]  = 9
+#channels[0]  = 6
 channels[-1] = 3
 num_layers = len(channels) - 1
 
@@ -105,7 +106,7 @@ X_truth       = tf.placeholder(tf.float32, shape=(None, N, 6))
 Graph_input = tf.placeholder(tf.int32, shape=(None, 2))
 
 def graph_get_func(h_in): # for tf.py_func
-    return nn.get_kneighbor_alist(h_in, M, offset_idx=False) # offset idx for batches
+    return nn.get_kneighbor_alist(h_in, M, offset_idx=False, )#inc_self=False) # offset idx for batches
 
 #=============================================================================
 # Model predictions and optimizer
@@ -228,6 +229,7 @@ for j in range(X_test.shape[1]):
     # validation outputs
     #vals = sess.run([X_pred, val_error, ground_truth_error], feed_dict=fdict)
     x_pred, v_error = sess.run([X_pred, error], feed_dict=fdict)
+    code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     #x_pred, v_error, truth_error = vals
     test_loss_history[j] = v_error
     #inputs_loss_history[j] = truth_error

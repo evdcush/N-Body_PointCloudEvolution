@@ -118,6 +118,7 @@ def input_shift_inv_layer(X, V, L, layer_idx, var_scope):
 
     # concat features
     X_graph = tf.concat([X, rows, cols], axis=-1)
+    #X_graph = tf.concat([rows, cols], axis=-1)
 
     return shift_inv_layer(X_graph, L, layer_idx, var_scope)
 
@@ -397,7 +398,7 @@ def alist_to_indexlist(alist):
     out = np.stack([id1,alist.flatten()], axis=1).astype(np.int32)
     return out
 
-def get_kneighbor_alist(X_in, K=14, offset_idx=False):
+def get_kneighbor_alist(X_in, K=14, offset_idx=False, inc_self=True):
     """ search for K nneighbors, and return offsetted indices in adjacency list
     No periodic boundary conditions used
 
@@ -408,7 +409,7 @@ def get_kneighbor_alist(X_in, K=14, offset_idx=False):
     adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
     for i in range(mb_size):
         # this returns indices of the nn
-        graph_idx = kneighbors_graph(X_in[i, :, :3], K, include_self=True).indices
+        graph_idx = kneighbors_graph(X_in[i, :, :3], K, include_self=inc_self).indices
         graph_idx = graph_idx.reshape([N, K]) #+ (N * i)  # offset idx for batches
         if offset_idx:
             graph_idx += (N*i)
