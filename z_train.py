@@ -161,7 +161,6 @@ print('\nTraining:\n============================================================
 for step in range(num_iters):
     # data batching
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
-    #_x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
     x_in    = _x_batch[0]
     x_truth = _x_batch[1]
     fdict = {X_input: x_in, X_truth: x_truth}

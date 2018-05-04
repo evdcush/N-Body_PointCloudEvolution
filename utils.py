@@ -556,7 +556,21 @@ def next_minibatch_shiftInv(X_in, batch_size, **kwargs):
     X_out = np.moveaxis(batches, 1, -1) # (num_rs, N, k, b)
     return X_out
 
+def next_zuni_minibatch(X_in, batch_size, data_aug=True):
+    """ randomly select samples for training batch
 
+    Args:
+        X_in (ndarray): (num_rs, N, D, 6) data input
+        batch_size (int): minibatch size
+        data_aug: if data_aug, randomly shift input data
+    Returns:
+        batches (ndarray): randomly selected and shifted data
+    """
+    index_list = np.random.choice(X_in.shape[1], batch_size)
+    batches = X_in[:,index_list]
+    if data_aug:
+        batches[...,:-1] = random_augmentation_shift(batches[...,:-1])
+    return batches
 #=============================================================================
 # Saving utils
 #=============================================================================

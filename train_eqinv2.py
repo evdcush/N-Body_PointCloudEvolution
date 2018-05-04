@@ -50,7 +50,8 @@ model_type = pargs['model_type'] # 0: set, 1: graph
 model_vars = utils.NBODY_MODELS[model_type]
 
 # network kernel sizes and depth
-channels = model_vars['channels'] # OOM with sparse graph
+#channels = model_vars['channels'] # OOM with sparse graph
+channels = [6, 32, 16, 8, 3]
 channels[0]  = 9
 channels[-1] = 3
 num_layers = len(channels) - 1
@@ -199,7 +200,7 @@ X_train = None # reduce memory overhead
 # data containers
 num_test_samples = X_test.shape[1]
 #test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
-test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
+test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 
@@ -231,7 +232,7 @@ for j in range(X_test.shape[1]):
     test_loss_history[j] = v_error
     #inputs_loss_history[j] = truth_error
     test_predictions[j] = x_pred[0]
-    #print('{:>3d}: {:.6f} | {:.6f}'.format(j, v_error, truth_error))
+    print('{:>3d}: {:.6f}'.format(j, v_error))
 
 # median test error
 test_median = np.median(test_loss_history)
