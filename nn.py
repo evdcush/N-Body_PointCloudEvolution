@@ -212,9 +212,8 @@ def get_adj_graph(X_in, k, pbc_threshold=None):
         k (int or float): nearest neighbor variable, int is kgraph, float is rad
         pbc_threshold (float): boundary threshold for pbc
     """
-    knn = isinstance(k, int)
-    graph = get_kgraph(X_in, k, pbc) if knn else get_radgraph(X_in, k, pbc_threshold)
-    return graph
+    graph_fn = get_kgraph if isinstance(k, int) else get_radgraph
+    return graph_fn(X_in, k, pbc_threshold)
 
 def get_kgraph(X, k, pbc_threshold=None):
     return alist_to_indexlist(get_kneighbor_alist(X, k))

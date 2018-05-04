@@ -105,9 +105,10 @@ graph_in = tf.sparse_placeholder(tf.float32)
 graph_in = tf.placeholder(tf.int32, shape=(None, 2))
 
 def graph_get_func(h_in): # for tf.py_func
-    return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, G, threshold))
+    #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, G, threshold))
     #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, G))
     #return nn.get_radius_graph_input(h_in, G)
+    return nn.get_adj_graph(h_in, G)
 
 #=============================================================================
 # Model predictions and optimizer
