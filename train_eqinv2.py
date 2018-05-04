@@ -30,6 +30,7 @@ start_time = time.time()
 #=============================================================================
 # nbody data params
 num_particles = 32 #pargs['particles']
+N = num_particles**3
 redshift_steps = pargs['redshifts']
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
@@ -50,6 +51,7 @@ model_vars = utils.NBODY_MODELS[model_type]
 
 # network kernel sizes and depth
 channels = model_vars['channels'] # OOM with sparse graph
+channels[0]  = 3
 channels[-1] = 3
 num_layers = len(channels) - 1
 
@@ -89,28 +91,24 @@ vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
 utils.init_sinv_params(channels, var_scope=vscope, restore=restore)
 
-
 # INPUTS
-#data_shape = (None, num_particles**3, 6)
-data_shape = (None, num_particles**3, 7)
-X_input = tf.placeholder(tf.float32, shape=data_shape, name='X_input')
-X_truth = tf.placeholder(tf.float32, shape=data_shape, name='X_truth')
+X_input_edges = tf.placeholder(tf.float32, shape=(N, M, 3, None))
+X_input_nodes = tf.placeholder(tf.float32, shape=(N, 3, None))
+X_truth       = tf.placeholder(tf.float32, shape=(N, 6, None))
 
-# RAD SPARSE TENSOR
-#graph_in = tf.sparse_placeholder(tf.float32)
-graph_in = tf.sparse_placeholder(tf.float32)
-graph_in = tf.placeholder(tf.int32, shape=(None, 2))
+
+# ADJ LIST
+Graph_input = tf.placeholder(tf.int32, shape=(N, M, None))
 
 def graph_get_func(h_in): # for tf.py_func
-    #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, G, threshold))
-    #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, G))
-    #return nn.get_radius_graph_input(h_in, G)
-    #return nn.get_adj_graph(h_in, M)
-    return nn.get_kneighbor_alist(h_in, M)
+    return nn.get_kneighbor_alist(h_in, M, offset_idx=False) # offset idx for batches
 
 #=============================================================================
 # Model predictions and optimizer
 #=============================================================================
+
+
+'''
 # model fwd dispatch args
 if use_graph:
     margs = (X_input, num_layers, graph_in, M)
@@ -126,7 +124,7 @@ error = nn.pbc_loss(X_pred, X_truth[...,:-1], vel=True)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 val_error = nn.pbc_loss(X_pred, X_truth[...,:-1]) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
-
+'''
 
 #=============================================================================
 # Session and Train setup
@@ -159,19 +157,29 @@ print('\nTraining:\n============================================================
 # START
 for step in range(num_iters):
     # data batching
-    _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
-    #_x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
-    x_in    = _x_batch[0]
-    x_truth = _x_batch[1]
-    fdict = {X_input: x_in, X_truth: x_truth}
+    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (2, b, N, 6)
 
-    # feed graph model data
-    if use_graph:
-        #alist = nn.alist_to_indexlist(nn.get_kneighbor_alist(x_in, K))
-        #alist = nn.alist_to_indexlist(nn.get_pbc_kneighbors(x_in, K, threshold))
-        #sparse_attribs = graph_get_func(x_in)
-        #fdict[Sparse_in] = sparse_attribs
-        fdict[graph_in] = graph_get_func(x_in)
+    # split data
+    x_in    = _x_batch[0] # (b, N, 6)
+    x_truth = _x_batch[1] # (b, N, 6)
+
+    # get adj_list
+    adj_list = graph_get_func(x_in) # (b, N, M)
+
+    # get edges (relative dists) and nodes (velocities)
+    x_in_edges = nn.get_input_edge_features(x_in, adj_list) # (b, N, M, 3)
+    x_in_nodes = nn.get_input_node_features(x_in) # (b, N, 3)
+
+    # format input dims
+    x_in_edges = nn.sinv_dim_change(x_in_edges) # simply np.moveaxis
+    x_in_nodes = nn.sinv_dim_change(x_in_nodes) # simply np.moveaxis
+    x_truth  = nn.sinv_dim_changes(x_truth)
+    adj_list = nn.sinv_dim_changes(adj_list)
+
+    fdict = {X_input_edges: x_in_edges,
+             X_input_nodes: x_in_nodes,
+             X_truth: x_truth,
+             Graph_input: adj_list}
 
     # training pass
     train.run(feed_dict=fdict)

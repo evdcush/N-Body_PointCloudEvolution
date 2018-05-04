@@ -205,6 +205,40 @@ def aggregate_multiStep_fwd_validation(x_rs, num_layers, var_scopes, graph_fn, *
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 
 #=============================================================================
+# adj list ops for shift inv data
+#=============================================================================
+
+def get_input_edge_features(X_in, adj_list):
+    """ get relative distances of each particle from its M neighbors
+    Args:
+        X_in (ndarray): (b, N, 6), input data
+        adj_list (ndarray): (b, N, M)
+    """
+    x = X_in[...,:3] # (b, N, 3)
+    b, N, k = x.shape
+    M = adj_list.shape[-1]
+
+    x_out = np.zeros((b, N, M, k)).astype(np.float32)
+    # have to loop, since mem issues with full X_in[adj_list]
+    for i in range(b):
+        h = x[i]     # (N, 3)
+        a = adj_list[i]   # (N, M)
+        h_sel = h[a] # (N, M, 3)
+        h_out = h_sel - h[:,None,:] # (N, M, 3) - (N, 1, 3)
+        x_out[i] = h_out
+    return x_out
+
+def get_input_node_features(X_in):
+   """ get node values (velocity vectors) for each particle
+   X_in.shape == (b, N, 6)
+   """
+   return X_in[...,3:]
+
+def sinv_dim_change(X_in):
+    return np.moveaxis(X_in, 0, -1) # now (N,...,b)
+
+
+#=============================================================================
 # numpy adjacency list func wrappers
 #=============================================================================
 
