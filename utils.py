@@ -40,7 +40,7 @@ NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S'},
 LEARNING_RATE = 0.01
 
 WEIGHT_TAG = 'W_{}'
-EQ_WEIGHT_TAG = 'W{}_{}'
+PEQV_SINV_WEIGHT_TAG = 'W{}_{}'
 GRAPH_TAG  = 'Wg_{}'
 BIAS_TAG   = 'B_{}'
 VEL_COEFF_TAG = 'V'
@@ -49,6 +49,7 @@ VAR_SCOPE_MULTI = 'params_{}'
 VAR_SCOPE_SINGLE_MULTI = 'params_{}-{}'
 AGG_PSCOPE = 'params_agg'
 
+SINV_W_IDX = [1,2,3,4]
 
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
@@ -111,7 +112,28 @@ def init_params(channels, var_scope=VAR_SCOPE, vel_coeff=False, seed=None, resto
         if vel_coeff: # scalar weight for simulating timestep, only one
             init_vel_coeff(restore)
 
-# Multi-step
+# shift-inv params
+def init_sinv_params(channels, var_scope=VAR_SCOPE, vel_coeff=False, seed=None, restore=False):
+    """ Init parameters for 'new' perm-equivariant, shift-invariant model
+    For every layer in this model, there are 4 weights and 1 bias
+        W1: (k, q) no-pooling
+        W2: (k, q) pooling rows
+        W3: (k, q) pooling cols
+        W4: (k, q) pooling all
+        B: (q,) bias
+    """
+    # get (k_in, k_out) tuples from channels
+    kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
+
+    with tf.variable_scope(var_scope):
+        # initialize variables for each layer
+        for layer_idx, ktup in enumerate(kdims):
+            init_bias(*ktup, BIAS_TAG.format(layer_idx), restore=restore) # B
+            for w_idx in SINV_W_IDX: # just [1,2,3,4]
+                init_weight(*ktup, PEQV_SINV_WEIGHT_TAG.format(layer_idx, w_idx), seed=seed, restore=restore)
+        #if vel_coeff: init_vel_coeff(restore) # ignore for now
+
+# Multi-step params for aggregate model
 def init_params_multi(channels, num_rs, var_scope=VAR_SCOPE_MULTI, seed=None, restore=False):
     """ Initialize network parameters for multi-step model, for predicting
     across multiple redshifts. (eg 6.0 -> 4.0 -> ... -> <target rs>)
@@ -130,6 +152,14 @@ def get_layer_vars(layer_idx, var_scope=VAR_SCOPE):
         W = tf.get_variable(WEIGHT_TAG.format(layer_idx))
         B = tf.get_variable(  BIAS_TAG.format(layer_idx))
     return W, B
+
+def get_sinv_layer_vars(layer_idx, var_scope=VAR_SCOPE):
+    layer_vars = []
+    with tf.variable_scope(var_scope, reuse=True):
+        for w_idx in SINV_W_IDX:
+            layer_vars.append(tf.get_variable(PEQV_SINV_WEIGHT_TAG.format(layer_idx, w_idx)))
+        layer_vars.append(tf.get_variable(BIAS_TAG.format(layer_idx)))
+    return layer_vars # [W1, W2, W3, W4, B]
 
 def get_vel_coeff(var_scope):
     with tf.variable_scope(var_scope, reuse=True):
@@ -305,7 +335,6 @@ def load_rs_npy_data(redshifts, norm_coo=False, norm_vel=False, old_dataset=Fals
         return load_rs_old_npy_data(redshifts, norm_coo)
     else:
         return load_zuni_npy_data(redshifts, norm_coo)
-
 
 
 #=============================================================================
@@ -514,9 +543,18 @@ def next_minibatch(X_in, batch_size, data_aug=True):
     else:
         return batches
 
-def load_velocity_coefficients(num_particles):
-    vel_coeffs = np.load('./Data/velocity_coefficients_{}.npy'.format(num_particles)).item()
-    return vel_coeffs
+def next_minibatch_shiftInv(X_in, batch_size, **kwargs):
+    """ minibatch func for the perm-eqvariant, shift-invariant data format
+    Args:
+        X_in (ndarray): (num_rs, num_samples, N, k)
+    RETURNS: X_out of shape (num_rs, N, k, b)
+    """
+    index_list = np.random.choice(X_in.shape[1], batch_size)
+    batches = X_in[:,index_list] # (num_rs, b, N, k)
+
+    # move batch axis to end
+    X_out = np.moveaxis(batches, 1, -1) # (num_rs, N, k, b)
+    return X_out
 
 
 #=============================================================================

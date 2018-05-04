@@ -50,10 +50,7 @@ model_vars = utils.NBODY_MODELS[model_type]
 
 # network kernel sizes and depth
 channels = model_vars['channels'] # OOM with sparse graph
-#channels = [6, 32, 16, 8, 3]#, 8, 16, 12, 16, 8, 3]
-#channels = [6, 8, 12, 8, 4, 8, 12, 16, 8, 3]#, 8, 16, 12, 16, 8, 3]
-channels[-1] = 6
-channels[0] = 7
+channels[-1] = 3
 num_layers = len(channels) - 1
 
 # model features
@@ -62,7 +59,7 @@ vcoeff = pargs['vel_coeff'] == 1
 
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
-G = pargs['graph_var']
+M = pargs['graph_var']
 threshold = 0.03
 
 #=============================================================================
@@ -90,7 +87,7 @@ restore = pargs['restore'] == 1
 # init network params
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params(channels, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
+utils.init_sinv_params(channels, var_scope=vscope, restore=restore)
 
 
 # INPUTS
@@ -108,14 +105,15 @@ def graph_get_func(h_in): # for tf.py_func
     #return nn.alist_to_indexlist(nn.get_pbc_kneighbors(h_in, G, threshold))
     #return nn.alist_to_indexlist(nn.get_kneighbor_alist(h_in, G))
     #return nn.get_radius_graph_input(h_in, G)
-    return nn.get_adj_graph(h_in, G)
+    #return nn.get_adj_graph(h_in, M)
+    return nn.get_kneighbor_alist(h_in, M)
 
 #=============================================================================
 # Model predictions and optimizer
 #=============================================================================
 # model fwd dispatch args
 if use_graph:
-    margs = (X_input, num_layers, graph_in, G)
+    margs = (X_input, num_layers, graph_in, M)
 else:
     margs = (X_input, num_layers)
 
