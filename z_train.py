@@ -101,7 +101,6 @@ X_truth = tf.placeholder(tf.float32, shape=data_shape, name='X_truth')
 
 # RAD SPARSE TENSOR
 #graph_in = tf.sparse_placeholder(tf.float32)
-graph_in = tf.sparse_placeholder(tf.float32)
 graph_in = tf.placeholder(tf.int32, shape=(None, 2))
 
 def graph_get_func(h_in): # for tf.py_func

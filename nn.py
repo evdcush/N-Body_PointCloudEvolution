@@ -20,8 +20,115 @@ RADIUS = 0.08
 #=============================================================================
 # LAYER OPS, New perm-eqv, shift-inv model
 #=============================================================================
+'''
+For every layer in this model, there are 4 weights and 1 bias
+        W1: (k, q) no-pooling
+        W2: (k, q) pooling rows
+        W3: (k, q) pooling cols
+        W4: (k, q) pooling all
+        B: (q,) bias
+'''
+def kgraph_conv_sinv(h, adj):
+    dims = tf.shape(h)
+    b = dims[0]
+    N = dims[1]
+    M = dims[2]
+    k = dims[3]
+    rdim = [b,N,M,M,k]
+    nn_graph = tf.reduce_mean(tf.reshape(tf.gather_nd(h, adj), rdim), axis=2)
+    return nn_graph
+
+def left_mult_sinv(X, W):
+    return tf.einsum("bnmk,kq->bnmq", X, W)
+
+def shift_inv_layer(X, L, W1, W2, W3, W4, B, activation=tf.nn.relu):
+    """
+    X: (b, N, M, k)
+    L: (None, )
+
+    Returns:
+        tensor of shape (N, M, q, b)
+    """
+    dims = tf.shape(X) # (b, N, M, k)
+    N = dims[1]
+    M = dims[2]
+    k = dims[3]
+    ones_m = tf.ones([M, 1], tf.float32)
+    ones_n = tf.ones([N, 1], tf.float32)
+
+    # Pooling and weights
+    # ========================================
+    # W1 - no pooling
+    #H1 = tf.einsum("bnmk,kq->bnmq", X, W1) # (N, M, q, b)
+    H1 = left_mult_sinv(X, W1)
+
+    # W2 - pool rows - this is the trickiest
+    X_pooled_rows = kgraph_conv_sinv(X, L) # (b, N, M, k)
+    #H2 = tf.einsum("bnmk,kq->bnmq", X_pooled_rows, W2)  # shape=(N, M, q, b)
+    H2 = left_mult_sinv(X_pooled_rows, W2)
+
+    # W3 - pool columns
+    X_cols_mu = tf.reduce_mean(X, axis=2, keepdims=True) # (b, N, 1, k)
+    X_pooled_cols = tf.einsum("mi,bnik->bnmk", ones_m, X_cols_mu)
+    #H3 = tf.einsum("bnmk,kq->bnmq", X_pooled_cols, W3)
+    H3 = left_mult_sinv(X_pooled_cols, W3)
+
+    # W4 - pool all
+    X_mu_rows_cols = tf.reduce_mean(X, axis=(1,2), keepdims=True) # (b, 1, 1, k)
+    X_pooled_rows_cols = tf.einsum("ni,biik->bnik", ones_n, X_mu_rows_cols)
+    X_pooled_rows_cols = tf.einsum("mi,bnik->bnmk", ones_m, X_pooled_rows_cols)
+    #H4 = tf.einsum("bnmk,kq->bnmq", X_pooled_rows_cols, W4)
+    H4 = left_mult_sinv(X_pooled_rows_cols, W4)
+
+    # output
+    H = H1 + H2 + H3 + H4
+    X_out = H + B
+    return X_out
 
 
+def input_shift_inv_layer(X, V, L, W1, W2, W3, W4, B, activation=tf.nn.relu):
+    """
+    Version of shift-invariant layer that takes as input node features too.
+    This is meant to be used as the the input layer where edge features (X) are relative distances of each particle
+    to its neighbors and node features are velocities.
+
+    Args:
+        X (tensor): has shape (N, M, 3, b) stores shift-invariant relative distance (to its neighbors) vectors
+        V (tensor): has shape (N, 3, b) stores velocity vectors of each particle
+            Note: batch dimension should be last.
+            N = number of particles
+            M = number of neighbors
+            b = mini-batch size
+
+        L (numpy array): NxM matrix of adjacency list. L = get_adjacency_list(A), A = adjacency matrix
+        W1..4 (tensor): weights with shape (9, q)
+            9 = 3 (original edge features, i.e. relative distances) + 2*3 (row+column velocities)
+            q = output channels
+        B (tensor): bias with shape q
+        activation: defaults is tf.nn.relu
+
+    Returns:
+        tensor of shape (N, M, q, b)
+    """
+
+    N = L.shape[0]
+    M = L.shape[1]
+    ones_m = tf.ones([M, 1], tf.float32)
+
+    # Row features
+    # broadcast to columns
+    # ========================================
+    R1_broad_c = tf.einsum("wr,irjp->iwjp", ones_m, tf.reshape(V, [N, 1, 3, -1]))  # shape=(N, M, 3, b)
+
+    # Column features
+    # broadcast to rows (according to neighbor indices)
+    # ========================================
+    C1_broad_r = tf.gather_nd(V, np.reshape(L, (N, M, 1)))  # shape=(N, M, 3, b)
+
+    # Node features >> Edge features
+    X_edges_and_nodes = tf.concat([X, R1_broad_c, C1_broad_r], axis=2)  # shape=(N, M, 9, b)
+
+    return shift_inv_layer(X=X_edges_and_nodes, L=L, W1=W1, W2=W2, W3=W3, W4=W4, B=B, activation=activation)
 #=============================================================================
 # LAYER OPS
 #=============================================================================

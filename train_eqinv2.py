@@ -92,13 +92,16 @@ tf.set_random_seed(utils.PARAMS_SEED)
 utils.init_sinv_params(channels, var_scope=vscope, restore=restore)
 
 # INPUTS
-X_input_edges = tf.placeholder(tf.float32, shape=(N, M, 3, None))
-X_input_nodes = tf.placeholder(tf.float32, shape=(N, 3, None))
-X_truth       = tf.placeholder(tf.float32, shape=(N, 6, None))
-
+#X_input_edges = tf.placeholder(tf.float32, shape=(N, M, 3, None))
+#X_input_nodes = tf.placeholder(tf.float32, shape=(N, 3, None))
+#X_truth       = tf.placeholder(tf.float32, shape=(N, 6, None))
+X_input_edges = tf.placeholder(tf.float32, shape=(None, N, M, 3))
+X_input_nodes = tf.placeholder(tf.float32, shape=(None, N, 3))
+X_truth       = tf.placeholder(tf.float32, shape=(None, N, 6))
 
 # ADJ LIST
-Graph_input = tf.placeholder(tf.int32, shape=(N, M, None))
+#Graph_input = tf.placeholder(tf.int32, shape=(N, M, None))
+Graph_input = tf.placeholder(tf.int32, shape=(None, 2))
 
 def graph_get_func(h_in): # for tf.py_func
     return nn.get_kneighbor_alist(h_in, M, offset_idx=False) # offset idx for batches
@@ -171,10 +174,13 @@ for step in range(num_iters):
     x_in_nodes = nn.get_input_node_features(x_in) # (b, N, 3)
 
     # format input dims
-    x_in_edges = nn.sinv_dim_change(x_in_edges) # simply np.moveaxis
-    x_in_nodes = nn.sinv_dim_change(x_in_nodes) # simply np.moveaxis
-    x_truth  = nn.sinv_dim_changes(x_truth)
-    adj_list = nn.sinv_dim_changes(adj_list)
+    #x_in_edges = nn.sinv_dim_change(x_in_edges) # simply np.moveaxis
+    #x_in_nodes = nn.sinv_dim_change(x_in_nodes) # simply np.moveaxis
+    #x_truth  = nn.sinv_dim_changes(x_truth)
+    #adj_list = nn.sinv_dim_changes(adj_list)
+
+    # get idx list for tf.gather_nd
+    adj_list = nn.alist_to_indexlist(adj_list)
 
     fdict = {X_input_edges: x_in_edges,
              X_input_nodes: x_in_nodes,
