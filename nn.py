@@ -45,10 +45,13 @@ def left_mult_sinv(X, W):
 def shift_inv_layer(X, L, layer_idx, var_scope):
     """
     X: (b, N, M, k)
-    L: (None, 2)
+    L: (b*N*M, 2) # adjacency list, tiled for tf.gather_nd
+    layer_idx/var_scope: both for tf.get_variable
+    W*: Weights of shape (k, q)
+    B: bias of shape (q,)
 
     Returns:
-        tensor of shape (N, M, q, b)
+        tensor of shape (b, N, M, q)
     """
     # get layer weights
     W1, W2, W3, W4, B = utils.get_sinv_layer_vars(layer_idx, var_scope)
@@ -96,10 +99,10 @@ def shift_inv_layer(X, L, layer_idx, var_scope):
 def input_shift_inv_layer(X, V, L, layer_idx, var_scope):
     """
     X: (b, N, M, k)
-    L: (None, 2)
+    L: (b*N*M, 2) # adjacency list, tiled for tf.gather_nd
 
     Returns:
-        tensor of shape (N, M, q, b)
+        tensor of shape (b, N, M, q)
     """
     # get dims
     dims = tf.shape(X) # (b, N, M, k)
