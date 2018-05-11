@@ -119,8 +119,8 @@ def get_list_csr(h_in): # for tf.py_func
 #=============================================================================
 margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols)
 H_out  = nn.sinv_model_fwd(margs, var_scope=vscope) # (b, N, M, 3)
-H_pooled = tf.reduce_mean(H_out, axis=2)
-X_pred = nn.get_readout(H_pooled)
+#H_pooled = tf.reduce_mean(H_out, axis=2)
+X_pred = nn.get_readout(H_out)
 
 # error and opt
 error = nn.pbc_loss(X_pred, X_truth, vel=False)

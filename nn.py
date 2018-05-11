@@ -20,6 +20,47 @@ RADIUS = 0.08
 #=============================================================================
 # LAYER OPS, New perm-eqv, shift-inv model
 #=============================================================================
+def _pool(X, idx, N, broadcast):
+    """
+    Args:
+        X (tensor): has shape (b, N*M, k), row-major order
+        idx (numpy array): has shape (b, N*M),
+            must be row idx of non-zero entries to pool over columns
+            must be column idx of non-zero entries to pool over rows
+        N (int): number of segments (number of particles in this case)
+        broadcast (bool): if True, after pooling re-broadcast to original shape
+
+    Returns:
+        tensor of shape (b, N*M, k) if broadcast is True
+        tensor of shape (b, N, k) if broadcast is False
+    """
+    b = tf.shape(X)[0]
+    b_idx = tf.range(b)
+    idx_per_batch = idx + N * tf.expand_dims(b_idx, axis=1)
+
+    X_pooled = tf.unsorted_segment_mean(X, idx_per_batch, N * b)
+
+    if broadcast:
+        X_broad = tf.gather_nd(X_pooled, tf.expand_dims(idx_per_batch, axis=2))
+        return tf.reshape(X_broad, tf.shape(X))
+
+    else:
+        return tf.reshape(X_pooled, [b, N, -1])
+
+def _pool_all(X):
+    """
+    Args:
+        X (tensor): has shape (b, N*M, k), row-major order
+
+    Returns:
+        tensor of shape (b, N*M, k), with row and col pooled value broadcasted to original shape
+    """
+
+    X_pool_all = tf.reduce_mean(X, axis=1, keepdims=True)
+    ones = tf.ones([tf.shape(X)[1], 1], tf.float32)
+    return tf.einsum("ij,bjr->bir", ones, X_pool_all)
+
+
 '''
 For every layer in this model, there are 4 weights and 1 bias
         W1: (k, q) no-pooling
@@ -28,33 +69,11 @@ For every layer in this model, there are 4 weights and 1 bias
         W4: (k, q) pooling all
         B: (q,) bias
 '''
-def kgraph_conv_sinv(h, L):
-    """ graph convolution for shift-inv layer
-    THE idea is that we want to select neighbors with L, then average
-    over the neighbor dim correct?
-      so sel = h[L] # (b, N, M, M, k)
-          mu = mean(sel, axis=2) # (b, N, M, k)
-
-    your use of tf.unsorted_segment_mean in code is not correct, and also does not
-    have batch dim on either h or L, so I don't know what you want to do.
-
-    Args:
-        h (tensor): (b, N, M, k)
-        L (tensor): (b, N*M)
-    """
-    dims = tf.shape(h)
-    b = dims[0]
-    N = dims[1]
-    M = dims[2]
-    k = dims[3]
-    rdim = [b,N,M,M,k]
-    nn_graph = tf.reduce_mean(tf.reshape(tf.gather_nd(h, L), rdim), axis=2)
-    return nn_graph
 
 def left_mult_sinv(X, W):
-    return tf.einsum("bnmk,kq->bnmq", X, W)
+    return tf.einsum("bpk,kq->bpq", X, W)
 
-def shift_inv_layer(X, L, layer_idx, var_scope):
+def shift_inv_layer(X, rows, cols, layer_idx, var_scope, is_last=False):
     """
     X: (b, N, M, k)
     L: (b*N*M, 2) # adjacency list, tiled for tf.gather_nd
@@ -65,6 +84,13 @@ def shift_inv_layer(X, L, layer_idx, var_scope):
     Returns:
         tensor of shape (b, N, M, q)
     """
+    # helpers
+    def _pool_cols(X, broadcast=True):
+        return _pool(X=X, idx=rows, N=N, broadcast=broadcast)
+
+    def _pool_rows(X, broadcast=True):
+        return _pool(X=X, idx=cols, N=N, broadcast=broadcast)
+
     # get layer weights
     W1, W2, W3, W4, B = utils.get_sinv_layer_vars(layer_idx, var_scope)
 
@@ -81,34 +107,31 @@ def shift_inv_layer(X, L, layer_idx, var_scope):
     # Pooling and weights
     # ========================================
     # W1 - no pooling
-    #H1 = tf.einsum("bnmk,kq->bnmq", X, W1) # (N, M, q, b)
     H1 = left_mult_sinv(X, W1)
 
     # W2 - pool rows - this is the trickiest
-    X_pooled_rows = kgraph_conv_sinv(X, L) # (b, N, M, k)
-    #H2 = tf.einsum("bnmk,kq->bnmq", X_pooled_rows, W2)  # shape=(N, M, q, b)
+    X_pooled_rows = _pool_rows(X)
     H2 = left_mult_sinv(X_pooled_rows, W2)
 
     # W3 - pool columns
-    X_cols_mu = tf.reduce_mean(X, axis=2, keepdims=True) # (b, N, 1, k)
-    X_pooled_cols = tf.einsum("mi,bnik->bnmk", ones_m, X_cols_mu)
-    #H3 = tf.einsum("bnmk,kq->bnmq", X_pooled_cols, W3)
+    X_pooled_cols = _pool_cols(X)
     H3 = left_mult_sinv(X_pooled_cols, W3)
 
     # W4 - pool all
-    X_mu_rows_cols = tf.reduce_mean(X, axis=(1,2), keepdims=True) # (b, 1, 1, k)
-    X_pooled_rows_cols = tf.einsum("ni,bijk->bnjk", ones_n, X_mu_rows_cols)
-    X_pooled_rows_cols = tf.einsum("mi,bnik->bnmk", ones_m, X_pooled_rows_cols)
-    #H4 = tf.einsum("bnmk,kq->bnmq", X_pooled_rows_cols, W4)
+    X_pooled_all = _pool_all(X)
     H4 = left_mult_sinv(X_pooled_rows_cols, W4)
 
     # output
     H = H1 + H2 + H3 + H4
     X_out = H + B
-    return X_out
+
+    if is_last:
+        return _pool_cols(X_out, broadcast=False)
+    else:
+        return X_out
 
 
-def input_shift_inv_layer(X, V, L, layer_idx, var_scope):
+def input_shift_inv_layer(X, V, row_idx, col_idx, layer_idx, var_scope):
     """
     X: (b, N, M, k)
     L: (b*N*M, 2) # adjacency list, tiled for tf.gather_nd
@@ -116,26 +139,29 @@ def input_shift_inv_layer(X, V, L, layer_idx, var_scope):
     Returns:
         tensor of shape (b, N, M, q)
     """
+
     # get dims
-    dims = tf.shape(X) # (b, N, M, k)
+    dims = tf.shape(V)
+    b = dims[0]
     N = dims[1]
-    M = dims[2]
-    k = dims[3]
+    b_idx = tf.range(b)
+    V_0 = tf.reshape(V, [-1, 3])
 
-    # pooling constants
-    ones_m = tf.ones([M, 1], tf.float32)
+    # Row features
+    # broadcast to columns
+    row_idx_per_batch = row_idx + N * tf.expand_dims(b_idx, axis=1)
+    R_broad = tf.gather_nd(V_0, tf.expand_dims(row_idx_per_batch, axis=2))
+    R = tf.reshape(R_broad, [b, -1, 3])
 
-    # Broadcast row features to cols
-    rows = tf.einsum("mi,bnik->bnmk", ones_m, tf.expand_dims(V, -2))
+    # Column features
+    # broadcast to rows
+    col_idx_per_batch = col_idx + N * tf.expand_dims(b_idx, axis=1)
+    C_broad = tf.gather_nd(V_0, tf.expand_dims(col_idx_per_batch, axis=2))
+    C = tf.reshape(C_broad, [b, -1, 3])
 
-    # Broadcast col features to rows
-    cols = tf.reshape(tf.gather_nd(V, L), tf.shape(X)) # (b, N, 3) -> (b, N, M, 3)
-
-    # concat features
-    X_graph = tf.concat([X, rows, cols], axis=-1)
-    #X_graph = tf.concat([rows, cols], axis=-1)
-
-    return shift_inv_layer(X_graph, L, layer_idx, var_scope)
+    # Node features >> Edge features
+    X_edges_and_nodes = tf.concat([X_in, R, C], axis=2)  # (b, N*M, 9)
+    return shift_inv_layer(X_edges_and_nodes, row_idx, col_idx, layer_idx, var_scope)
 
 
 #=============================================================================
@@ -274,18 +300,19 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
 # new perm eqv, shift inv model funcs
 #=============================================================================
 # ==== Network fn
-def sinv_network_fwd(num_layers, var_scope, X, V, L, activation=tf.nn.relu):
+def sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, activation=tf.nn.relu):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    H = activation(input_shift_inv_layer(X, V, L, 0, var_scope))
+    H = activation(input_shift_inv_layer(X, V, rows, cols, 0, var_scope))
     for i in range(1, num_layers):
-        H = shift_inv_layer(H, L, i, var_scope)
-        if i != num_layers - 1:
+        is_last = i == num_layers - 1
+        H = shift_inv_layer(H, rows, cols, i, var_scope, is_last=is_last)
+        if not is_last:
             H = activation(H)
     return H
 
 # ==== Model fn
-def sinv_model_fwd(num_layers, X, V, L, activation=tf.nn.relu, vel_coeff=False, var_scope=VAR_SCOPE):
-    h_out = sinv_network_fwd(num_layers, var_scope, X, V, L, activation=activation)
+def sinv_model_fwd(num_layers, X, V, rows, cols, activation=tf.nn.relu, vel_coeff=False, var_scope=VAR_SCOPE):
+    h_out = sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, activation=activation)
     return h_out
 
 #=============================================================================
