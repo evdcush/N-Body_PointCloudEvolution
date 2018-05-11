@@ -28,20 +28,32 @@ For every layer in this model, there are 4 weights and 1 bias
         W4: (k, q) pooling all
         B: (q,) bias
 '''
-def kgraph_conv_sinv(h, adj):
+def kgraph_conv_sinv(h, L):
+    """ graph convolution for shift-inv layer
+    THE idea is that we want to select neighbors with L, then average
+    over the neighbor dim correct?
+      so sel = h[L] # (b, N, M, M, k)
+          mu = mean(sel, axis=2) # (b, N, M, k)
+
+    your use of tf.unsorted_segment_mean in code is not correct, and also does not
+    have batch dim on either h or L, so I don't know what you want to do.
+
+    Args:
+        h (tensor): (b, N, M, k)
+        L (tensor): (b, N*M)
+    """
     dims = tf.shape(h)
     b = dims[0]
     N = dims[1]
     M = dims[2]
     k = dims[3]
     rdim = [b,N,M,M,k]
-    nn_graph = tf.reduce_mean(tf.reshape(tf.gather_nd(h, adj), rdim), axis=2)
+    nn_graph = tf.reduce_mean(tf.reshape(tf.gather_nd(h, L), rdim), axis=2)
     return nn_graph
 
 def left_mult_sinv(X, W):
     return tf.einsum("bnmk,kq->bnmq", X, W)
 
-#def shift_inv_layer(X, L, W1, W2, W3, W4, B):
 def shift_inv_layer(X, L, layer_idx, var_scope):
     """
     X: (b, N, M, k)
@@ -330,24 +342,23 @@ def aggregate_multiStep_fwd_validation(x_rs, num_layers, var_scopes, graph_fn, *
 # adj list ops for shift inv data
 #=============================================================================
 
-def get_input_edge_features(X_in, adj_list):
+def get_input_edge_features_batch(X_in, lst_csrs, M):
     """ get relative distances of each particle from its M neighbors
     Args:
         X_in (ndarray): (b, N, 6), input data
-        adj_list (ndarray): (b, N, M)
+        lst_csrs (list(csr)): len b list of csrs
     """
     x = X_in[...,:3] # (b, N, 3)
     b, N, k = x.shape
-    M = adj_list.shape[-1]
 
-    x_out = np.zeros((b, N, M, k)).astype(np.float32)
+    x_out = np.zeros((b, N*M, k)).astype(np.float32)
     # have to loop, since mem issues with full X_in[adj_list]
     for i in range(b):
         h = x[i]     # (N, 3)
-        a = adj_list[i]   # (N, M)
+        a = lst_csrs[i].indices.reshape(N, M) # (N, M)
         h_sel = h[a] # (N, M, 3)
         h_out = h_sel - h[:,None,:] # (N, M, 3) - (N, 1, 3)
-        x_out[i] = h_out
+        x_out[i] = h_out.reshape(-1, k)
     return x_out
 
 def get_input_node_features(X_in):
@@ -418,6 +429,36 @@ def get_kneighbor_alist(X_in, K=14, offset_idx=False, inc_self=True):
             graph_idx += (N*i)
         adj_list[i] = graph_idx
     return adj_list
+
+def get_kneighbor_list(X_in, M, offset_idx=False, inc_self=False):
+    b, N, D = X_in.shape
+    lst_csrs = []
+    for i in range(b):
+        lst_csrs.append(kneighbors_graph(X_in[i,:,:3], M, include_self=inc_self))
+    return lst_csrs
+
+def to_coo_batch(A):
+    """ Get row and column indices from csr
+
+    Args:
+        A (csr): list of csrs of shape (N, N)
+    """
+    b = len(A) # batch size
+    N = A[0].shape[0] # (32**3)
+
+    # initial coo mat
+    a = A[0].tocoo()
+    rows = a.row[None,...] # (1, N*M)
+    cols = a.col[None,...] # (1, N*M)
+    for i in range(1, b):
+        # concat each to batched rows, cols
+        a = A[i].tocoo()
+        r = a.row[None,...]
+        c = a.col[None,...]
+
+        rows = np.concatenate([rows, r], axis=0)
+        cols = np.concatenate([cols, c], axis=0)
+    return rows.astype(np.int32), cols.astype(np.int32)
 
 #=============================================================================
 # RADIUS graph ops

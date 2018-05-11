@@ -97,21 +97,28 @@ utils.init_sinv_params(channels, var_scope=vscope, restore=restore)
 #X_input_edges = tf.placeholder(tf.float32, shape=(N, M, 3, None))
 #X_input_nodes = tf.placeholder(tf.float32, shape=(N, 3, None))
 #X_truth       = tf.placeholder(tf.float32, shape=(N, 6, None))
-X_input_edges = tf.placeholder(tf.float32, shape=(None, N, M, 3))
+X_input_edges = tf.placeholder(tf.float32, shape=(None, N*M, 3))
 X_input_nodes = tf.placeholder(tf.float32, shape=(None, N, 3))
 X_truth       = tf.placeholder(tf.float32, shape=(None, N, 6))
 
-# ADJ LIST
+# GRAPH DATA
 #Graph_input = tf.placeholder(tf.int32, shape=(N, M, None))
-Graph_input = tf.placeholder(tf.int32, shape=(None, 2))
+#Graph_input = tf.placeholder(tf.int32, shape=(None, 2))
+graph_rows = tf.placeholder(tf.int32, shape=(None, N*M))
+graph_cols = tf.placeholder(tf.int32, shape=(None, N*M))
 
-def graph_get_func(h_in): # for tf.py_func
-    return nn.get_kneighbor_alist(h_in, M, offset_idx=False, )#inc_self=False) # offset idx for batches
+
+
+############################## MAY NEED TO OFFSET IDX FOR BATCHES!!!
+
+def get_list_csr(h_in): # for tf.py_func
+    return nn.get_kneighbor_list(h_in, M, offset_idx=False, inc_self=False) # offset idx for batches
 
 #=============================================================================
 # Model predictions and optimizer
 #=============================================================================
-H_out  = nn.sinv_model_fwd(num_layers, X_input_edges, X_input_nodes, Graph_input, var_scope=vscope) # (b, N, M, 3)
+margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols)
+H_out  = nn.sinv_model_fwd(margs, var_scope=vscope) # (b, N, M, 3)
 H_pooled = tf.reduce_mean(H_out, axis=2)
 X_pred = nn.get_readout(H_pooled)
 
@@ -157,27 +164,25 @@ for step in range(num_iters):
     x_truth = _x_batch[1] # (b, N, 6)
 
     # get adj_list
-    adj_list = graph_get_func(x_in) # (b, N, M)
+    csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
 
     # get edges (relative dists) and nodes (velocities)
-    x_in_edges = nn.get_input_edge_features(x_in, adj_list) # (b, N, M, 3)
+    x_in_edges = nn.get_input_edge_features_batch(x_in, csr_list) # (b, N*M, 3)
     x_in_nodes = nn.get_input_node_features(x_in) # (b, N, 3)
 
-    # format input dims
-    #x_in_edges = nn.sinv_dim_change(x_in_edges) # simply np.moveaxis
-    #x_in_nodes = nn.sinv_dim_change(x_in_nodes) # simply np.moveaxis
-    #x_truth  = nn.sinv_dim_changes(x_truth)
-    #adj_list = nn.sinv_dim_changes(adj_list)
+    # get coo features
+    rows, cols = nn.to_coo_batch(csr_list)
 
     # get idx list for tf.gather_nd
-    idx_list = nn.alist_to_indexlist(adj_list)
+    #idx_list = nn.alist_to_indexlist(adj_list)
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 
     fdict = {X_input_edges: x_in_edges,
              X_input_nodes: x_in_nodes,
              X_truth: x_truth,
-             Graph_input: idx_list}
+             graph_rows: rows,
+             graph_cols: cols,}
 
     # training pass
     train.run(feed_dict=fdict)
@@ -212,24 +217,30 @@ for j in range(X_test.shape[1]):
     x_truth = X_test[1, j:j+1]
 
     # get adj_list
-    adj_list = graph_get_func(x_in) # (b, N, M)
+    csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
 
     # get edges (relative dists) and nodes (velocities)
-    x_in_edges = nn.get_input_edge_features(x_in, adj_list) # (b, N, M, 3)
+    x_in_edges = nn.get_input_edge_features_batch(x_in, csr_list) # (b, N*M, 3)
     x_in_nodes = nn.get_input_node_features(x_in) # (b, N, 3)
 
+    # get coo features
+    rows, cols = nn.to_coo_batch(csr_list)
+
     # get idx list for tf.gather_nd
-    idx_list = nn.alist_to_indexlist(adj_list)
+    #idx_list = nn.alist_to_indexlist(adj_list)
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+
 
     fdict = {X_input_edges: x_in_edges,
              X_input_nodes: x_in_nodes,
              X_truth: x_truth,
-             Graph_input: idx_list}
+             graph_rows: rows,
+             graph_cols: cols,}
 
     # validation outputs
     #vals = sess.run([X_pred, val_error, ground_truth_error], feed_dict=fdict)
     x_pred, v_error = sess.run([X_pred, error], feed_dict=fdict)
-    code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     #x_pred, v_error, truth_error = vals
     test_loss_history[j] = v_error
     #inputs_loss_history[j] = truth_error
