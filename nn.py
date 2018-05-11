@@ -35,10 +35,12 @@ def _pool(X, idx, N, broadcast):
         tensor of shape (b, N, k) if broadcast is False
     """
     b = tf.shape(X)[0]
+    #b = X.get_shape().as_list()[0]
     b_idx = tf.range(b)
     idx_per_batch = idx + N * tf.expand_dims(b_idx, axis=1)
+    code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
-    X_pooled = tf.unsorted_segment_mean(X, idx_per_batch, N * b)
+    X_pooled = tf.unsorted_segment_mean(X, idx_per_batch, N * 4)
 
     if broadcast:
         X_broad = tf.gather_nd(X_pooled, tf.expand_dims(idx_per_batch, axis=2))
@@ -73,7 +75,7 @@ For every layer in this model, there are 4 weights and 1 bias
 def left_mult_sinv(X, W):
     return tf.einsum("bpk,kq->bpq", X, W)
 
-def shift_inv_layer(X, rows, cols, layer_idx, var_scope, is_last=False):
+def shift_inv_layer(X, rows, cols, layer_idx, var_scope, is_last=False, N=32**3):
     """
     X: (b, N, M, k)
     L: (b*N*M, 2) # adjacency list, tiled for tf.gather_nd
@@ -86,23 +88,23 @@ def shift_inv_layer(X, rows, cols, layer_idx, var_scope, is_last=False):
     """
     # helpers
     def _pool_cols(X, broadcast=True):
-        return _pool(X=X, idx=rows, N=N, broadcast=broadcast)
+        return _pool(X, idx=rows, N=N, broadcast=broadcast)
 
     def _pool_rows(X, broadcast=True):
-        return _pool(X=X, idx=cols, N=N, broadcast=broadcast)
+        return _pool(X, idx=cols, N=N, broadcast=broadcast)
 
     # get layer weights
     W1, W2, W3, W4, B = utils.get_sinv_layer_vars(layer_idx, var_scope)
 
     # get dims
     dims = tf.shape(X) # (b, N, M, k)
-    N = dims[1]
-    M = dims[2]
-    k = dims[3]
+    #N = dims[1]
+    #M = dims[2]
+    #k = dims[3]
 
     # pooling constants
-    ones_m = tf.ones([M, 1], tf.float32)
-    ones_n = tf.ones([N, 1], tf.float32)
+    #ones_m = tf.ones([M, 1], tf.float32)
+    #ones_n = tf.ones([N, 1], tf.float32)
 
     # Pooling and weights
     # ========================================
@@ -131,7 +133,7 @@ def shift_inv_layer(X, rows, cols, layer_idx, var_scope, is_last=False):
         return X_out
 
 
-def input_shift_inv_layer(X, V, row_idx, col_idx, layer_idx, var_scope):
+def input_shift_inv_layer(X_in, V, row_idx, col_idx, layer_idx, var_scope):
     """
     X: (b, N, M, k)
     L: (b*N*M, 2) # adjacency list, tiled for tf.gather_nd
