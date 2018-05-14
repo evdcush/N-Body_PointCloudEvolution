@@ -342,7 +342,7 @@ def aggregate_multiStep_fwd_validation(x_rs, num_layers, var_scopes, graph_fn, *
 # adj list ops for shift inv data
 #=============================================================================
 
-def get_input_edge_features_batch(X_in, lst_csrs, M):
+def get_input_edge_features_batch(X_in, lst_csrs, M, offset_idx=False):
     """ get relative distances of each particle from its M neighbors
     Args:
         X_in (ndarray): (b, N, 6), input data
@@ -360,6 +360,22 @@ def get_input_edge_features_batch(X_in, lst_csrs, M):
         h_out = h_sel - h[:,None,:] # (N, M, 3) - (N, 1, 3)
         x_out[i] = h_out.reshape(-1, k)
     return x_out
+
+def get_input_edge_features_batch_offset(X_in, lst_csrs, M):
+    """ get relative distances of each particle from its M neighbors
+    Args:
+        X_in (ndarray): (b, N, 6), input data
+        lst_csrs (list(csr)): len b list of csrs
+    """
+    x = X_in[...,:3] # (b, N, 3)
+    b, N, k = x.shape
+    x = x.reshape(-1, k)
+    adj = lst_csrs[0].indices.reshape(N, M)
+    for i in range(1, b):
+        cur = lst_csrs[i].indices.reshape(N, M)
+        adj = np.concatenate([adj, cur], axis=0)
+    x_out = x[adj] - x[:,None,:] # (B*N, M, k)
+    return np.reshape(x_out, (b, N*M, k))
 
 def get_input_node_features(X_in):
    """ get node values (velocity vectors) for each particle
@@ -434,7 +450,10 @@ def get_kneighbor_list(X_in, M, offset_idx=False, inc_self=False):
     b, N, D = X_in.shape
     lst_csrs = []
     for i in range(b):
-        lst_csrs.append(kneighbors_graph(X_in[i,:,:3], M, include_self=inc_self))
+        kgraph = kneighbors_graph(X_in[i,:,:3], M, include_self=inc_self)
+        if offset_idx:
+            kgraph.indices = kgraph.indices + (N * i)
+        lst_csrs.append(kgraph)
     return lst_csrs
 
 def to_coo_batch(A):
