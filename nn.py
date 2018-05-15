@@ -20,74 +20,28 @@ RADIUS = 0.08
 #=============================================================================
 # LAYER OPS, New perm-eqv, shift-inv model
 #=============================================================================
-def _pool_OG(X, idx, N, broadcast):
+def _pool(X, idx, num_segs, broadcast):
     """
     Args:
-        X (tensor): has shape (b, N*M, k), row-major order
-        idx (numpy array): has shape (b, N*M),
+        X (tensor): has shape (c, k), row-major order
+        idx (numpy array): has shape (c),
             must be row idx of non-zero entries to pool over columns
             must be column idx of non-zero entries to pool over rows
         N (int): number of segments (number of particles in this case)
+        b (int): batch size
         broadcast (bool): if True, after pooling re-broadcast to original shape
 
     Returns:
-        tensor of shape (b, N*M, k) if broadcast is True
-        tensor of shape (b, N, k) if broadcast is False
+        tensor of shape (c, k) if broadcast is True
+        tensor of shape (b*N, k) if broadcast is False
     """
-    b = tf.shape(X)[0]
-    b_idx = tf.range(b)
-    idx_per_batch = idx + N * tf.expand_dims(b_idx, axis=1)
-
-    X_pooled = tf.unsorted_segment_mean(X, idx_per_batch, N * b)
+    X_pooled = tf.unsorted_segment_mean(X, idx, num_segs)
 
     if broadcast:
-        X_broad = tf.gather_nd(X_pooled, tf.expand_dims(idx_per_batch, axis=2))
-        return tf.reshape(X_broad, tf.shape(X))
+        return tf.gather_nd(X_pooled, tf.expand_dims(idx, axis=1))
 
     else:
-        return tf.reshape(X_pooled, [b, N, -1])
-
-def _pool(X, idx, N, broadcast):
-    """
-    Args:
-        X (tensor): has shape (b, N*M, k), row-major order
-        idx (numpy array): has shape (b, N*M),
-            must be row idx of non-zero entries to pool over columns
-            must be column idx of non-zero entries to pool over rows
-        N (int): number of segments (number of particles in this case)
-        broadcast (bool): if True, after pooling re-broadcast to original shape
-
-    Returns:
-        tensor of shape (b, N*M, k) if broadcast is True
-        tensor of shape (b, N, k) if broadcast is False
-    """
-    b = tf.shape(X)[0]
-    b_idx = tf.range(b)
-    idx_per_batch = idx + N * tf.expand_dims(b_idx, axis=1)
-
-    X_pooled = tf.unsorted_segment_mean(X, idx_per_batch, N * b)
-
-    if broadcast:
-        X_broad = tf.gather_nd(X_pooled, tf.expand_dims(idx_per_batch, axis=2))
-        return tf.reshape(X_broad, tf.shape(X))
-
-    else:
-        return tf.reshape(X_pooled, [b, N, -1])
-
-
-def _pool_all(X):
-    """
-    Args:
-        X (tensor): has shape (b, N*M, k), row-major order
-
-    Returns:
-        tensor of shape (b, N*M, k), with row and col pooled value broadcasted to original shape
-    """
-
-    X_pool_all = tf.reduce_mean(X, axis=1, keepdims=True)
-    ones = tf.ones([tf.shape(X)[1], 1], tf.float32)
-    return tf.einsum("ij,bjr->bir", ones, X_pool_all)
-
+        return X_pooled
 
 '''
 For every layer in this model, there are 4 weights and 1 bias
@@ -101,6 +55,7 @@ For every layer in this model, there are 4 weights and 1 bias
 def left_mult_sinv(X, W):
     return tf.einsum("bpk,kq->bpq", X, W)
 
+'''
 def shift_inv_layer(X, rows, cols, layer_idx, var_scope, is_last=False, N=32**3):
     """
     X: (b, N, M, k)
@@ -157,39 +112,86 @@ def shift_inv_layer(X, rows, cols, layer_idx, var_scope, is_last=False, N=32**3)
         return _pool_cols(X_out, broadcast=False)
     else:
         return X_out
+'''
 
-
-def input_shift_inv_layer(X_in, V, row_idx, col_idx, layer_idx, var_scope):
+def shift_inv_layer(X_in, row_idx, col_idx, all_idx, N, b, layer_idx, var_scope, is_last=False):
     """
-    X: (b, N, M, k)
-    L: (b*N*M, 2) # adjacency list, tiled for tf.gather_nd
+    Args:
+        X_in (tensor): has shape (c, k), stores shift-invariant edge features, row-major order.
+            c = sum_{i=0..b} n_i, and n_i is the number of non-zero entries of the i-th adjacency in the batch.
+                - if all matrices in the batch have the same number n of non zero-entries, c = b*n
+                - if the number of neighbors is fixed to M, then n = N*M and c = b*N*M
+
+        row_ids, col_ids, all_idx (numpy array): have shape (c), store row / column indices of adjacency non-zero entries,
+            row_ids, col_ids, all_idx =  pre_process_adjacency(A), A=adjacency batch.
+        N (int): number of particles
+        b (int): batch size
+        W* (tensor): weights with shape (k, q), q = number of output channels
+        P (tensor): bias with shape q
+        activation: defaults is tf.nn.relu
+        is_last (bool): if True pools output over columns (neighbors), default is False
 
     Returns:
-        tensor of shape (b, N, M, q)
+        tensor of shape (c, q) if is_last is False
+        tensor of shape (b, N, q) if is_last is True
     """
+    def _pool_cols(X, broadcast=True):
+        return _pool(X, row_idx, N * b, broadcast)
 
-    # get dims
-    dims = tf.shape(V)
-    b = dims[0]
-    N = dims[1]
-    b_idx = tf.range(b)
-    V_0 = tf.reshape(V, [-1, 3])
+    def _pool_rows(X, broadcast=True):
+        return _pool(X, col_idx, N * b, broadcast)
 
-    # Row features
-    # broadcast to columns
-    row_idx_per_batch = row_idx + N * tf.expand_dims(b_idx, axis=1)
-    R_broad = tf.gather_nd(V_0, tf.expand_dims(row_idx_per_batch, axis=2))
-    R = tf.reshape(R_broad, [b, -1, 3])
+    def _pool_all(X, broadcast=True):
+        return _pool(X, all_idx, N * b, broadcast)
 
-    # Column features
-    # broadcast to rows
-    col_idx_per_batch = col_idx + N * tf.expand_dims(b_idx, axis=1)
-    C_broad = tf.gather_nd(V_0, tf.expand_dims(col_idx_per_batch, axis=2))
-    C = tf.reshape(C_broad, [b, -1, 3])
+    # get layer weights
+    W1, W2, W3, W4, P = utils.get_sinv_layer_vars(layer_idx, var_scope)
 
-    # Node features >> Edge features
-    X_edges_and_nodes = tf.concat([X_in, R, C], axis=2)  # (b, N*M, 9)
-    return shift_inv_layer(X_edges_and_nodes, row_idx, col_idx, layer_idx, var_scope)
+    # Pooling and weights
+    # ========================================
+    # W1 - no pooling
+    X1 = tf.einsum("ij,jw->iw", X_in, W1)  # (c, q)
+
+    # W2 - pool rows
+    X_pooled_r = _pool_rows(X=X_in)
+    X2 = tf.einsum("ij,jw->iw", X_pooled_r, W2)  # (c, q)
+
+    # W3 - pool cols
+    X_pooled_c = _pool_cols(X=X_in)
+    X3 = tf.einsum("ij,jw->iw", X_pooled_c, W3)  # (c, q)
+
+    # W4 - pool all
+    X_pooled_all = _pool_all(X=X_in)
+    X4 = tf.einsum("ij,jw->iw", X_pooled_all, W4)  # (c, q)
+
+    X_all = tf.add_n([X1, X2, X3, X4])
+    X_bias = tf.add(X_all, tf.reshape(P, [1, -1]))
+    X_out = X_bias  # (c, q)
+
+    # Output
+    # ========================================
+    if is_last:
+        return tf.reshape(_pool_cols(X_out, broadcast=False), [b, N, -1])
+
+    else:
+        return X_out
+
+
+def include_node_features(X_in, V, row_idx, col_idx):
+    """
+    Broadcast node features to edges. To be used for first layer input.
+
+    Args:
+        X_in (tensor): has shape (c, 3) - input edge features (relative positions of neighbors)
+        V (tensor): has shape (b*N, 3) - input node features (velocities)
+
+    Returns:
+        tensor with shape (c, 9), with node features broadcasted to edges
+    """
+    R = tf.gather_nd(V, tf.expand_dims(row_idx, axis=1))
+    C = tf.gather_nd(V, tf.expand_dims(col_idx, axis=1))
+
+    return tf.concat([X_in, R, C], axis=1)  # (c, 9)
 
 
 #=============================================================================
@@ -328,19 +330,21 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
 # new perm eqv, shift inv model funcs
 #=============================================================================
 # ==== Network fn
-def sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, activation=tf.nn.relu):
+def sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    H = activation(input_shift_inv_layer(X, V, rows, cols, 0, var_scope))
+    #H = activation(input_shift_inv_layer(X, V, rows, cols, 0, var_scope))
+    h_in = include_node_features(X, V, rows, cols)
+    H = activation(shift_inv_layer(h_in, rows, cols, all_idx, N, b, 0, var_scope))
     for i in range(1, num_layers):
         is_last = i == num_layers - 1
-        H = shift_inv_layer(H, rows, cols, i, var_scope, is_last=is_last)
+        H = shift_inv_layer(H, rows, cols, all_idx, N, b, i, var_scope, is_last=is_last)
         if not is_last:
             H = activation(H)
     return H
 
 # ==== Model fn
-def sinv_model_fwd(num_layers, X, V, rows, cols, activation=tf.nn.relu, vel_coeff=False, var_scope=VAR_SCOPE):
-    h_out = sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, activation=activation)
+def sinv_model_fwd(num_layers, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu, vel_coeff=False, var_scope=VAR_SCOPE):
+    h_out = sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b)
     return h_out
 
 #=============================================================================
@@ -414,7 +418,7 @@ def get_input_edge_features_batch(X_in, lst_csrs, M, offset_idx=False):
         h_sel = h[a] # (N, M, 3)
         h_out = h_sel - h[:,None,:] # (N, M, 3) - (N, 1, 3)
         x_out[i] = h_out.reshape(-1, k)
-    return x_out
+    return x_out.reshape(-1, k)
 
 def get_input_edge_features_batch_offset(X_in, lst_csrs, M):
     """ get relative distances of each particle from its M neighbors
@@ -432,11 +436,12 @@ def get_input_edge_features_batch_offset(X_in, lst_csrs, M):
     x_out = x[adj] - x[:,None,:] # (B*N, M, k)
     return np.reshape(x_out, (b, N*M, k))
 
+
 def get_input_node_features(X_in):
    """ get node values (velocity vectors) for each particle
    X_in.shape == (b, N, 6)
    """
-   return X_in[...,3:]
+   return X_in[...,3:].reshape(-1, 3)
 
 def sinv_dim_change(X_in):
     return np.moveaxis(X_in, 0, -1) # now (N,...,b)
@@ -510,6 +515,34 @@ def get_kneighbor_list(X_in, M, offset_idx=False, inc_self=False):
             kgraph.indices = kgraph.indices + (N * i)
         lst_csrs.append(kgraph)
     return lst_csrs
+
+def to_coo_batch2(A):
+    """ Get row and column indices from csr
+    DOES NOT LIKE OFFSET IDX, tocoo() method will complain about index being
+    greater than matrix size
+
+    Args:
+        A (csr): list of csrs of shape (N, N)
+    """
+    b = len(A) # batch size
+    N = A[0].shape[0] # (32**3)
+
+    # initial coo mat
+    a = A[0].tocoo()
+    rows = a.row # (N*M)
+    cols = a.col # (N*M)
+    idx = np.zeros_like(rows)
+    for i in range(1, b):
+        # concat each to batched rows, cols
+        a = A[i].tocoo()
+        r = a.row + (i*N)
+        c = a.col + (i*N)
+        e = np.zeroes_like(r) + i
+
+        rows = np.concatenate([rows, r], axis=0)
+        cols = np.concatenate([cols, c], axis=0)
+        idx  = np.concatenate([idx,  e], axis=0)
+    return rows.astype(np.int32), cols.astype(np.int32), idx.astype(np.int32)
 
 def to_coo_batch(A):
     """ Get row and column indices from csr

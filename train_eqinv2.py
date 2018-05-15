@@ -66,6 +66,11 @@ learning_rate = LEARNING_RATE # 0.01
 M = pargs['graph_var']
 threshold = 0.03
 
+# training params
+batch_size = pargs['batch_size']
+num_iters  = pargs['num_iters']
+verbose    = pargs['verbose']
+
 #=============================================================================
 # Session save parameters
 #=============================================================================
@@ -94,18 +99,17 @@ tf.set_random_seed(utils.PARAMS_SEED)
 utils.init_sinv_params(channels, var_scope=vscope, restore=restore)
 
 # INPUTS
-#X_input_edges = tf.placeholder(tf.float32, shape=(N, M, 3, None))
-#X_input_nodes = tf.placeholder(tf.float32, shape=(N, 3, None))
-#X_truth       = tf.placeholder(tf.float32, shape=(N, 6, None))
-X_input_edges = tf.placeholder(tf.float32, shape=(None, N*M, 3))
-X_input_nodes = tf.placeholder(tf.float32, shape=(None, N, 3))
+#X_input_edges = tf.placeholder(tf.float32, shape=(None, N*M, 3))
+#X_input_nodes = tf.placeholder(tf.float32, shape=(None, N, 3))
+#X_truth       = tf.placeholder(tf.float32, shape=(None, N, 6))
+X_input_edges = tf.placeholder(tf.float32, shape=(None, 3))
+X_input_nodes = tf.placeholder(tf.float32, shape=(None, 3))
 X_truth       = tf.placeholder(tf.float32, shape=(None, N, 6))
 
 # GRAPH DATA
-#Graph_input = tf.placeholder(tf.int32, shape=(N, M, None))
-#Graph_input = tf.placeholder(tf.int32, shape=(None, 2))
-graph_rows = tf.placeholder(tf.int32, shape=(None, N*M))
-graph_cols = tf.placeholder(tf.int32, shape=(None, N*M))
+graph_rows = tf.placeholder(tf.int32, shape=(None,))
+graph_cols = tf.placeholder(tf.int32, shape=(None,))
+graph_all  = tf.placeholder(tf.int32, shape=(None,))
 
 
 
@@ -117,22 +121,23 @@ def get_list_csr(h_in): # for tf.py_func
 #=============================================================================
 # Model predictions and optimizer
 #=============================================================================
-margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols)
-H_out  = nn.sinv_model_fwd(*margs, var_scope=vscope) # (b, N, M, 3)
+margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, num_particles, batch_size)
+margs_val = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, num_particles, 1)
+H_out     = nn.sinv_model_fwd(*margs, var_scope=vscope) # (b, N, M, 3)
+H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope) # (b, N, M, 3)
 #H_pooled = tf.reduce_mean(H_out, axis=2)
 X_pred = nn.get_readout(H_out)
+X_pred_val = nn.get_readout(H_out_val)
 
 # error and opt
 error = nn.pbc_loss(X_pred, X_truth, vel=False)
+val_error = nn.pbc_loss(X_pred_val, X_truth, vel=False)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 
 #=============================================================================
 # Session and Train setup
 #=============================================================================
-# training params
-batch_size = pargs['batch_size']
-num_iters  = pargs['num_iters']
-verbose    = pargs['verbose']
+
 
 # Sess
 gpu_frac = 0.85
@@ -167,11 +172,11 @@ for step in range(num_iters):
     csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
 
     # get edges (relative dists) and nodes (velocities)
-    x_in_edges = nn.get_input_edge_features_batch(x_in, csr_list) # (b, N*M, 3)
-    x_in_nodes = nn.get_input_node_features(x_in) # (b, N, 3)
+    x_in_edges = nn.get_input_edge_features_batch(x_in, csr_list, M) # (b*N*M, 3)
+    x_in_nodes = nn.get_input_node_features(x_in) # (b*N, 3)
 
     # get coo features
-    rows, cols = nn.to_coo_batch(csr_list)
+    rows, cols, all_idx = nn.to_coo_batch2(csr_list)
 
     # get idx list for tf.gather_nd
     #idx_list = nn.alist_to_indexlist(adj_list)
@@ -182,7 +187,8 @@ for step in range(num_iters):
              X_input_nodes: x_in_nodes,
              X_truth: x_truth,
              graph_rows: rows,
-             graph_cols: cols,}
+             graph_cols: cols,
+             graph_all: all_idx,}
 
     # training pass
     train.run(feed_dict=fdict)
@@ -220,11 +226,11 @@ for j in range(X_test.shape[1]):
     csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
 
     # get edges (relative dists) and nodes (velocities)
-    x_in_edges = nn.get_input_edge_features_batch(x_in, csr_list) # (b, N*M, 3)
-    x_in_nodes = nn.get_input_node_features(x_in) # (b, N, 3)
+    x_in_edges = nn.get_input_edge_features_batch(x_in, csr_list, M) # (b*N*M, 3)
+    x_in_nodes = nn.get_input_node_features(x_in) # (b*N, 3)
 
     # get coo features
-    rows, cols = nn.to_coo_batch(csr_list)
+    rows, cols, all_idx = nn.to_coo_batch2(csr_list)
 
     # get idx list for tf.gather_nd
     #idx_list = nn.alist_to_indexlist(adj_list)
@@ -235,11 +241,12 @@ for j in range(X_test.shape[1]):
              X_input_nodes: x_in_nodes,
              X_truth: x_truth,
              graph_rows: rows,
-             graph_cols: cols,}
+             graph_cols: cols,
+             graph_all: all_idx,}
 
     # validation outputs
     #vals = sess.run([X_pred, val_error, ground_truth_error], feed_dict=fdict)
-    x_pred, v_error = sess.run([X_pred, error], feed_dict=fdict)
+    x_pred, v_error = sess.run([X_pred_val, val_error], feed_dict=fdict)
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     #x_pred, v_error, truth_error = vals
     test_loss_history[j] = v_error
