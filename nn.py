@@ -20,6 +20,33 @@ RADIUS = 0.08
 #=============================================================================
 # LAYER OPS, New perm-eqv, shift-inv model
 #=============================================================================
+def _pool_OG(X, idx, N, broadcast):
+    """
+    Args:
+        X (tensor): has shape (b, N*M, k), row-major order
+        idx (numpy array): has shape (b, N*M),
+            must be row idx of non-zero entries to pool over columns
+            must be column idx of non-zero entries to pool over rows
+        N (int): number of segments (number of particles in this case)
+        broadcast (bool): if True, after pooling re-broadcast to original shape
+
+    Returns:
+        tensor of shape (b, N*M, k) if broadcast is True
+        tensor of shape (b, N, k) if broadcast is False
+    """
+    b = tf.shape(X)[0]
+    b_idx = tf.range(b)
+    idx_per_batch = idx + N * tf.expand_dims(b_idx, axis=1)
+
+    X_pooled = tf.unsorted_segment_mean(X, idx_per_batch, N * b)
+
+    if broadcast:
+        X_broad = tf.gather_nd(X_pooled, tf.expand_dims(idx_per_batch, axis=2))
+        return tf.reshape(X_broad, tf.shape(X))
+
+    else:
+        return tf.reshape(X_pooled, [b, N, -1])
+
 def _pool(X, idx, N, broadcast):
     """
     Args:
@@ -486,6 +513,8 @@ def get_kneighbor_list(X_in, M, offset_idx=False, inc_self=False):
 
 def to_coo_batch(A):
     """ Get row and column indices from csr
+    DOES NOT LIKE OFFSET IDX, tocoo() method will complain about index being
+    greater than matrix size
 
     Args:
         A (csr): list of csrs of shape (N, N)
