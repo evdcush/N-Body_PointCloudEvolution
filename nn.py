@@ -226,14 +226,14 @@ def sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b, act
     H = shift_inv_layer(H, rows, cols, all_idx, N, b, num_layers-1, var_scope, is_last=True)
     if add:
         pooled_input = tf.reshape(_pool(X, rows, N * b, broadcast=False), [b, N, -1])
-        code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         return H + pooled_input
     else:
         return H
 
 # ==== Model fn
 def sinv_model_fwd(num_layers, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu, vel_coeff=False, var_scope=VAR_SCOPE, add=True):
-    h_out = sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b)
+    h_out = sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b, add=add)
     return h_out
 
 #=============================================================================

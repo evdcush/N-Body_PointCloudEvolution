@@ -99,17 +99,26 @@ tf.set_random_seed(utils.PARAMS_SEED)
 utils.init_sinv_params(channels, var_scope=vscope, restore=restore)
 
 # INPUTS
-#X_input_edges = tf.placeholder(tf.float32, shape=(None, N*M, 3))
-#X_input_nodes = tf.placeholder(tf.float32, shape=(None, N, 3))
+#X_input_edges = tf.placeholder(tf.float32, shape=(None, 3))
+#X_input_nodes = tf.placeholder(tf.float32, shape=(None, 3))
 #X_truth       = tf.placeholder(tf.float32, shape=(None, N, 6))
-X_input_edges = tf.placeholder(tf.float32, shape=(None, 3))
-X_input_nodes = tf.placeholder(tf.float32, shape=(None, 3))
+X_input_edges = tf.placeholder(tf.float32, shape=(batch_size*N*M, 3))
+X_input_nodes = tf.placeholder(tf.float32, shape=(batch_size*N, 3))
+X_input_edges_val = tf.placeholder(tf.float32, shape=(N*M, 3))
+X_input_nodes_val = tf.placeholder(tf.float32, shape=(N, 3))
 X_truth       = tf.placeholder(tf.float32, shape=(None, N, 6))
 
 # GRAPH DATA
-graph_rows = tf.placeholder(tf.int32, shape=(None,))
-graph_cols = tf.placeholder(tf.int32, shape=(None,))
-graph_all  = tf.placeholder(tf.int32, shape=(None,))
+#graph_rows = tf.placeholder(tf.int32, shape=(None,))
+#graph_cols = tf.placeholder(tf.int32, shape=(None,))
+#graph_all  = tf.placeholder(tf.int32, shape=(None,))
+graph_rows = tf.placeholder(tf.int32, shape=(batch_size*N*M,))
+graph_cols = tf.placeholder(tf.int32, shape=(batch_size*N*M,))
+graph_all  = tf.placeholder(tf.int32, shape=(batch_size*N*M,))
+
+graph_rows_val = tf.placeholder(tf.int32, shape=(N*M,))
+graph_cols_val = tf.placeholder(tf.int32, shape=(N*M,))
+graph_all_val  = tf.placeholder(tf.int32, shape=(N*M,))
 
 
 
@@ -121,34 +130,19 @@ def get_list_csr(h_in): # for tf.py_func
 #=============================================================================
 # Model predictions and optimizer
 #=============================================================================
-#margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, num_particles, batch_size)
-#margs_val = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, num_particles, 1)
-#H_out     = nn.sinv_model_fwd(*margs, var_scope=vscope) # (b, N, M, 3)
-#H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope) # (b, N, M, 3)
-#H_pooled = tf.reduce_mean(H_out, axis=2)
-#X_pred = nn.get_readout(H_out)
-#X_pred_val = nn.get_readout(H_out_val)
-
-H_out = tf.placeholder(tf.float32, shape=(None, N, 3))
+margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, N, batch_size)
+H_out     = nn.sinv_model_fwd(*margs, var_scope=vscope, add=True) # (b, N, M, 3)
 X_pred = nn.get_readout_mod(H_out)
+
+margs_val = (num_layers, X_input_edges_val, X_input_nodes_val, graph_rows_val, graph_cols_val, graph_all_val, N, 1)
+H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, add=True) # (b, N, M, 3)
+X_pred_val = nn.get_readout_mod(H_out_val)
 
 # error and opt
 error = nn.pbc_loss(X_pred, X_truth, vel=False)
-#val_error = nn.pbc_loss(X_pred_val, X_truth, vel=False)
+val_error = nn.pbc_loss(X_pred_val, X_truth, vel=False)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
-#opt = tf.train.AdamOptimizer(learning_rate)
 
-def forward(edges, nodes, rows, cols, idx, b):
-    h = nn.sinv_model_fwd(num_layers, edges, nodes, rows, cols, idx, N, b, var_scope=vscope)
-    return h
-    #return nn.get_readout_mod(h)
-'''
-def loss(x_pred, x_true):
-    return nn.pbc_loss(x_pred, x_true)
-
-def backprop(e):
-    opt.minimize(e)
-'''
 #=============================================================================
 # Session and Train setup
 #=============================================================================
@@ -167,7 +161,7 @@ saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
 checkpoint = 500
 save_checkpoint = lambda step: (step+1) % checkpoint == 0 and step != 0
-
+'''
 #=============================================================================
 # TRAINING WITH VARIABLES
 #=============================================================================
@@ -226,14 +220,16 @@ print('elapsed time: {}'.format(time.time() - start_time))
  - readout func not working on network output. While coo values maxed at 1.0,
    min values are < 0.0 (eg -17.0)
    - the func seems to work in normal train however?
+   - POSSIBLY FIXED with modulus
+ - cannot do this variable thing, not sure backprop is working, and memory overflow
 """
 
-
+'''
 
 #=============================================================================
 # TRAINING WITH PLACEHOLDERS
 #=============================================================================
-'''
+
 for step in range(num_iters):
     # data batching
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (2, b, N, 6)
@@ -311,12 +307,12 @@ for j in range(X_test.shape[1]):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 
-    fdict = {X_input_edges: x_in_edges,
-             X_input_nodes: x_in_nodes,
+    fdict = {X_input_edges_val: x_in_edges,
+             X_input_nodes_val: x_in_nodes,
              X_truth: x_truth,
-             graph_rows: rows,
-             graph_cols: cols,
-             graph_all: all_idx,}
+             graph_rows_val: rows,
+             graph_cols_val: cols,
+             graph_all_val: all_idx,}
 
     # validation outputs
     #vals = sess.run([X_pred, val_error, ground_truth_error], feed_dict=fdict)
@@ -327,6 +323,7 @@ for j in range(X_test.shape[1]):
     #inputs_loss_history[j] = truth_error
     test_predictions[j] = x_pred[0]
     print('{:>3d}: {:.6f}'.format(j, v_error))
+    code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 # median test error
 test_median = np.median(test_loss_history)
@@ -339,4 +336,3 @@ utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-'''
