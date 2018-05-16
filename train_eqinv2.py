@@ -131,12 +131,14 @@ def get_list_csr(h_in): # for tf.py_func
 # Model predictions and optimizer
 #=============================================================================
 margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, N, batch_size)
-H_out     = nn.sinv_model_fwd(*margs, var_scope=vscope, add=True) # (b, N, M, 3)
+H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, add=True) # (b, N, M, 3)
 X_pred = nn.get_readout_mod(H_out)
+#X_pred = nn.get_readout(H_out)
 
 margs_val = (num_layers, X_input_edges_val, X_input_nodes_val, graph_rows_val, graph_cols_val, graph_all_val, N, 1)
 H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, add=True) # (b, N, M, 3)
 X_pred_val = nn.get_readout_mod(H_out_val)
+#X_pred_val = nn.get_readout(H_out_val)
 
 # error and opt
 error = nn.pbc_loss(X_pred, X_truth, vel=False)
