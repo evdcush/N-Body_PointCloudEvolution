@@ -171,8 +171,8 @@ def shift_inv_layer(X_in, row_idx, col_idx, all_idx, N, b, layer_idx, var_scope,
     # Output
     # ========================================
     if is_last:
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         return tf.reshape(_pool_cols(X_out, broadcast=False), [b, N, -1])
-
     else:
         return X_out
 
@@ -193,6 +193,48 @@ def include_node_features(X_in, V, row_idx, col_idx):
 
     return tf.concat([X_in, R, C], axis=1)  # (c, 9)
 
+#=============================================================================
+# new perm eqv, shift inv model funcs
+#=============================================================================
+# ==== Network fn
+def _sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu):
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    #H = activation(input_shift_inv_layer(X, V, rows, cols, 0, var_scope))
+    h_in = include_node_features(X, V, rows, cols)
+    H = activation(shift_inv_layer(h_in, rows, cols, all_idx, N, b, 0, var_scope))
+    for i in range(1, num_layers):
+        is_last = i == num_layers - 1
+        H = shift_inv_layer(H, rows, cols, all_idx, N, b, i, var_scope, is_last=is_last)
+        if not is_last:
+            H = activation(H)
+    return H
+
+def sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu, add=False):
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    #H = activation(input_shift_inv_layer(X, V, rows, cols, 0, var_scope))
+
+    # input layer
+    h_in = include_node_features(X, V, rows, cols)
+    H = activation(shift_inv_layer(h_in, rows, cols, all_idx, N, b, 0, var_scope))
+
+    # hidden layers
+    for i in range(1, num_layers-1):
+        is_last = i == num_layers - 1
+        H = activation(shift_inv_layer(H, rows, cols, all_idx, N, b, i, var_scope, is_last=is_last))
+
+    # output layer
+    H = shift_inv_layer(H, rows, cols, all_idx, N, b, num_layers-1, var_scope, is_last=True)
+    if add:
+        pooled_input = tf.reshape(_pool(X, rows, N * b, broadcast=False), [b, N, -1])
+        code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        return H + pooled_input
+    else:
+        return H
+
+# ==== Model fn
+def sinv_model_fwd(num_layers, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu, vel_coeff=False, var_scope=VAR_SCOPE, add=True):
+    h_out = sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b)
+    return h_out
 
 #=============================================================================
 # LAYER OPS
@@ -324,27 +366,6 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
     if add:
         vcoeff = utils.get_vel_coeff(var_scope) if vel_coeff else None
         h_out = skip_connection(x_in, h_out, vcoeff)
-    return h_out
-
-#=============================================================================
-# new perm eqv, shift inv model funcs
-#=============================================================================
-# ==== Network fn
-def sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu):
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    #H = activation(input_shift_inv_layer(X, V, rows, cols, 0, var_scope))
-    h_in = include_node_features(X, V, rows, cols)
-    H = activation(shift_inv_layer(h_in, rows, cols, all_idx, N, b, 0, var_scope))
-    for i in range(1, num_layers):
-        is_last = i == num_layers - 1
-        H = shift_inv_layer(H, rows, cols, all_idx, N, b, i, var_scope, is_last=is_last)
-        if not is_last:
-            H = activation(H)
-    return H
-
-# ==== Model fn
-def sinv_model_fwd(num_layers, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu, vel_coeff=False, var_scope=VAR_SCOPE):
-    h_out = sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b)
     return h_out
 
 #=============================================================================
@@ -744,6 +765,22 @@ def get_readout(h_out):
     ls_zero = -(tf.sign(h_out_coo) - 1) / 2
     rest = 1 - gt_one - ls_zero
     readout = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo)
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+
+    if M > 3: # then vel was predicted as well, concat
+        readout = tf.concat([readout, h_out[...,3:]], axis=-1)
+    return readout
+
+def get_readout_lsfix(h_out):
+    M = h_out.get_shape().as_list()[-1]
+
+    # bounding coo
+    h_out_coo = h_out[...,:3]
+    gt_one  = (tf.sign(h_out_coo - 1) + 1) / 2
+    ls_zero = -(tf.sign(h_out_coo) - 1) / 2
+    rest = 1 - gt_one - ls_zero
+    readout = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo)
+    code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
     if M > 3: # then vel was predicted as well, concat
         readout = tf.concat([readout, h_out[...,3:]], axis=-1)
@@ -776,5 +813,5 @@ def pbc_loss(readout, x_truth, vel=False):
     if vel:
         assert readout.get_shape().as_list()[-1] > 3
         dist_vel = tf.squared_difference(readout[...,3:], x_truth[...,3:])
-        error *=   tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1))
+        error *= tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1))
     return error

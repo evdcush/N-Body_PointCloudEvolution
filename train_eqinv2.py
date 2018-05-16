@@ -136,7 +136,7 @@ def get_list_csr(h_in): # for tf.py_func
 opt = tf.train.AdamOptimizer(learning_rate)
 
 def forward(edges, nodes, rows, cols, idx, b):
-    h = nn.sinv_model_fwd(num_layers, edges, nodes, rows, cols, idx, num_particles, b, var_scope=vscope)
+    h = nn.sinv_model_fwd(num_layers, edges, nodes, rows, cols, idx, N, b, var_scope=vscope)
     return nn.get_readout(h)
 
 def loss(x_pred, x_true):
@@ -197,7 +197,9 @@ for step in range(num_iters):
     backprop(error)
 
     if (step + 1) % 10 == 0:
-        print('{:>5}: {:.6f}'.format(step+1, error))
+        xp = x_pred.eval()
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        print('{:>5}: {:.6f}'.format(step+1, error.eval()))
 
 
     # save checkpoint
@@ -209,7 +211,12 @@ for step in range(num_iters):
 # END
 print('elapsed time: {}'.format(time.time() - start_time))
 
-
+# NOTES:
+"""
+ - readout func not working on network output. While coo values maxed at 1.0,
+   min values are < 0.0 (eg -17.0)
+   - the func seems to work in normal train however?
+"""
 
 
 

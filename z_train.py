@@ -123,11 +123,21 @@ H_out  = nn.model_fwd(*margs, vel_coeff=vcoeff, var_scope=vscope)
 X_pred = nn.get_readout(H_out)
 
 # error and optimizer
-error = nn.pbc_loss(X_pred, X_truth[...,:-1], vel=True)
-train = tf.train.AdamOptimizer(learning_rate).minimize(error)
+#error = nn.pbc_loss(X_pred, X_truth[...,:-1], vel=True)
+#train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 val_error = nn.pbc_loss(X_pred, X_truth[...,:-1]) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
 
+opt = tf.train.AdamOptimizer(learning_rate)
+def forward(x, graph):
+    h = nn.model_fwd(x, num_layers, graph, G, vel_coeff=vcoeff, var_scope=vscope)
+    return nn.get_readout(h)
+
+def loss(x_pred, x_true):
+    return nn.pbc_loss(x_pred, x_true[...,:-1], vel=True)
+
+def backprop(e):
+    opt.minimize(e)
 
 #=============================================================================
 # Session and Train setup
@@ -174,7 +184,13 @@ for step in range(num_iters):
         fdict[graph_in] = graph_get_func(x_in)
 
     # training pass
-    train.run(feed_dict=fdict)
+    #train.run(feed_dict=fdict)
+
+    '''
+    if (step + 1) % 10 == 0:
+        h_out, xp = sess.run([H_out, X_pred], feed_dict=fdict)
+        code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    '''
 
     # save checkpoint
     if save_checkpoint(step):
