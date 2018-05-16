@@ -764,26 +764,22 @@ def get_readout(h_out):
     gt_one  = (tf.sign(h_out_coo - 1) + 1) / 2
     ls_zero = -(tf.sign(h_out_coo) - 1) / 2
     rest = 1 - gt_one - ls_zero
-    readout = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo)
+    readout = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo) ########################################## THIS WAS 1 + h_out...
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
     if M > 3: # then vel was predicted as well, concat
         readout = tf.concat([readout, h_out[...,3:]], axis=-1)
     return readout
 
-def get_readout_lsfix(h_out):
+def get_readout_mod(h_out):
     M = h_out.get_shape().as_list()[-1]
 
-    # bounding coo
-    h_out_coo = h_out[...,:3]
-    gt_one  = (tf.sign(h_out_coo - 1) + 1) / 2
-    ls_zero = -(tf.sign(h_out_coo) - 1) / 2
-    rest = 1 - gt_one - ls_zero
-    readout = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo)
-    code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-
-    if M > 3: # then vel was predicted as well, concat
-        readout = tf.concat([readout, h_out[...,3:]], axis=-1)
+    if M <= 3:
+        readout = tf.mod(h_out, 1.0)
+    else:
+        loc = tf.mod(h_out[...,:3], 1.0)
+        vel = h_out[...,3:]
+        readout = tf.concat([loc, vel], axis=-1)
     return readout
 
 def periodic_boundary_dist(readout_full, x_truth):

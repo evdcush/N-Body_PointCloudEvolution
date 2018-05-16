@@ -544,7 +544,7 @@ def get_readout(x_hat):
     gt_one  = (F.sign(readout - 1) + 1) / 2
     ls_zero = -(F.sign(readout) - 1) / 2
     rest = 1 - gt_one - ls_zero
-    readout_xhat = rest*readout + gt_one*(readout-1) + ls_zero*(1-readout)
+    readout_xhat = rest*readout + gt_one*(readout-1) + ls_zero*(1-readout)     # this is off
     return readout_xhat
 
 def get_min_readout_MSE(x_hat, x_true):

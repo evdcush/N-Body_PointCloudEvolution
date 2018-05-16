@@ -129,22 +129,26 @@ def get_list_csr(h_in): # for tf.py_func
 #X_pred = nn.get_readout(H_out)
 #X_pred_val = nn.get_readout(H_out_val)
 
+H_out = tf.placeholder(tf.float32, shape=(None, N, 3))
+X_pred = nn.get_readout_mod(H_out)
+
 # error and opt
-#error = nn.pbc_loss(X_pred, X_truth, vel=False)
+error = nn.pbc_loss(X_pred, X_truth, vel=False)
 #val_error = nn.pbc_loss(X_pred_val, X_truth, vel=False)
-#train = tf.train.AdamOptimizer(learning_rate).minimize(error)
-opt = tf.train.AdamOptimizer(learning_rate)
+train = tf.train.AdamOptimizer(learning_rate).minimize(error)
+#opt = tf.train.AdamOptimizer(learning_rate)
 
 def forward(edges, nodes, rows, cols, idx, b):
     h = nn.sinv_model_fwd(num_layers, edges, nodes, rows, cols, idx, N, b, var_scope=vscope)
-    return nn.get_readout(h)
-
+    return h
+    #return nn.get_readout_mod(h)
+'''
 def loss(x_pred, x_true):
     return nn.pbc_loss(x_pred, x_true)
 
 def backprop(e):
     opt.minimize(e)
-
+'''
 #=============================================================================
 # Session and Train setup
 #=============================================================================
@@ -191,15 +195,21 @@ for step in range(num_iters):
 
     # network forward
     x_pred = forward(x_in_edges, x_in_nodes, rows, cols, all_idx, batch_size)
+    #x_pred = nn.get_readout(h)
+    fdict = {X_pred: x_pred, X_truth: x_truth}
+    train.run(feed_dict=fdict)
+
 
     # network backprop
-    error = loss(x_pred, x_truth)
-    backprop(error)
+    #error = loss(x_pred, x_truth)
+    #backprop(error)
 
     if (step + 1) % 10 == 0:
-        xp = x_pred.eval()
+        #xp = x_pred.eval()
+        #y = h.eval()
         #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        print('{:>5}: {:.6f}'.format(step+1, error.eval()))
+        e = sess.run(error, feed_dict=fdict)
+        print('{:>5}: {:.6f}'.format(step+1, e.eval()))
 
 
     # save checkpoint
