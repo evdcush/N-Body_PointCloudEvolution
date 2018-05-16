@@ -537,7 +537,7 @@ def to_coo_batch2(A):
         a = A[i].tocoo()
         r = a.row + (i*N)
         c = a.col + (i*N)
-        e = np.zeroes_like(r) + i
+        e = np.zeros_like(r) + i
 
         rows = np.concatenate([rows, r], axis=0)
         cols = np.concatenate([cols, c], axis=0)

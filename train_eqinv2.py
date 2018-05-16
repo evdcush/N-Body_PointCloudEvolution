@@ -121,18 +121,29 @@ def get_list_csr(h_in): # for tf.py_func
 #=============================================================================
 # Model predictions and optimizer
 #=============================================================================
-margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, num_particles, batch_size)
-margs_val = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, num_particles, 1)
-H_out     = nn.sinv_model_fwd(*margs, var_scope=vscope) # (b, N, M, 3)
-H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope) # (b, N, M, 3)
+#margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, num_particles, batch_size)
+#margs_val = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, num_particles, 1)
+#H_out     = nn.sinv_model_fwd(*margs, var_scope=vscope) # (b, N, M, 3)
+#H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope) # (b, N, M, 3)
 #H_pooled = tf.reduce_mean(H_out, axis=2)
-X_pred = nn.get_readout(H_out)
-X_pred_val = nn.get_readout(H_out_val)
+#X_pred = nn.get_readout(H_out)
+#X_pred_val = nn.get_readout(H_out_val)
 
 # error and opt
-error = nn.pbc_loss(X_pred, X_truth, vel=False)
-val_error = nn.pbc_loss(X_pred_val, X_truth, vel=False)
-train = tf.train.AdamOptimizer(learning_rate).minimize(error)
+#error = nn.pbc_loss(X_pred, X_truth, vel=False)
+#val_error = nn.pbc_loss(X_pred_val, X_truth, vel=False)
+#train = tf.train.AdamOptimizer(learning_rate).minimize(error)
+opt = tf.train.AdamOptimizer(learning_rate)
+
+def forward(edges, nodes, rows, cols, idx, b):
+    h = nn.sinv_model_fwd(num_layers, edges, nodes, rows, cols, idx, num_particles, b, var_scope=vscope)
+    return nn.get_readout(h)
+
+def loss(x_pred, x_true):
+    return nn.pbc_loss(x_pred, x_true)
+
+def backprop(e):
+    opt.minimize(e)
 
 #=============================================================================
 # Session and Train setup
@@ -154,12 +165,58 @@ checkpoint = 500
 save_checkpoint = lambda step: (step+1) % checkpoint == 0 and step != 0
 
 #=============================================================================
-# TRAINING
+# TRAINING WITH VARIABLES
 #=============================================================================
 start_time = time.time()
 np.random.seed(utils.DATASET_SEED)
 print('\nTraining:\n==============================================================================')
 # START
+for step in range(num_iters):
+    # data batching
+    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (2, b, N, 6)
+
+    # split data
+    x_in    = _x_batch[0] # (b, N, 6)
+    x_truth = _x_batch[1] # (b, N, 6)
+
+    # get list of neighbor graphs in csr form
+    csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
+
+    # get edges (relative dists) and nodes (velocities)
+    x_in_edges = nn.get_input_edge_features_batch(x_in, csr_list, M) # (b*N*M, 3)
+    x_in_nodes = nn.get_input_node_features(x_in) # (b*N, 3)
+
+    # get coo features from csrs
+    rows, cols, all_idx = nn.to_coo_batch2(csr_list)
+
+    # network forward
+    x_pred = forward(x_in_edges, x_in_nodes, rows, cols, all_idx, batch_size)
+
+    # network backprop
+    error = loss(x_pred, x_truth)
+    backprop(error)
+
+    if (step + 1) % 10 == 0:
+        print('{:>5}: {:.6f}'.format(step+1, error))
+
+
+    # save checkpoint
+    if save_checkpoint(step):
+        #print('{:>5}: {:.6f}'.format(step, error))
+        #print('checkpoint {:>5}: {}'.format(step, tr_error))
+        print('    SAVE CHECKPOINT')
+        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+# END
+print('elapsed time: {}'.format(time.time() - start_time))
+
+
+
+
+
+#=============================================================================
+# TRAINING WITH PLACEHOLDERS
+#=============================================================================
+'''
 for step in range(num_iters):
     # data batching
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (2, b, N, 6)
@@ -265,3 +322,4 @@ utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+'''
