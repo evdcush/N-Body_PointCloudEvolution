@@ -87,7 +87,7 @@ model_path, loss_path, cube_path = paths
 restore = pargs['restore'] == 1
 
 # save test data
-#utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
+utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 
 
 #=============================================================================
@@ -249,6 +249,9 @@ for step in range(num_iters):
 
     # get coo features
     rows, cols, all_idx = nn.to_coo_batch2(csr_list)
+    #rows, cols, all_idx = nn.pre_process_adjacency(csr_list)
+
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
     # get idx list for tf.gather_nd
     #idx_list = nn.alist_to_indexlist(adj_list)
@@ -303,6 +306,7 @@ for j in range(X_test.shape[1]):
 
     # get coo features
     rows, cols, all_idx = nn.to_coo_batch2(csr_list)
+    #rows, cols, all_idx = nn.pre_process_adjacency(csr_list)
 
     # get idx list for tf.gather_nd
     #idx_list = nn.alist_to_indexlist(adj_list)
@@ -325,7 +329,7 @@ for j in range(X_test.shape[1]):
     #inputs_loss_history[j] = truth_error
     test_predictions[j] = x_pred[0]
     print('{:>3d}: {:.6f}'.format(j, v_error))
-    code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 # median test error
 test_median = np.median(test_loss_history)

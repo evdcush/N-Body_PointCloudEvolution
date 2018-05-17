@@ -165,8 +165,9 @@ def shift_inv_layer(X_in, row_idx, col_idx, all_idx, N, b, layer_idx, var_scope,
     X4 = tf.einsum("ij,jw->iw", X_pooled_all, W4)  # (c, q)
 
     X_all = tf.add_n([X1, X2, X3, X4])
-    X_bias = tf.add(X_all, tf.reshape(P, [1, -1]))
-    X_out = X_bias  # (c, q)
+    #X_bias = tf.add(X_all, tf.reshape(P, [1, -1]))
+    #X_out = X_bias  # (c, q)
+    X_out = X_all + P
 
     # Output
     # ========================================
@@ -565,30 +566,48 @@ def to_coo_batch2(A):
         idx  = np.concatenate([idx,  e], axis=0)
     return rows.astype(np.int32), cols.astype(np.int32), idx.astype(np.int32)
 
-def to_coo_batch(A):
-    """ Get row and column indices from csr
-    DOES NOT LIKE OFFSET IDX, tocoo() method will complain about index being
-    greater than matrix size
+
+def pre_process_adjacency(A):
+    """
+    Batch of adjacency matrices <> row, col offset indices.
+    Nodes can have different number of neighbors (e.g., density based).
+
+    NOTE: this returns DIFFERENT col than coo-matrix conversion
+     - cols with nonzero are sorted. Whether this is needed for the pooling op
+       I'm not sure. Cols are always set-wise same as coo.
+     - cols in coo are based on csr.indices and csr.indptr, which means indices
+       are not sorted in scalar order, but either arbitrary or NN distance
+
+    This is also FAR MORE computationally expensive than coo conversion
 
     Args:
-        A (csr): list of csrs of shape (N, N)
+        A (numpy array): adjacency batch, has shape (b, N, N)
+
+    Returns:
+        row_idx (numpy array), col_idx (numpy array), all_idx(numpy array):
+            all have shape (c), where c = sum_{i=0..b} n_i, and n_i is the number of non-zero entries of
+            the i-th adjacency in the batch.
+                - if all matrices in the batch have the same number n of non zero-entries, c = b*n
+                - if the number of neighbors is fixed to M, then n = N*M and c = b*N*M
+
+        row_idx, col_idx are indices of non-zero entries
+        all_idx keeps track of how many non-zero entries are in each element of the batch - needed for _pool_all operation
     """
-    b = len(A) # batch size
-    N = A[0].shape[0] # (32**3)
+    b = len(A)
+    N = A[0].shape[0]
 
-    # initial coo mat
-    a = A[0].tocoo()
-    rows = a.row[None,...] # (1, N*M)
-    cols = a.col[None,...] # (1, N*M)
-    for i in range(1, b):
-        # concat each to batched rows, cols
-        a = A[i].tocoo()
-        r = a.row[None,...]
-        c = a.col[None,...]
+    row_idx = []
+    col_idx = []
+    all_idx = []
+    for i in range(b):
+        a = A[i].toarray()
+        r_idx, c_idx = np.nonzero(a)
+        row_idx.extend(i * N + r_idx)  # offset indices
+        col_idx.extend(i * N + c_idx)  # offset indices
+        all_idx.extend(i + np.zeros_like(r_idx))  # offset indices
 
-        rows = np.concatenate([rows, r], axis=0)
-        cols = np.concatenate([cols, c], axis=0)
-    return rows.astype(np.int32), cols.astype(np.int32)
+    return np.array(row_idx), np.array(col_idx), np.array(all_idx)
+
 
 #=============================================================================
 # RADIUS graph ops
