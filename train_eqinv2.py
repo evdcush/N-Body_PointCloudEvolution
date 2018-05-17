@@ -87,7 +87,7 @@ model_path, loss_path, cube_path = paths
 restore = pargs['restore'] == 1
 
 # save test data
-utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
+#utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 
 
 #=============================================================================

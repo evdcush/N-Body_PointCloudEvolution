@@ -55,64 +55,17 @@ For every layer in this model, there are 4 weights and 1 bias
 def left_mult_sinv(X, W):
     return tf.einsum("bpk,kq->bpq", X, W)
 
-'''
-def shift_inv_layer(X, rows, cols, layer_idx, var_scope, is_last=False, N=32**3):
+
+
+def shift_inv_layer_spt(X_in, spt, N, b, layer_idx, var_scope, is_last=False):
     """
-    X: (b, N, M, k)
-    L: (b*N*M, 2) # adjacency list, tiled for tf.gather_nd
-    layer_idx/var_scope: both for tf.get_variable
-    W*: Weights of shape (k, q)
-    B: bias of shape (q,)
-
-    Returns:
-        tensor of shape (b, N, M, q)
+    Args:
+        X_in (tensor): (b*N*M, k)
+        spt (sparseTensor): (b*N, b*N)
     """
-    # helpers
-    def _pool_cols(X, broadcast=True):
-        return _pool(X, idx=rows, N=N, broadcast=broadcast)
+    W, P = utils.get_layer_vars(layer_idx, var_scope=var_scope)
 
-    def _pool_rows(X, broadcast=True):
-        return _pool(X, idx=cols, N=N, broadcast=broadcast)
 
-    # get layer weights
-    W1, W2, W3, W4, B = utils.get_sinv_layer_vars(layer_idx, var_scope)
-
-    # get dims
-    dims = tf.shape(X) # (b, N, M, k)
-    #N = dims[1]
-    #M = dims[2]
-    #k = dims[3]
-
-    # pooling constants
-    #ones_m = tf.ones([M, 1], tf.float32)
-    #ones_n = tf.ones([N, 1], tf.float32)
-
-    # Pooling and weights
-    # ========================================
-    # W1 - no pooling
-    H1 = left_mult_sinv(X, W1)
-
-    # W2 - pool rows - this is the trickiest
-    X_pooled_rows = _pool_rows(X)
-    H2 = left_mult_sinv(X_pooled_rows, W2)
-
-    # W3 - pool columns
-    X_pooled_cols = _pool_cols(X)
-    H3 = left_mult_sinv(X_pooled_cols, W3)
-
-    # W4 - pool all
-    X_pooled_all = _pool_all(X)
-    H4 = left_mult_sinv(X_pooled_rows_cols, W4)
-
-    # output
-    H = H1 + H2 + H3 + H4
-    X_out = H + B
-
-    if is_last:
-        return _pool_cols(X_out, broadcast=False)
-    else:
-        return X_out
-'''
 
 def shift_inv_layer(X_in, row_idx, col_idx, all_idx, N, b, layer_idx, var_scope, is_last=False):
     """
@@ -176,6 +129,7 @@ def shift_inv_layer(X_in, row_idx, col_idx, all_idx, N, b, layer_idx, var_scope,
         return tf.reshape(_pool_cols(X_out, broadcast=False), [b, N, -1])
     else:
         return X_out
+
 
 
 def include_node_features(X_in, V, row_idx, col_idx):
