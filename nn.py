@@ -514,6 +514,7 @@ def to_coo_batch2(A):
         r = a.row + (i*N)
         c = a.col + (i*N)
         e = np.zeros_like(r) + i
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
         rows = np.concatenate([rows, r], axis=0)
         cols = np.concatenate([cols, c], axis=0)

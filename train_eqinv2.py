@@ -102,6 +102,8 @@ utils.init_sinv_params(channels, var_scope=vscope, restore=restore)
 #X_input_edges = tf.placeholder(tf.float32, shape=(None, 3))
 #X_input_nodes = tf.placeholder(tf.float32, shape=(None, 3))
 #X_truth       = tf.placeholder(tf.float32, shape=(None, N, 6))
+X_input = tf.placeholder(tf.float32, shape=(None, N, 3))
+
 X_input_edges = tf.placeholder(tf.float32, shape=(batch_size*N*M, 3))
 X_input_nodes = tf.placeholder(tf.float32, shape=(batch_size*N, 3))
 X_input_edges_val = tf.placeholder(tf.float32, shape=(N*M, 3))
@@ -131,14 +133,16 @@ def get_list_csr(h_in): # for tf.py_func
 # Model predictions and optimizer
 #=============================================================================
 margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, N, batch_size)
-H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, add=True) # (b, N, M, 3)
-X_pred = nn.get_readout_mod(H_out)
-#X_pred = nn.get_readout(H_out)
+H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, add=False) # (b, N, M, 3)
+#X_pred = nn.get_readout_mod(X_input + H_out)
+#X_pred = nn.get_readout_mod(H_out)
+X_pred = nn.get_readout(H_out)
 
 margs_val = (num_layers, X_input_edges_val, X_input_nodes_val, graph_rows_val, graph_cols_val, graph_all_val, N, 1)
-H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, add=True) # (b, N, M, 3)
-X_pred_val = nn.get_readout_mod(H_out_val)
-#X_pred_val = nn.get_readout(H_out_val)
+H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, add=False) # (b, N, M, 3)
+#X_pred_val = nn.get_readout_mod(H_out_val)
+#X_pred_val = nn.get_readout_mod(X_input + H_out_val)
+X_pred_val = nn.get_readout(H_out_val)
 
 # error and opt
 error = nn.pbc_loss(X_pred, X_truth, vel=False)
@@ -258,7 +262,8 @@ for step in range(num_iters):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 
-    fdict = {X_input_edges: x_in_edges,
+    fdict = {X_input: x_in[...,:3],
+             X_input_edges: x_in_edges,
              X_input_nodes: x_in_nodes,
              X_truth: x_truth,
              graph_rows: rows,
@@ -313,7 +318,8 @@ for j in range(X_test.shape[1]):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 
-    fdict = {X_input_edges_val: x_in_edges,
+    fdict = {X_input: x_in[...,:3],
+             X_input_edges_val: x_in_edges,
              X_input_nodes_val: x_in_nodes,
              X_truth: x_truth,
              graph_rows_val: rows,
