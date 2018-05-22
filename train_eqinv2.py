@@ -20,8 +20,6 @@ parser.add_argument('--batch_size','-b', default=8,          type=int,  help='tr
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
 parser.add_argument('--save_prefix','-n', default='',        type=str,  help='model name prefix')
 parser.add_argument('--vel_coeff', '-c', default=0,          type=int,  help='use timestep coefficient on velocity')
-parser.add_argument('--verbose',   '-v', default=0,          type=int,  help='verbose prints training progress')
-parser.add_argument('--vinit',   '-q', default=0.002,          type=float,  help='verbose prints training progress')
 pargs = vars(parser.parse_args())
 start_time = time.time()
 
@@ -35,6 +33,9 @@ N = num_particles**3
 redshift_steps = pargs['redshifts']
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
+
+# vel ceoff
+COEFF_INIT = 0.002 # based on search over 15 diff values
 
 # Load data
 num_val_samples = 200
@@ -70,7 +71,6 @@ threshold = 0.03
 # training params
 batch_size = pargs['batch_size']
 num_iters  = pargs['num_iters']
-verbose    = pargs['verbose']
 
 #=============================================================================
 # Session save parameters
@@ -97,7 +97,7 @@ restore = pargs['restore'] == 1
 # init network params
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_sinv_params(channels, var_scope=vscope, restore=restore, vel_coeff=vcoeff)
+utils.init_sinv_params(channels, var_scope=vscope, restore=restore, vel_coeff=None)
 
 # INPUTS
 #X_input_edges = tf.placeholder(tf.float32, shape=(None, 3))
@@ -133,50 +133,39 @@ def get_list_csr(h_in): # for tf.py_func
 #=============================================================================
 # Model predictions and optimizer
 #=============================================================================
-margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, N, batch_size)
-H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, add=False) # (b, N, M, 3)
-
 
 def get_coeff():
     with tf.variable_scope(vscope, reuse=True):
         return tf.get_variable('vc')
-vc_init_val = pargs['vinit']
 
 def init_coeff():
     """ scalar weight used in skip connection, approximates timestep
     """
     #init = tf.random_uniform_initializer(0,1) if not restore else None
     with tf.variable_scope(vscope):
-        vc_init = tf.constant([vc_init_val])
+        vc_init = tf.constant([COEFF_INIT])
         tf.get_variable('vc', dtype=tf.float32, initializer=vc_init)
 
-init_coeff()
 readout_func = nn.get_readout
 
-
+init_coeff()
 vc = get_coeff()
-X_pred = readout_func(X_input + H_out)
 
+# train
+margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, N, batch_size)
+H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, add=False) # (b, N, M, 3)
+X_pred = readout_func(X_input + vc*H_out)
 
+# val
 margs_val = (num_layers, X_input_edges_val, X_input_nodes_val, graph_rows_val, graph_cols_val, graph_all_val, N, 1)
 H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, add=False) # (b, N, M, 3)
-#X_pred_val = nn.get_readout_mod(H_out_val)
-#X_pred_val = nn.get_readout_mod(X_input + vc*H_out_val)
-#X_hat_val = tf.sigmoid(X_input + H_out_val)
-#X_pred_val = readout_func(X_input + vc*H_out_val)
-X_pred_val = readout_func(X_input + H_out_val)
-#X_pred_val = X_input + H_out_val
-#X_pred_val = nn.get_readout(H_out_val)
+X_pred_val = readout_func(X_input + vc*H_out_val)
+
 
 # error and opt
-error = nn.pbc_loss(X_pred, X_truth, vel=False)
-val_error = nn.pbc_loss(X_pred_val, X_truth, vel=False)
-C = 0.3
-#error = nn.pbc_loss(X_pred, readout_func(X_input + C), vel=False)
-#val_error = nn.pbc_loss(X_pred_val, readout_func(X_input + C), vel=False)
-#error = nn.pbc_loss(X_pred, X_input + C, vel=False)
-#val_error = nn.pbc_loss(X_pred_val, X_input + C, vel=False)
-inputs_diff = nn.pbc_loss(X_input, X_truth, vel=False)
+error       = nn.pbc_loss(X_pred,     X_truth, vel=False)
+val_error   = nn.pbc_loss(X_pred_val, X_truth, vel=False)
+inputs_diff = nn.pbc_loss(X_input,    X_truth, vel=False)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 
 #=============================================================================
@@ -191,19 +180,17 @@ sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
 if restore:
     utils.load_graph(sess, model_path)
+
 # Save
-train_loss_history = np.zeros((num_iters)).astype(np.float32)
+#train_loss_history = np.zeros((num_iters)).astype(np.float32)
 saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
 checkpoint = 500
-save_checkpoint = lambda step: (step+1) % checkpoint == 0 and step != 0
+save_checkpoint = lambda step: (step+1) % checkpoint == 0
 
 #=============================================================================
 # TRAINING WITH PLACEHOLDERS
 #=============================================================================
-vel_coeff_history = np.zeros((num_iters // 5))
-sp = 0
-#print('starting coeff: {}'.format(vc.eval()))
 np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
     # data batching
@@ -222,36 +209,17 @@ for step in range(num_iters):
 
     # get coo features
     rows, cols, all_idx = nn.to_coo_batch2(csr_list)
-    #rows, cols, all_idx = nn.pre_process_adjacency(csr_list)
-
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-
-    # get idx list for tf.gather_nd
-    #idx_list = nn.alist_to_indexlist(adj_list)
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-
 
     fdict = {X_input: x_in[...,:3],
              X_input_edges: x_in_edges,
              X_input_nodes: x_in_nodes,
              X_truth: x_truth,
-             #X_truth: np.mod(x_in[...,:3] + C, 1.0),
              graph_rows: rows,
              graph_cols: cols,
              graph_all: all_idx,}
 
     # training pass
     train.run(feed_dict=fdict)
-    '''
-    if (step + 1) % 5 == 0:
-        e = sess.run(error, feed_dict=fdict)
-        #print('{:>5}: {}'.format(step+1, e))
-        cur_vc = get_coeff().eval()
-        vel_coeff_history[sp] = cur_vc
-        #print('VC: {:>5} {}'.format(step+1, cur_vc))
-        sp += 1
-    '''
-
 
     # save checkpoint
     if save_checkpoint(step):
@@ -263,7 +231,6 @@ print('elapsed time: {}'.format(time.time() - start_time))
 
 # save
 saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
-#if verbose: utils.save_loss(loss_path + model_name, train_loss_history)
 X_train = None # reduce memory overhead
 
 #=============================================================================
@@ -271,7 +238,6 @@ X_train = None # reduce memory overhead
 #=============================================================================
 # data containers
 num_test_samples = X_test.shape[1]
-#test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
 test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
@@ -291,27 +257,17 @@ for j in range(X_test.shape[1]):
 
     # get coo features
     rows, cols, all_idx = nn.to_coo_batch2(csr_list)
-    #rows, cols, all_idx = nn.pre_process_adjacency(csr_list)
-
-    # get idx list for tf.gather_nd
-    #idx_list = nn.alist_to_indexlist(adj_list)
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-
 
     fdict = {X_input: x_in[...,:3],
              X_input_edges_val: x_in_edges,
              X_input_nodes_val: x_in_nodes,
              X_truth: x_truth,
-             #X_truth: np.mod(x_in[...,:3] + C, 1.0),
              graph_rows_val: rows,
              graph_cols_val: cols,
              graph_all_val: all_idx,}
 
     # validation outputs
-    #vals = sess.run([X_pred, val_error, ground_truth_error], feed_dict=fdict)
     x_pred, v_error, truth_error = sess.run([X_pred_val, val_error, inputs_diff], feed_dict=fdict)
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    #x_pred, v_error, truth_error = vals
     test_loss_history[j] = v_error
     inputs_loss_history[j] = truth_error
     test_predictions[j] = x_pred[0]
@@ -322,8 +278,7 @@ for j in range(X_test.shape[1]):
 test_median = np.median(test_loss_history)
 inputs_median = np.median(inputs_loss_history)
 #print('{:<18} median: {:.9f}'.format(model_name, test_median))
-print('{:<18} {} median: {:.9f}, {:.9f}'.format(model_name, pargs['vinit'], test_median, inputs_median))
-#print('coeff: {}'.format(np.median(vel_coeff_history[-30:])))
+print('{:<18} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
