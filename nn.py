@@ -382,7 +382,26 @@ def get_input_edge_features_batch(X_in, lst_csrs, M, offset_idx=False):
         x_out[i] = h_out.reshape(-1, k)
     return x_out.reshape(-1, k)
 
-def get_input_edge_features_batch_offset(X_in, lst_csrs, M):
+def get_input_edge_features_batch_rad(X_in, lst_csrs, M, offset_idx=False):
+    """ get relative distances of each particle from its M neighbors
+    Args:
+        X_in (ndarray): (b, N, 6), input data
+        lst_csrs (list(csr)): len b list of csrs
+    """
+    x = X_in[...,:3] # (b, N, 3)
+    b, N, k = x.shape
+
+    x_out = np.zeros((b, N*M, k)).astype(np.float32)
+    # have to loop, since mem issues with full X_in[adj_list]
+    for i in range(b):
+        h = x[i]     # (N, 3)
+        a = lst_csrs[i].indices.reshape(N, M) # (N, M)
+        h_sel = h[a] # (N, M, 3)
+        h_out = h_sel - h[:,None,:] # (N, M, 3) - (N, 1, 3)
+        x_out[i] = h_out.reshape(-1, k)
+    return x_out.reshape(-1, k)
+
+def _get_input_edge_features_batch_offset(X_in, lst_csrs, M):
     """ get relative distances of each particle from its M neighbors
     Args:
         X_in (ndarray): (b, N, 6), input data

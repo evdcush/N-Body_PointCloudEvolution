@@ -20,6 +20,8 @@ parser.add_argument('--batch_size','-b', default=8,          type=int,  help='tr
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
 parser.add_argument('--save_prefix','-n', default='',        type=str,  help='model name prefix')
 parser.add_argument('--vel_coeff', '-c', default=0,          type=int,  help='use timestep coefficient on velocity')
+parser.add_argument('--search_param', '-q', default=0,          type=int,  help='hyperparameter search')
+
 pargs = vars(parser.parse_args())
 start_time = time.time()
 
@@ -55,7 +57,6 @@ model_vars = utils.NBODY_MODELS[model_type]
 #channels = model_vars['channels'] # OOM with sparse graph
 channels = [6, 32, 16, 8, 3]
 channels[0]  = 9
-#channels[0]  = 6
 channels[-1] = 3
 num_layers = len(channels) - 1
 
@@ -131,17 +132,24 @@ readout_func = nn.get_readout
 
 # train
 margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, N, batch_size)
-H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, vel_coeff=use_coeff) # (b, N, M, 3)
-X_pred = readout_func(X_input + H_out)
+#H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, vel_coeff=use_coeff) # (b, N, M, 3)
+H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, vel_coeff=False) # (b, N, M, 3)
+theta = utils.get_vel_coeff(vscope)
+X_pred = tf.concat([readout_func(X_input + theta*H_out), H_out], axis=-1)
+#X_pred = readout_func(X_input + H_out)
 
 # val
 margs_val = (num_layers, X_input_edges_val, X_input_nodes_val, graph_rows_val, graph_cols_val, graph_all_val, N, 1)
-H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, vel_coeff=use_coeff) # (b, N, M, 3)
-X_pred_val = readout_func(X_input + H_out_val)
+#H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, vel_coeff=use_coeff) # (b, N, M, 3)
+H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, vel_coeff=False) # (b, N, M, 3)
+X_pred_val = tf.concat([readout_func(X_input + theta*H_out_val), H_out_val], axis=-1)
+
+#X_pred_val = readout_func(X_input + H_out_val)
 
 
 # error and opt
-error       = nn.pbc_loss(X_pred,     X_truth, vel=False)
+#error       = nn.pbc_loss(X_pred,     X_truth, vel=False)
+error       = nn.pbc_loss(X_pred,     X_truth, vel=True)
 val_error   = nn.pbc_loss(X_pred_val, X_truth, vel=False)
 inputs_diff = nn.pbc_loss(X_input,    X_truth, vel=False)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
@@ -169,7 +177,12 @@ save_checkpoint = lambda step: (step+1) % checkpoint == 0
 #=============================================================================
 # TRAINING WITH PLACEHOLDERS
 #=============================================================================
-np.random.seed(utils.DATASET_SEED)
+#data_seeds = np.load('data_seeds.npy')
+#cur_seed_idx = pargs['search_param']
+#cur_seed = int(data_seeds[cur_seed_idx, 0])
+#print('cur seed: {}'.format(cur_seed_idx))
+cur_seed = 237913
+np.random.seed(cur_seed)
 for step in range(num_iters):
     # data batching
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (2, b, N, 6)
@@ -216,7 +229,8 @@ X_train = None # reduce memory overhead
 #=============================================================================
 # data containers
 num_test_samples = X_test.shape[1]
-test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
+#test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
+test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 
@@ -249,7 +263,7 @@ for j in range(X_test.shape[1]):
     test_loss_history[j] = v_error
     inputs_loss_history[j] = truth_error
     test_predictions[j] = x_pred[0]
-    #print('{:>3d}: {:.6f}'.format(j, v_error))
+    print('{:>3d}: {:.6f}'.format(j, v_error))
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 # median test error
@@ -257,6 +271,8 @@ test_median = np.median(test_loss_history)
 inputs_median = np.median(inputs_loss_history)
 #print('{:<18} median: {:.9f}'.format(model_name, test_median))
 print('{:<18} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
+#data_seeds[cur_seed_idx,1] = test_median
+#np.save('data_seeds', data_seeds)
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
