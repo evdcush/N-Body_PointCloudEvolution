@@ -152,19 +152,7 @@ def include_node_features(X_in, V, row_idx, col_idx):
 # new perm eqv, shift inv model funcs
 #=============================================================================
 # ==== Network fn
-def _sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu):
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    #H = activation(input_shift_inv_layer(X, V, rows, cols, 0, var_scope))
-    h_in = include_node_features(X, V, rows, cols)
-    H = activation(shift_inv_layer(h_in, rows, cols, all_idx, N, b, 0, var_scope))
-    for i in range(1, num_layers):
-        is_last = i == num_layers - 1
-        H = shift_inv_layer(H, rows, cols, all_idx, N, b, i, var_scope, is_last=is_last)
-        if not is_last:
-            H = activation(H)
-    return H
-
-def sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu, add=False):
+def sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu):
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     #H = activation(input_shift_inv_layer(X, V, rows, cols, 0, var_scope))
 
@@ -173,22 +161,20 @@ def sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b, act
     H = activation(shift_inv_layer(h_in, rows, cols, all_idx, N, b, 0, var_scope))
 
     # hidden layers
-    for i in range(1, num_layers-1):
+    for i in range(1, num_layers):
         is_last = i == num_layers - 1
-        H = activation(shift_inv_layer(H, rows, cols, all_idx, N, b, i, var_scope, is_last=is_last))
+        H = shift_inv_layer(H, rows, cols, all_idx, N, b, i, var_scope, is_last=is_last)
+        if not is_last:
+            H = activation(H)
+    return H
 
-    # output layer
-    H = shift_inv_layer(H, rows, cols, all_idx, N, b, num_layers-1, var_scope, is_last=True)
-    if add:
-        pooled_input = tf.reshape(_pool(X, rows, N * b, broadcast=False), [b, N, -1])
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        return H + pooled_input
-    else:
-        return H
 
 # ==== Model fn
-def sinv_model_fwd(num_layers, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu, vel_coeff=False, var_scope=VAR_SCOPE, add=True):
-    h_out = sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b, add=add)
+def sinv_model_fwd(num_layers, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu, vel_coeff=False, var_scope=VAR_SCOPE):
+    h_out = sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b)
+    if vel_coeff:
+        theta = utils.get_vel_coeff(var_scope)
+        h_out = theta * h_out
     return h_out
 
 #=============================================================================

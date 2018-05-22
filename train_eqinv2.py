@@ -61,7 +61,9 @@ num_layers = len(channels) - 1
 
 # model features
 use_graph = model_type == 1
-vcoeff = pargs['vel_coeff'] == 1
+use_coeff = pargs['vel_coeff'] == 1
+vcoeff = COEFF_INIT if use_coeff else None
+
 
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
@@ -97,12 +99,9 @@ restore = pargs['restore'] == 1
 # init network params
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_sinv_params(channels, var_scope=vscope, restore=restore, vel_coeff=None)
+utils.init_sinv_params(channels, var_scope=vscope, restore=restore, vel_coeff=vcoeff)
 
 # INPUTS
-#X_input_edges = tf.placeholder(tf.float32, shape=(None, 3))
-#X_input_nodes = tf.placeholder(tf.float32, shape=(None, 3))
-#X_truth       = tf.placeholder(tf.float32, shape=(None, N, 6))
 X_input = tf.placeholder(tf.float32, shape=(None, N, 3))
 
 X_input_edges = tf.placeholder(tf.float32, shape=(batch_size*N*M, 3))
@@ -112,9 +111,6 @@ X_input_nodes_val = tf.placeholder(tf.float32, shape=(N, 3))
 X_truth       = tf.placeholder(tf.float32, shape=(None, N, 6))
 
 # GRAPH DATA
-#graph_rows = tf.placeholder(tf.int32, shape=(None,))
-#graph_cols = tf.placeholder(tf.int32, shape=(None,))
-#graph_all  = tf.placeholder(tf.int32, shape=(None,))
 graph_rows = tf.placeholder(tf.int32, shape=(batch_size*N*M,))
 graph_cols = tf.placeholder(tf.int32, shape=(batch_size*N*M,))
 graph_all  = tf.placeholder(tf.int32, shape=(batch_size*N*M,))
@@ -124,42 +120,24 @@ graph_cols_val = tf.placeholder(tf.int32, shape=(N*M,))
 graph_all_val  = tf.placeholder(tf.int32, shape=(N*M,))
 
 
-
-############################## MAY NEED TO OFFSET IDX FOR BATCHES!!!
-
 def get_list_csr(h_in): # for tf.py_func
     return nn.get_kneighbor_list(h_in, M, offset_idx=False, inc_self=False) # offset idx for batches
 
 #=============================================================================
 # Model predictions and optimizer
 #=============================================================================
-
-def get_coeff():
-    with tf.variable_scope(vscope, reuse=True):
-        return tf.get_variable('vc')
-
-def init_coeff():
-    """ scalar weight used in skip connection, approximates timestep
-    """
-    #init = tf.random_uniform_initializer(0,1) if not restore else None
-    with tf.variable_scope(vscope):
-        vc_init = tf.constant([COEFF_INIT])
-        tf.get_variable('vc', dtype=tf.float32, initializer=vc_init)
-
 readout_func = nn.get_readout
 
-init_coeff()
-vc = get_coeff()
 
 # train
 margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, N, batch_size)
-H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, add=False) # (b, N, M, 3)
-X_pred = readout_func(X_input + vc*H_out)
+H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, vel_coeff=use_coeff) # (b, N, M, 3)
+X_pred = readout_func(X_input + H_out)
 
 # val
 margs_val = (num_layers, X_input_edges_val, X_input_nodes_val, graph_rows_val, graph_cols_val, graph_all_val, N, 1)
-H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, add=False) # (b, N, M, 3)
-X_pred_val = readout_func(X_input + vc*H_out_val)
+H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, vel_coeff=use_coeff) # (b, N, M, 3)
+X_pred_val = readout_func(X_input + H_out_val)
 
 
 # error and opt
