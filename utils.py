@@ -40,7 +40,7 @@ NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S'},
 LEARNING_RATE = 0.01
 
 WEIGHT_TAG = 'W_{}'
-PEQV_SINV_WEIGHT_TAG = 'W{}_{}'
+MULTI_WEIGHT = 'W{}_{}'
 GRAPH_TAG  = 'Wg_{}'
 BIAS_TAG   = 'B_{}'
 VEL_COEFF_TAG = 'V'
@@ -87,11 +87,26 @@ def init_bias(k_in, k_out, name, restore=False):
     else:
         tf.get_variable(name, (k_out,), dtype=tf.float32, initializer=None)
 
-def init_vel_coeff(restore=False):
-    """ scalar weight used in skip connection, approximates timestep
+def init_vel_coeff(restore=False, vinit=None):
+    """ scalar weight used in skip connection with velocity, approximates
+    timestep
+    Note: get_variable does not accept shape when using concrete values
+
+    Args:
+        restore: if restore, learned values will be loaded so do not initialize
+        vinit: initial weight value
     """
-    init = tf.random_uniform_initializer(0,1) if not restore else None
-    tf.get_variable(VEL_COEFF_TAG, (1,), dtype=tf.float32, initializer=init)
+    args = (VEL_COEFF_TAG)
+    if restore:
+        init = None
+        args = args + ((1,))
+    else:
+        if vinit is not None:
+            init = tf.constant([vinit])
+        else:
+            init = tf.random_uniform_initializer(0,1)
+            args = args + ((1,))
+    tf.get_variable(*args, dtype=tf.float32, initializer=init)
 
 # Model init wrappers ========================================================
 
@@ -113,7 +128,7 @@ def init_params(channels, var_scope=VAR_SCOPE, vel_coeff=False, seed=None, resto
             init_vel_coeff(restore)
 
 # shift-inv params
-def init_sinv_params(channels, var_scope=VAR_SCOPE, vel_coeff=False, seed=None, restore=False):
+def init_sinv_params(channels, var_scope=VAR_SCOPE, vel_coeff=None, seed=None, restore=False):
     """ Init parameters for 'new' perm-equivariant, shift-invariant model
     For every layer in this model, there are 4 weights and 1 bias
         W1: (k, q) no-pooling
@@ -130,8 +145,9 @@ def init_sinv_params(channels, var_scope=VAR_SCOPE, vel_coeff=False, seed=None, 
         for layer_idx, ktup in enumerate(kdims):
             init_bias(*ktup, BIAS_TAG.format(layer_idx), restore=restore) # B
             for w_idx in SINV_W_IDX: # just [1,2,3,4]
-                init_weight(*ktup, PEQV_SINV_WEIGHT_TAG.format(layer_idx, w_idx), seed=seed, restore=restore)
-        if vel_coeff: init_vel_coeff(restore) # ignore for now
+                init_weight(*ktup, MULTI_WEIGHT.format(layer_idx, w_idx), seed=seed, restore=restore)
+        if vel_coeff is not None:
+            init_vel_coeff(restore, vel_coeff)
 
 # Multi-step params for aggregate model
 def init_params_multi(channels, num_rs, var_scope=VAR_SCOPE_MULTI, seed=None, restore=False):
@@ -157,7 +173,7 @@ def get_sinv_layer_vars(layer_idx, var_scope=VAR_SCOPE):
     layer_vars = []
     with tf.variable_scope(var_scope, reuse=True):
         for w_idx in SINV_W_IDX:
-            layer_vars.append(tf.get_variable(PEQV_SINV_WEIGHT_TAG.format(layer_idx, w_idx)))
+            layer_vars.append(tf.get_variable(MULTI_WEIGHT.format(layer_idx, w_idx)))
         layer_vars.append(tf.get_variable(BIAS_TAG.format(layer_idx)))
     return layer_vars # [W1, W2, W3, W4, B]
 
@@ -597,7 +613,7 @@ def make_save_dirs(model_dir, model_name):
     loss_path  = model_path + 'Loss/'
     cube_path  = model_path + 'Cubes/'
     make_dirs([tf_params_save_path, loss_path, cube_path]) # model_dir lower dir, so automatically created
-    save_pyfiles(model_path)
+    #save_pyfiles(model_path)
     return tf_params_save_path, loss_path, cube_path
 
 
