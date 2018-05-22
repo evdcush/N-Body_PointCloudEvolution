@@ -131,7 +131,7 @@ def init_sinv_params(channels, var_scope=VAR_SCOPE, vel_coeff=False, seed=None, 
             init_bias(*ktup, BIAS_TAG.format(layer_idx), restore=restore) # B
             for w_idx in SINV_W_IDX: # just [1,2,3,4]
                 init_weight(*ktup, PEQV_SINV_WEIGHT_TAG.format(layer_idx, w_idx), seed=seed, restore=restore)
-        #if vel_coeff: init_vel_coeff(restore) # ignore for now
+        if vel_coeff: init_vel_coeff(restore) # ignore for now
 
 # Multi-step params for aggregate model
 def init_params_multi(channels, num_rs, var_scope=VAR_SCOPE_MULTI, seed=None, restore=False):

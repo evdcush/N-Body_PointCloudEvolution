@@ -96,7 +96,7 @@ restore = pargs['restore'] == 1
 # init network params
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_sinv_params(channels, var_scope=vscope, restore=restore)
+utils.init_sinv_params(channels, var_scope=vscope, restore=restore, vel_coeff=vcoeff)
 
 # INPUTS
 #X_input_edges = tf.placeholder(tf.float32, shape=(None, 3))
@@ -134,19 +134,40 @@ def get_list_csr(h_in): # for tf.py_func
 #=============================================================================
 margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, N, batch_size)
 H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, add=False) # (b, N, M, 3)
-X_pred = nn.get_readout_mod(X_input + H_out)
+
+
+def get_coeff():
+    with tf.variable_scope(vscope, reuse=True):
+        return tf.get_variable('vc')
+
+def init_coeff():
+    """ scalar weight used in skip connection, approximates timestep
+    """
+    #init = tf.random_uniform_initializer(0,1) if not restore else None
+    with tf.variable_scope(vscope):
+        vc_init = tf.constant([0.002])
+        tf.get_variable('vc', dtype=tf.float32, initializer=vc_init)
+
+init_coeff()
+#vc = utils.get_vel_coeff(vscope)
+vc = get_coeff()
+#vc = get_coeff()
+X_pred = nn.get_readout_mod(X_input + vc*H_out)
+#X_pred = nn.get_readout_mod(X_input * H_out)
 #X_pred = nn.get_readout_mod(H_out)
 #X_pred = nn.get_readout(H_out)
 
 margs_val = (num_layers, X_input_edges_val, X_input_nodes_val, graph_rows_val, graph_cols_val, graph_all_val, N, 1)
 H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, add=False) # (b, N, M, 3)
 #X_pred_val = nn.get_readout_mod(H_out_val)
-X_pred_val = nn.get_readout_mod(X_input + H_out_val)
+X_pred_val = nn.get_readout_mod(X_input + vc*H_out_val)
+#X_pred_val = nn.get_readout_mod(X_input * H_out_val)
 #X_pred_val = nn.get_readout(H_out_val)
 
 # error and opt
 error = nn.pbc_loss(X_pred, X_truth, vel=False)
 val_error = nn.pbc_loss(X_pred_val, X_truth, vel=False)
+inputs_diff = nn.pbc_loss(X_input, X_truth, vel=False)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 
 #=============================================================================
@@ -167,75 +188,14 @@ saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
 checkpoint = 500
 save_checkpoint = lambda step: (step+1) % checkpoint == 0 and step != 0
-'''
-#=============================================================================
-# TRAINING WITH VARIABLES
-#=============================================================================
-start_time = time.time()
-np.random.seed(utils.DATASET_SEED)
-print('\nTraining:\n==============================================================================')
-# START
-for step in range(num_iters):
-    # data batching
-    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (2, b, N, 6)
-
-    # split data
-    x_in    = _x_batch[0] # (b, N, 6)
-    x_truth = _x_batch[1] # (b, N, 6)
-
-    # get list of neighbor graphs in csr form
-    csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
-
-    # get edges (relative dists) and nodes (velocities)
-    x_in_edges = nn.get_input_edge_features_batch(x_in, csr_list, M) # (b*N*M, 3)
-    x_in_nodes = nn.get_input_node_features(x_in) # (b*N, 3)
-
-    # get coo features from csrs
-    rows, cols, all_idx = nn.to_coo_batch2(csr_list)
-
-    # network forward
-    x_pred = forward(x_in_edges, x_in_nodes, rows, cols, all_idx, batch_size)
-    #x_pred = nn.get_readout(h)
-    fdict = {X_pred: x_pred, X_truth: x_truth}
-    train.run(feed_dict=fdict)
-
-
-    # network backprop
-    #error = loss(x_pred, x_truth)
-    #backprop(error)
-
-    if (step + 1) % 10 == 0:
-        #xp = x_pred.eval()
-        #y = h.eval()
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        e = sess.run(error, feed_dict=fdict)
-        print('{:>5}: {:.6f}'.format(step+1, e.eval()))
-
-
-    # save checkpoint
-    if save_checkpoint(step):
-        #print('{:>5}: {:.6f}'.format(step, error))
-        #print('checkpoint {:>5}: {}'.format(step, tr_error))
-        print('    SAVE CHECKPOINT')
-        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
-# END
-print('elapsed time: {}'.format(time.time() - start_time))
-
-# NOTES:
-"""
- - readout func not working on network output. While coo values maxed at 1.0,
-   min values are < 0.0 (eg -17.0)
-   - the func seems to work in normal train however?
-   - POSSIBLY FIXED with modulus
- - cannot do this variable thing, not sure backprop is working, and memory overflow
-"""
-
-'''
 
 #=============================================================================
 # TRAINING WITH PLACEHOLDERS
 #=============================================================================
-
+vel_coeff_history = np.zeros((num_iters // 5))
+sp = 0
+print('starting coeff: {}'.format(vc.eval()))
+np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
     # data batching
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (2, b, N, 6)
@@ -272,6 +232,14 @@ for step in range(num_iters):
 
     # training pass
     train.run(feed_dict=fdict)
+
+    if (step + 1) % 5 == 0:
+        #cur_vc = utils.get_vel_coeff(vscope).eval()
+        cur_vc = get_coeff().eval()
+        vel_coeff_history[sp] = cur_vc
+        print('VC: {:>5} {}'.format(step+1, cur_vc))
+        sp += 1
+
 
     # save checkpoint
     if save_checkpoint(step):
@@ -328,23 +296,24 @@ for j in range(X_test.shape[1]):
 
     # validation outputs
     #vals = sess.run([X_pred, val_error, ground_truth_error], feed_dict=fdict)
-    x_pred, v_error = sess.run([X_pred_val, val_error], feed_dict=fdict)
+    x_pred, v_error, truth_error = sess.run([X_pred_val, val_error, inputs_diff], feed_dict=fdict)
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     #x_pred, v_error, truth_error = vals
     test_loss_history[j] = v_error
-    #inputs_loss_history[j] = truth_error
+    inputs_loss_history[j] = truth_error
     test_predictions[j] = x_pred[0]
     print('{:>3d}: {:.6f}'.format(j, v_error))
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 # median test error
 test_median = np.median(test_loss_history)
-#inputs_median = np.median(inputs_loss_history)
-print('{:<18} median: {:.9f}'.format(model_name, test_median))
-#print('{:<18} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
+inputs_median = np.median(inputs_loss_history)
+#print('{:<18} median: {:.9f}'.format(model_name, test_median))
+print('{:<18} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
+print('coeff: {}'.format(np.median(vel_coeff_history[-30:])))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
