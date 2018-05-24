@@ -93,7 +93,6 @@ restore = pargs['restore'] == 1
 # save test data
 #utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 
-
 #=============================================================================
 # initialize graph and placeholders
 #=============================================================================
@@ -105,8 +104,8 @@ utils.init_sinv_params(channels, var_scope=vscope, restore=restore, vel_coeff=vc
 # INPUTS
 X_input = tf.placeholder(tf.float32, shape=(None, N, 3))
 
-X_input_edges = tf.placeholder(tf.float32, shape=(batch_size*N*M, 3))
-X_input_nodes = tf.placeholder(tf.float32, shape=(batch_size*N, 3))
+X_input_edges = tf.placeholder(tf.float32, shape=(None, 3))#shape=(batch_size*N*M, 3))
+X_input_nodes = tf.placeholder(tf.float32, shape=(None, 3))#shape=(batch_size*N, 3))
 X_input_edges_val = tf.placeholder(tf.float32, shape=(N*M, 3))
 X_input_nodes_val = tf.placeholder(tf.float32, shape=(N, 3))
 X_truth       = tf.placeholder(tf.float32, shape=(None, N, 6))
@@ -122,7 +121,7 @@ graph_all_val  = tf.placeholder(tf.int32, shape=(N*M,))
 
 
 def get_list_csr(h_in): # for tf.py_func
-    return nn.get_kneighbor_list(h_in, M, offset_idx=False, inc_self=False) # offset idx for batches
+    return nn.get_kneighbor_list(h_in, M, offset_idx=False, inc_self=False, )#pbc=True) # offset idx for batches
 
 #=============================================================================
 # Model predictions and optimizer
@@ -132,24 +131,24 @@ readout_func = nn.get_readout
 
 # train
 margs = (num_layers, X_input_edges, X_input_nodes, graph_rows, graph_cols, graph_all, N, batch_size)
-#H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, vel_coeff=use_coeff) # (b, N, M, 3)
-H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, vel_coeff=False) # (b, N, M, 3)
-theta = utils.get_vel_coeff(vscope)
-X_pred = tf.concat([readout_func(X_input + theta*H_out), H_out], axis=-1)
-#X_pred = readout_func(X_input + H_out)
+H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, vel_coeff=use_coeff) # (b, N, M, 3)
+#H_out = nn.sinv_model_fwd(*margs, var_scope=vscope, vel_coeff=False) # (b, N, M, 3)
+#theta = utils.get_vel_coeff(vscope)
+#X_pred = tf.concat([readout_func(X_input + H_out), H_out], axis=-1)
+X_pred = readout_func(X_input + H_out)
 
 # val
 margs_val = (num_layers, X_input_edges_val, X_input_nodes_val, graph_rows_val, graph_cols_val, graph_all_val, N, 1)
-#H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, vel_coeff=use_coeff) # (b, N, M, 3)
-H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, vel_coeff=False) # (b, N, M, 3)
-X_pred_val = tf.concat([readout_func(X_input + theta*H_out_val), H_out_val], axis=-1)
+H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, vel_coeff=use_coeff) # (b, N, M, 3)
+#H_out_val = nn.sinv_model_fwd(*margs_val, var_scope=vscope, vel_coeff=False) # (b, N, M, 3)
+#X_pred_val = tf.concat([readout_func(X_input + H_out_val), H_out_val], axis=-1)
 
-#X_pred_val = readout_func(X_input + H_out_val)
+X_pred_val = readout_func(X_input + H_out_val)
 
 
 # error and opt
-#error       = nn.pbc_loss(X_pred,     X_truth, vel=False)
-error       = nn.pbc_loss(X_pred,     X_truth, vel=True)
+error       = nn.pbc_loss(X_pred,     X_truth, vel=False)
+#error       = nn.pbc_loss(X_pred,     X_truth, vel=True)
 val_error   = nn.pbc_loss(X_pred_val, X_truth, vel=False)
 inputs_diff = nn.pbc_loss(X_input,    X_truth, vel=False)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
@@ -229,8 +228,8 @@ X_train = None # reduce memory overhead
 #=============================================================================
 # data containers
 num_test_samples = X_test.shape[1]
-#test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
-test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
+test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
+#test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 

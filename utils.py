@@ -96,7 +96,7 @@ def init_vel_coeff(restore=False, vinit=None):
         restore: if restore, learned values will be loaded so do not initialize
         vinit: initial weight value
     """
-    args = (VEL_COEFF_TAG)
+    args = (VEL_COEFF_TAG,)
     if restore:
         init = None
         args = args + ((1,))
@@ -125,7 +125,7 @@ def init_params(channels, var_scope=VAR_SCOPE, vel_coeff=False, seed=None, resto
             init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed, restore=restore)
             init_bias(  *ktup,   BIAS_TAG.format(idx), restore=restore)
         if vel_coeff: # scalar weight for simulating timestep, only one
-            init_vel_coeff(restore)
+            init_vel_coeff(restore, vel_coeff)
 
 # shift-inv params
 def init_sinv_params(channels, var_scope=VAR_SCOPE, vel_coeff=None, seed=None, restore=False):

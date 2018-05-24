@@ -306,7 +306,8 @@ def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coef
     h_out = network_fwd(x_in, num_layers, var_scope, *args, activation=activation)
     if add:
         vcoeff = utils.get_vel_coeff(var_scope) if vel_coeff else None
-        h_out = skip_connection(x_in, h_out, vcoeff)
+        #h_out = skip_connection(x_in, h_out, vcoeff)
+        h_out = h_out + x_in[...,:3] + vcoeff*x_in[...,3:-1]
     return h_out
 
 #=============================================================================
@@ -789,4 +790,21 @@ def pbc_loss(readout, x_truth, vel=False):
         assert readout.get_shape().as_list()[-1] > 3
         dist_vel = tf.squared_difference(readout[...,3:], x_truth[...,3:])
         error *= tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1))
+    return error
+
+
+##### Numpy based loss
+
+def npy_periodic_boundary_dist(readout_full, x_truth):
+    readout = readout_full[...,:3]
+    x_truth_coo = x_truth[...,:3]
+    d1 = np.square(readout - x_truth_coo)
+    d2 = np.square(readout - (1 + x_truth_coo))
+    d3 = np.square((1 + readout) - x_truth_coo)
+    dist = np.minimum(np.minimum(d1, d2), d3)
+    return dist
+
+def npy_pbc_loss(readout, x_truth, mu_axis=None):
+    pbc_dist  = npy_periodic_boundary_dist(readout, x_truth)
+    error = np.mean(np.sum(pbc_dist, axis=-1), axis=mu_axis)
     return error

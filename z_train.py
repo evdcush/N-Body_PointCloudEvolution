@@ -52,13 +52,18 @@ model_vars = utils.NBODY_MODELS[model_type]
 channels = model_vars['channels'] # OOM with sparse graph
 #channels = [6, 32, 16, 8, 3]#, 8, 16, 12, 16, 8, 3]
 #channels = [6, 8, 12, 8, 4, 8, 12, 16, 8, 3]#, 8, 16, 12, 16, 8, 3]
-channels[-1] = 6
+#channels[-1] = 6
+channels[-1] = 3
 channels[0] = 7
 num_layers = len(channels) - 1
 
 # model features
 use_graph = model_type == 1
 vcoeff = pargs['vel_coeff'] == 1
+vinit = None
+if vcoeff:
+    vinit = 0.002
+
 
 # hyperparameters
 learning_rate = LEARNING_RATE # 0.01
@@ -90,7 +95,7 @@ restore = pargs['restore'] == 1
 # init network params
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params(channels, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
+utils.init_params(channels, var_scope=vscope, vel_coeff=vinit, restore=restore)
 
 
 # INPUTS
@@ -124,7 +129,7 @@ X_pred = nn.get_readout(H_out)
 #X_pred = nn.get_readout_mod(H_out)
 
 # error and optimizer
-error = nn.pbc_loss(X_pred, X_truth[...,:-1], vel=True)
+error = nn.pbc_loss(X_pred, X_truth[...,:-1], vel=False)#vel=True)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 val_error = nn.pbc_loss(X_pred, X_truth[...,:-1]) # since training loss fn not always same
 ground_truth_error = nn.pbc_loss(X_input[...,:-1], X_truth[...,:-1])
@@ -195,7 +200,7 @@ X_train = None # reduce memory overhead
 # data containers
 num_test_samples = X_test.shape[1]
 #test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
-test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
+test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 
