@@ -1,9 +1,9 @@
 import os, glob, struct, code, sys, shutil, time
 
 import numpy as np
-#import matplotlib
-#import matplotlib.pyplot as plt
-#from mpl_toolkits.mplot3d import Axes3D
+import matplotlib
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import tensorflow as tf
 
 #=============================================================================
@@ -125,7 +125,7 @@ def init_params(channels, var_scope=VAR_SCOPE, vel_coeff=False, seed=None, resto
             init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed, restore=restore)
             init_bias(  *ktup,   BIAS_TAG.format(idx), restore=restore)
         if vel_coeff: # scalar weight for simulating timestep, only one
-            init_vel_coeff(restore, vel_coeff)
+            init_vel_coeff(restore)
 
 # shift-inv params
 def init_sinv_params(channels, var_scope=VAR_SCOPE, vel_coeff=None, seed=None, restore=False):
@@ -311,7 +311,7 @@ def load_rs_old_npy_data(redshifts, norm_coo=False, norm_vel=False):
     X[...,:-1] = X_all_rs
     X_all_rs = None # reduce memory overhead
 
-    for idx, rs in enumerate(redshifts):
+    for idx, z_idx in enumerate(redshifts):
         X[idx,:,:,-1] = REDSHIFTS[z_idx]
     if norm_coo:
         X[...,:3] = X[...,:3] / n_P
@@ -705,3 +705,16 @@ def save_loss(save_path, data, validation=False):
     save_name = '_loss_validation' if validation else '_loss_train'
     np.save(save_path + save_name, data)
 
+def plot_3D_pointcloud(xt, xh, j, pt_size=(.9,.9), colors=('b','r'), fsize=(12,12), xin=None):
+    xt_x, xt_y, xt_z = np.split(xt[...,:3], 3, axis=-1)
+    xh_x, xh_y, xh_z = np.split(xh[...,:3], 3, axis=-1)
+
+    fig = plt.figure(figsize=fsize)
+    ax = fig.gca(projection='3d')
+    ax.scatter(xt_x[j], xt_y[j], xt_z[j], s=pt_size[0], c=colors[0])
+    ax.scatter(xh_x[j], xh_y[j], xh_z[j], s=pt_size[1], c=colors[1])
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    return fig

@@ -35,7 +35,7 @@ num_rs_layers = num_rs - 1
 
 # Load data
 num_val_samples = 200
-X = utils.load_rs_npy_data(redshift_steps, norm_coo=True)
+X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, )#old_dataset=True)
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
 
@@ -51,7 +51,7 @@ model_vars = utils.NBODY_MODELS[model_type]
 #channels = model_vars['channels'] # OOM with sparse graph
 channels = [6, 32, 16, 8, 3]#, 8, 16, 12, 16, 8, 3]
 #channels = [6, 8, 12, 8, 4, 8, 12, 16, 8, 3]#, 8, 16, 12, 16, 8, 3]
-channels[-1] = 6
+channels[-1] = 3
 channels[0] = 7
 num_layers = len(channels) - 1
 
@@ -89,7 +89,7 @@ restore = pargs['restore'] == 1
 # init network params
 vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_params(channels, graph_model=use_graph, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
+utils.init_params(channels, var_scope=vscope, vel_coeff=vcoeff, restore=restore)
 
 # INPUTS
 #data_shape = (None, num_particles**3, 6)
@@ -157,7 +157,7 @@ for step in range(num_iters):
     # data batching
     _x_batch = utils.next_zuni_minibatch(X_train, batch_size, data_aug=True)
     #_x_batch = utils.next_minibatch(X_train, batch_size, data_aug=True)
-    x_in    = _x_batch[0]
+    x_in    = np.copy(_x_batch[0])
     x_truth = _x_batch[1]
     fdict = {X_input: x_in, X_truth: x_truth}
 
@@ -190,14 +190,14 @@ X_train = None # reduce memory overhead
 # data containers
 num_test_samples = X_test.shape[1]
 #test_predictions  = np.zeros(X_test.shape[1:]).astype(np.float32)
-test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
+test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
 test_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 inputs_loss_history = np.zeros((num_test_samples)).astype(np.float32)
 
 #print('\nEvaluation:\n==============================================================================')
 for j in range(X_test.shape[1]):
     # validation inputs
-    x_in   = X_test[0, j:j+1] # (1, n_P, 6)
+    x_in   = np.copy(X_test[0, j:j+1]) # (1, n_P, 6)
     x_true = X_test[1, j:j+1]
     fdict = {X_input: x_in, X_truth: x_true}
 

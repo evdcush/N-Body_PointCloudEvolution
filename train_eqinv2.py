@@ -41,7 +41,8 @@ COEFF_INIT = 0.002 # based on search over 15 diff values
 
 # Load data
 num_val_samples = 200
-X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True)[...,:-1]
+#X = utils.load_zuni_npy_data(redshifts=redshift_steps, norm_coo=True)[...,:-1]
+X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)[...,:-1]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=num_val_samples)
 X = None # reduce memory overhead
 
@@ -91,7 +92,7 @@ model_path, loss_path, cube_path = paths
 restore = pargs['restore'] == 1
 
 # save test data
-#utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
+utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 
 #=============================================================================
 # initialize graph and placeholders
@@ -180,8 +181,8 @@ save_checkpoint = lambda step: (step+1) % checkpoint == 0
 #cur_seed_idx = pargs['search_param']
 #cur_seed = int(data_seeds[cur_seed_idx, 0])
 #print('cur seed: {}'.format(cur_seed_idx))
-cur_seed = 237913
-np.random.seed(cur_seed)
+#cur_seed = 237913
+np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
     # data batching
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (2, b, N, 6)
