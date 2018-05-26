@@ -72,7 +72,7 @@ def pool_graph(X, idx, num_segs, broadcast):
     return X_pooled
 
 
-def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
+def OG_ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
     """
     Args:
         H_in (tensor): (c, k), stores shift-invariant edge features, row-major
@@ -119,7 +119,7 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
 
     # H3 - pool cols
     H_pooled_cols = _pool(H_in, row_idx)
-    H3 = _left_mult(H_pooled_rows, W3) # (c, q)
+    H3 = _left_mult(H_pooled_cols, W3) # (c, q)
 
     # H4 - pool cubes
     H_pooled_all = _pool(H_in, cube_idx)
@@ -130,9 +130,69 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
     H_out = (H1 + H2 + H3 + H4) + B
     if is_last:
         #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        H_out = tf.reshape(_pool(H_out, col_idx, broadcast=False), (b, N, -1))
+        H_out = tf.reshape(_pool(H_out, row_idx, broadcast=False), (b, N, -1))
     return H_out
 
+def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
+    """ # SCALE OUT
+    Args:
+        H_in (tensor): (c, k), stores shift-invariant edge features, row-major
+          - c = b*N*M, if KNN then M is fixed, and k = num_edges = num_neighbors = M
+        COO_feats (tensor): (3, c), of row, column, cube-wise indices respectively
+        bN (tuple(int)): (b, N), where b is batch_size, N is number of particles
+        layer_id (int): id of layer in network, for retrieving variables
+          - each layer has 4 weights W (k, q), and 1 bias B (q,)
+        is_last (bool): if is_last, pool output over columns
+    Returns:
+        H_out (tensor): (c, q), or (b, N, q) if is_last
+    """
+    # Prepare data and parameters
+    # ========================================
+    # split inputs
+    b, N = bN
+    #row_idx, col_idx, cube_idx = tf.split(COO_feats, 3, axis=0)
+    row_idx  = COO_feats[0]
+    col_idx  = COO_feats[1]
+    cube_idx = COO_feats[2]
+
+    # get layer weights
+    W1, W2, W3, W4, B = utils.get_scoped_ShiftInv_layer_vars(layer_id)
+
+    # Helper funcs
+    # ========================================
+    def _pool(H, idx, broadcast=True):
+        # row : col
+        # col : row
+        # cubes : cubes
+        return pool_graph(H, idx, b*N, broadcast)
+
+    def _left_mult(h, W):
+        return tf.einsum("ck,kq->cq", h, W)
+
+    # Layer forward pass
+    # ========================================
+    # H1 - no pooling
+    H1 = _left_mult(H_in, W1) # (c, q)
+
+    # H2 - pool rows
+    H_pooled_rows = _pool(H_in, col_idx)
+    H2 = _left_mult(H_pooled_rows, W2) # (c, q)
+
+    # H3 - pool cols
+    H_pooled_cols = _pool(H_in, row_idx)
+    H3 = _left_mult(H_pooled_cols, W3) # (c, q)
+
+    # H4 - pool cubes
+    H_pooled_all = _pool(H_in, cube_idx)
+    H4 =  _left_mult(H_pooled_all, W4) # (c, q)
+
+    # Output
+    # ========================================
+    H_out = (H1 + H2 + H3 + H4) / 4.0 + B
+    if is_last:
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        H_out = tf.reshape(_pool(H_out, row_idx, broadcast=False), (b, N, -1))
+    return H_out
 
 #------------------------------------------------------------------------------
 # Shift invariant network ops
@@ -195,7 +255,6 @@ def ShiftInv_model_func(X_in_edges, X_in_nodes, COO_feats, model_specs):
             theta = utils.get_scoped_vcoeff()
             H_out = theta * H_out
     return H_out
-
 
 
 #=============================================================================
