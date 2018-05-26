@@ -15,6 +15,37 @@ from utils import VAR_SCOPE, VAR_SCOPE_MULTI
 # TF-related ops
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+'''
+NEW STANDARD FOR MODEL/NETWORK FUNC ARGS:
+Instead of always passing num_layers, var_scope, activation, dims
+ - pass dict of the static values, and data as only args
+ - maybe make get funcs for each model type?
+'''
+class ModelFuncArgs():
+    def __init__(self, num_layers, var_scope, dims=None, vcoeff=False,
+                 add_skip=False, activation_func=tf.nn.relu):
+        self.num_layers = num_layers
+        self.var_scope = var_scope
+        self.dims = dims # LEN/ORDER IS ARBITRARY, whatever individual model funcs expect
+        self.vcoeff = vcoeff
+        self.add_skip = add_skip
+        self.activation_func = activation_func
+
+    def output_skips(self, H_out):
+        """ EXPERIMENTAL, don't know how gradient flow affected by funcs wrapped
+        in class methods
+        TODO
+        """
+        assert False
+
+    def get_ShiftInv_specs(self,):
+        #specs = [self.num_layers, self.var_scope]
+        assert False
+
+    def __call__(self):
+        # return the only two things EVERY model will have
+        return self.num_layers, self.var_scope
+
 #=============================================================================
 # SHIFT INVARIANT NETWORK/LAYER OPS
 #=============================================================================
@@ -41,12 +72,12 @@ def pool_graph(X, idx, num_segs, broadcast):
     return X_pooled
 
 
-def shift_inv_layer(H_in, COO_idx, bN, layer_id, is_last=False):
+def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
     """
     Args:
         H_in (tensor): (c, k), stores shift-invariant edge features, row-major
           - c = b*N*M, if KNN then M is fixed, and k = num_edges = num_neighbors = M
-        COO_idx (tensor): (3, c), of row, column, cube-wise indices respectively
+        COO_feats (tensor): (3, c), of row, column, cube-wise indices respectively
         bN (tuple(int)): (b, N), where b is batch_size, N is number of particles
         layer_id (int): id of layer in network, for retrieving variables
           - each layer has 4 weights W (k, q), and 1 bias B (q,)
@@ -58,7 +89,7 @@ def shift_inv_layer(H_in, COO_idx, bN, layer_id, is_last=False):
     # ========================================
     # split inputs
     b, N = bN
-    row_idx, col_idx, cube_idx = tf.split(COO_idx, 3, axis=0)
+    row_idx, col_idx, cube_idx = tf.split(COO_feats, 3, axis=0)
 
     # get layer weights
     W1, W2, W3, W4, B = utils.get_ShiftInv_layer_vars(layer_id)
@@ -100,18 +131,21 @@ def shift_inv_layer(H_in, COO_idx, bN, layer_id, is_last=False):
     return H_out
 
 
-def include_node_features(X_in_edges, X_in_nodes, COO_idx):
+#------------------------------------------------------------------------------
+# Shift invariant network ops
+#------------------------------------------------------------------------------
+def include_node_features(X_in_edges, X_in_nodes, COO_feats):
     """ Broadcast node features to edges for input layer
     Args:
         X_in_edges (tensor):   (c, 3), input edge features (relative pos of neighbors)
         X_in_nodes (tensor): (b*N, 3), input node features (velocities)
-        COO_idx (tensor): (3, c), rows, cols, cube indices (respectively)
+        COO_feats (tensor): (3, c), rows, cols, cube indices (respectively)
     Returns:
         X_in_graph (tensor): (c, 9), input with node features broadcasted to edges
     """
     # get row, col indices
-    row_idx = COO_idx[0]
-    col_idx = COO_idx[1]
+    row_idx = COO_feats[0]
+    col_idx = COO_feats[1]
 
     # get node row, columns
     node_rows = tf.gather_nd(X_in_nodes, tf.expand_dims(row_idx, axis=1))
@@ -122,39 +156,44 @@ def include_node_features(X_in_edges, X_in_nodes, COO_idx):
 
     return X_in_graph
 
-
-#------------------------------------------------------------------------------
-# Shift invariant network func
-#------------------------------------------------------------------------------
-
-#=============================================================================
-# new perm eqv, shift inv model funcs
-#=============================================================================
 # ==== Network fn
-def sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu):
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    #H = activation(input_shift_inv_layer(X, V, rows, cols, 0, var_scope))
+def ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, activation):
+    # Input layer
+    # ========================================
+    H_in = include_node_features(X_in_edges, X_in_nodes, COO_feats)
+    H = activation(ShiftInv_layer(H_in, COO_feats, dims, 0))
 
-    # input layer
-    h_in = include_node_features(X, V, rows, cols)
-    H = activation(shift_inv_layer(h_in, rows, cols, all_idx, N, b, 0, var_scope))
-
-    # hidden layers
-    for i in range(1, num_layers):
-        is_last = i == num_layers - 1
-        H = shift_inv_layer(H, rows, cols, all_idx, N, b, i, var_scope, is_last=is_last)
+    # Hidden layers
+    # ========================================
+    for layer_idx in range(1, num_layers):
+        is_last = layer_idx == num_layers - 1
+        H = ShiftInv_layer(H, COO_feats, dims, layer_idx, is_last=is_last)
         if not is_last:
             H = activation(H)
     return H
 
-
 # ==== Model fn
-def sinv_model_fwd(num_layers, X, V, rows, cols, all_idx, N, b, activation=tf.nn.relu, vel_coeff=False, var_scope=VAR_SCOPE):
-    h_out = sinv_network_fwd(num_layers, var_scope, X, V, rows, cols, all_idx, N, b)
-    if vel_coeff:
-        theta = utils.get_vel_coeff(var_scope)
-        h_out = theta * h_out
-    return h_out
+def ShiftInv_model_func(X_in_edges, X_in_nodes, COO_feats, model_specs):
+    # Get relevant model specs
+    # ========================================
+    var_scope  = model_specs.var_scope
+    num_layers = model_specs.num_layers
+    use_vcoeff = model_specs.vcoeff
+    activation = model_specs.activation
+    dims = model_specs.dims
+
+    # Network forward
+    # ========================================
+    with tf.variable_scope(var_scope, reuse=True):
+        H_out = ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, activation)
+
+        # skip connections
+        if use_vcoeff:
+            theta = utils.get_vcoeff()
+            H_out = theta * H_out
+    return H_out
+
+
 
 #=============================================================================
 # LAYER OPS

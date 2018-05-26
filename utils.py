@@ -39,15 +39,19 @@ NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S'},
 
 LEARNING_RATE = 0.01
 
+# variable tags
 WEIGHT_TAG = 'W_{}'
-MULTI_WEIGHT = 'W{}_{}'
-GRAPH_TAG  = 'Wg_{}'
 BIAS_TAG   = 'B_{}'
 VEL_COEFF_TAG = 'V'
-VAR_SCOPE  = 'params'
-VAR_SCOPE_MULTI = 'params_{}'
-VAR_SCOPE_SINGLE_MULTI = 'params_{}-{}'
-AGG_PSCOPE = 'params_agg'
+
+# variable scope
+VAR_SCOPE = 'params_{}-{}' # formerly just 'params'
+
+#MULTI_WEIGHT = 'W{}_{}'
+#GRAPH_TAG  = 'Wg_{}'
+#VAR_SCOPE_MULTI = 'params_{}'
+#VAR_SCOPE_SINGLE_MULTI = 'params_{}-{}'
+#AGG_PSCOPE = 'params_agg'
 
 SINV_W_IDX = [1,2,3,4]
 
