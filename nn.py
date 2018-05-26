@@ -9,7 +9,6 @@ import utils
 from utils import VAR_SCOPE, VAR_SCOPE_MULTI
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
-RADIUS = 0.08
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
@@ -43,14 +42,6 @@ def _pool(X, idx, num_segs, broadcast):
     else:
         return X_pooled
 
-'''
-For every layer in this model, there are 4 weights and 1 bias
-        W1: (k, q) no-pooling
-        W2: (k, q) pooling rows
-        W3: (k, q) pooling cols
-        W4: (k, q) pooling all
-        B: (q,) bias
-'''
 
 def left_mult_sinv(X, W):
     return tf.einsum("bpk,kq->bpq", X, W)
