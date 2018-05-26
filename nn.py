@@ -15,11 +15,13 @@ from utils import VAR_SCOPE, VAR_SCOPE_MULTI
 # TF-related ops
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-
 #=============================================================================
-# LAYER OPS, New perm-eqv, shift-inv model
+# SHIFT INVARIANT NETWORK/LAYER OPS
 #=============================================================================
-def _pool(X, idx, num_segs, broadcast):
+#------------------------------------------------------------------------------
+# Shift invariant layer ops
+#------------------------------------------------------------------------------
+def pool_graph(X, idx, num_segs, broadcast):
     """
     Args:
         X (tensor): has shape (c, k), row-major order
@@ -31,113 +33,90 @@ def _pool(X, idx, num_segs, broadcast):
         broadcast (bool): if True, after pooling re-broadcast to original shape
 
     Returns:
-        tensor of shape (c, k) if broadcast is True
-        tensor of shape (b*N, k) if broadcast is False
+        tensor of shape (c, k) if broadcast, else (b*N, k)
     """
     X_pooled = tf.unsorted_segment_mean(X, idx, num_segs)
-
     if broadcast:
-        return tf.gather_nd(X_pooled, tf.expand_dims(idx, axis=1))
-
-    else:
-        return X_pooled
+        X_pooled = tf.gather_nd(X_pooled, tf.expand_dims(idx, axis=1))
+    return X_pooled
 
 
-def left_mult_sinv(X, W):
-    return tf.einsum("bpk,kq->bpq", X, W)
-
-
-
-def shift_inv_layer_spt(X_in, spt, N, b, layer_idx, var_scope, is_last=False):
+def shift_inv_layer(H_in, COO_idx, bN, layer_id, is_last=False):
     """
     Args:
-        X_in (tensor): (b*N*M, k)
-        spt (sparseTensor): (b*N, b*N)
-    """
-    W, P = utils.get_layer_vars(layer_idx, var_scope=var_scope)
-
-
-
-def shift_inv_layer(X_in, row_idx, col_idx, all_idx, N, b, layer_idx, var_scope, is_last=False):
-    """
-    Args:
-        X_in (tensor): has shape (c, k), stores shift-invariant edge features, row-major order.
-            c = sum_{i=0..b} n_i, and n_i is the number of non-zero entries of the i-th adjacency in the batch.
-                - if all matrices in the batch have the same number n of non zero-entries, c = b*n
-                - if the number of neighbors is fixed to M, then n = N*M and c = b*N*M
-
-        row_ids, col_ids, all_idx (numpy array): have shape (c), store row / column indices of adjacency non-zero entries,
-            row_ids, col_ids, all_idx =  pre_process_adjacency(A), A=adjacency batch.
-        N (int): number of particles
-        b (int): batch size
-        W* (tensor): weights with shape (k, q), q = number of output channels
-        P (tensor): bias with shape q
-        activation: defaults is tf.nn.relu
-        is_last (bool): if True pools output over columns (neighbors), default is False
-
+        H_in (tensor): (c, k), stores shift-invariant edge features, row-major
+          - c = b*N*M, if KNN then M is fixed, and k = num_edges = num_neighbors = M
+        COO_idx (tensor): (3, c), of row, column, cube-wise indices respectively
+        bN (tuple(int)): (b, N), where b is batch_size, N is number of particles
+        layer_id (int): id of layer in network, for retrieving variables
+          - each layer has 4 weights W (k, q), and 1 bias B (q,)
+        is_last (bool): if is_last, pool output over columns
     Returns:
-        tensor of shape (c, q) if is_last is False
-        tensor of shape (b, N, q) if is_last is True
+        H_out (tensor): (c, q), or (b, N, q) if is_last
     """
-    def _pool_cols(X, broadcast=True):
-        return _pool(X, row_idx, N * b, broadcast)
-
-    def _pool_rows(X, broadcast=True):
-        return _pool(X, col_idx, N * b, broadcast)
-
-    def _pool_all(X, broadcast=True):
-        return _pool(X, all_idx, N * b, broadcast)
+    # Prepare data and parameters
+    # ========================================
+    # split inputs
+    b, N = bN
+    rows, cols, cubes = tf.split(COO_idx, 3, axis=0)
 
     # get layer weights
-    W1, W2, W3, W4, P = utils.get_sinv_layer_vars(layer_idx, var_scope)
+    W1, W2, W3, W4, B = utils.get_ShiftInv_layer_vars(layer_id)
 
-    # Pooling and weights
+    # Helper funcs
     # ========================================
-    # W1 - no pooling
-    X1 = tf.einsum("ij,jw->iw", X_in, W1)  # (c, q)
+    def _pool(H, idx, broadcast=True):
+        # row : col
+        # col : row
+        # cubes : cubes
+        return pool_graph(H, idx, b*N)
 
-    # W2 - pool rows
-    X_pooled_r = _pool_rows(X=X_in)
-    X2 = tf.einsum("ij,jw->iw", X_pooled_r, W2)  # (c, q)
+    def _left_mult(h, W):
+        return tf.einsum("ck,kq->cq", h, W)
 
-    # W3 - pool cols
-    X_pooled_c = _pool_cols(X=X_in)
-    X3 = tf.einsum("ij,jw->iw", X_pooled_c, W3)  # (c, q)
+    # Layer forward pass
+    # ========================================
+    # H1 - no pooling
+    H1 = _left_mult(H_in, W1) # (c, q)
 
-    # W4 - pool all
-    X_pooled_all = _pool_all(X=X_in)
-    X4 = tf.einsum("ij,jw->iw", X_pooled_all, W4)  # (c, q)
+    # H2 - pool rows
+    H_rooled_rows = _pool(H_in, cols)
+    H2 = _left_mult(H_pooled_rows, W2) # (c, q)
 
-    X_all = tf.add_n([X1, X2, X3, X4])
-    #X_bias = tf.add(X_all, tf.reshape(P, [1, -1]))
-    #X_out = X_bias  # (c, q)
-    X_out = X_all + P
+    # H3 - pool cols
+    H_pooled_cols = _pool(H_in, rows)
+    H3 = _left_mult(H_pooled_rows, W3) # (c, q)
+
+    # H4 - pool cubes
+    H_pooled_all = _pool(H_in, cubes)
+    H4 =  _left_mult(H_pooled_all, W4) # (c, q)
 
     # Output
     # ========================================
+    H_out = (H1 + H2 + H3 + H4) + B
     if is_last:
         #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        return tf.reshape(_pool_cols(X_out, broadcast=False), [b, N, -1])
-    else:
-        return X_out
-
+        H_out = tf.reshape(_pool(H_out, cols, broadcast=False), (b, N, -1))
+    return H_out
 
 
 def include_node_features(X_in, V, row_idx, col_idx):
-    """
-    Broadcast node features to edges. To be used for first layer input.
-
+    """ Broadcast node features to edges for input layer
     Args:
-        X_in (tensor): has shape (c, 3) - input edge features (relative positions of neighbors)
-        V (tensor): has shape (b*N, 3) - input node features (velocities)
-
+        X_in (tensor): (c, 3), input edge features (relative positions of neighbors)
+        V (tensor):  (b*N, 3), input node features (velocities)
+        rows, cols (tensor): (c,)
     Returns:
-        tensor with shape (c, 9), with node features broadcasted to edges
+        tensor (c, 9), with node features broadcasted to edges
     """
     R = tf.gather_nd(V, tf.expand_dims(row_idx, axis=1))
     C = tf.gather_nd(V, tf.expand_dims(col_idx, axis=1))
 
     return tf.concat([X_in, R, C], axis=1)  # (c, 9)
+
+#------------------------------------------------------------------------------
+# Shift invariant network func
+#------------------------------------------------------------------------------
 
 #=============================================================================
 # new perm eqv, shift inv model funcs
