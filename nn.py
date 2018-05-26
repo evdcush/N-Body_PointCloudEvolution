@@ -184,7 +184,7 @@ def ShiftInv_model_func(X_in_edges, X_in_nodes, COO_feats, model_specs):
 
     # Network forward
     # ========================================
-    with tf.variable_scope(var_scope, reuse=True):
+    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         H_out = ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, activation)
 
         # skip connections

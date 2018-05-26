@@ -41,19 +41,20 @@ LEARNING_RATE = 0.01
 
 # variable tags
 WEIGHT_TAG = 'W_{}'
+MULTI_WEIGHT_TAG = 'W{}_{}'
 BIAS_TAG   = 'B_{}'
 VEL_COEFF_TAG = 'V'
 
 # variable scope
 VAR_SCOPE = 'params_{}-{}' # formerly just 'params'
 
-#MULTI_WEIGHT = 'W{}_{}'
+
 #GRAPH_TAG  = 'Wg_{}'
 #VAR_SCOPE_MULTI = 'params_{}'
 #VAR_SCOPE_SINGLE_MULTI = 'params_{}-{}'
 #AGG_PSCOPE = 'params_agg'
 
-SINV_W_IDX = [1,2,3,4]
+SHIFT_INV_W_IDX = [1,2,3,4]
 
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
@@ -65,7 +66,7 @@ SINV_W_IDX = [1,2,3,4]
 #=============================================================================
 # tf.Variable inits, for model parameters
 #=============================================================================
-def init_weight(k_in, k_out, name, seed=None, restore=False):
+def init_weight(k_in, k_out, name, ShiftInv_rescale=None, seed=None, restore=False):
     """ initialize weight Variable
     Args:
         k_in, k_out (int): kernel sizes
@@ -75,8 +76,18 @@ def init_weight(k_in, k_out, name, seed=None, restore=False):
     """
     #std = scale * np.sqrt(2. / k_in)
     #henorm = tf.random_normal((k_in, k_out), stddev=std, seed=seed)
-    init = tf.glorot_normal_initializer(seed=seed) if not restore else None
-    tf.get_variable(name, (k_in, k_out), dtype=tf.float32, initializer=init)
+    var_args = (name,)
+    if restore:
+        init = None
+        var_args = var_args + ((k_in, k_out),)
+    else:
+        if ShiftInv_rescale is not None:
+            std = tf.sqrt(2. / (k_in+k_out))
+            init = tf.random_normal((k_in,k_out), stddev=std, seed=seed) / ShiftInv_rescale
+        else:
+            init = tf.glorot_normal_initializer(seed=seed)
+            var_args = var_args + ((k_in, k_out),)
+    tf.get_variable(*var_args, dtype=tf.float32, initializer=init)
 
 def init_bias(k_in, k_out, name, restore=False):
     """ biases initialized to be near zero
@@ -115,7 +126,7 @@ def init_vel_coeff(restore=False, vinit=None):
 # Model init wrappers ========================================================
 
 # Single-step
-def init_params(channels, var_scope=VAR_SCOPE, vel_coeff=False, seed=None, restore=False):
+def init_params(channels, var_scope=VAR_SCOPE, vcoeff=False, seed=None, restore=False):
     """ Initialize parameters for model
     Args:
         channels (list int): list of channel sizes
@@ -128,11 +139,11 @@ def init_params(channels, var_scope=VAR_SCOPE, vel_coeff=False, seed=None, resto
         for idx, ktup in enumerate(kdims):
             init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed, restore=restore)
             init_bias(  *ktup,   BIAS_TAG.format(idx), restore=restore)
-        if vel_coeff: # scalar weight for simulating timestep, only one
+        if vcoeff: # scalar weight for simulating timestep, only one
             init_vel_coeff(restore)
 
 # shift-inv params
-def init_sinv_params(channels, var_scope=VAR_SCOPE, vel_coeff=None, seed=None, restore=False):
+def init_ShiftInv_params(channels, var_scope=VAR_SCOPE, rescale=None, vcoeff=False, restore=False, seed=None):
     """ Init parameters for 'new' perm-equivariant, shift-invariant model
     For every layer in this model, there are 4 weights and 1 bias
         W1: (k, q) no-pooling
@@ -141,6 +152,7 @@ def init_sinv_params(channels, var_scope=VAR_SCOPE, vel_coeff=None, seed=None, r
         W4: (k, q) pooling all
         B: (q,) bias
     """
+    vinit = 0.002 # best vcoeff constant for 15-19 redshifts
     # get (k_in, k_out) tuples from channels
     kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
 
@@ -148,10 +160,11 @@ def init_sinv_params(channels, var_scope=VAR_SCOPE, vel_coeff=None, seed=None, r
         # initialize variables for each layer
         for layer_idx, ktup in enumerate(kdims):
             init_bias(*ktup, BIAS_TAG.format(layer_idx), restore=restore) # B
-            for w_idx in SINV_W_IDX: # just [1,2,3,4]
-                init_weight(*ktup, MULTI_WEIGHT.format(layer_idx, w_idx), seed=seed, restore=restore)
-        if vel_coeff is not None:
-            init_vel_coeff(restore, vel_coeff)
+            for w_idx in SHIFT_INV_W_IDX: # just [1,2,3,4]
+                init_weight(*ktup, MULTI_WEIGHT.format(layer_idx, w_idx),
+                            ShiftInv_rescale=rescale, restore=restore, seed=seed)
+        if vcoeff:
+            init_vel_coeff(restore, vinit)
 
 # Multi-step params for aggregate model
 def init_params_multi(channels, num_rs, var_scope=VAR_SCOPE_MULTI, seed=None, restore=False):
@@ -173,10 +186,10 @@ def get_layer_vars(layer_idx, var_scope=VAR_SCOPE):
         B = tf.get_variable(  BIAS_TAG.format(layer_idx))
     return W, B
 
-def get_sinv_layer_vars(layer_idx, var_scope=VAR_SCOPE):
+def get_ShiftInv_layer_vars(layer_idx, var_scope=VAR_SCOPE):
     layer_vars = []
     with tf.variable_scope(var_scope, reuse=True):
-        for w_idx in SINV_W_IDX:
+        for w_idx in SHIFT_INV_W_IDX:
             layer_vars.append(tf.get_variable(MULTI_WEIGHT.format(layer_idx, w_idx)))
         layer_vars.append(tf.get_variable(BIAS_TAG.format(layer_idx)))
     return layer_vars # [W1, W2, W3, W4, B]
@@ -185,6 +198,25 @@ def get_vel_coeff(var_scope):
     with tf.variable_scope(var_scope, reuse=True):
         vel_coeff = tf.get_variable(VEL_COEFF_TAG)
     return vel_coeff
+
+#=============================================================================
+# var gets, assumes caller in proper variable_scope
+#=============================================================================
+def get_scoped_layer_vars(layer_idx):
+    W = tf.get_variable(WEIGHT_TAG.format(layer_idx))
+    B = tf.get_variable(  BIAS_TAG.format(layer_idx))
+    return W, B
+
+def get_scoped_ShiftInv_layer_vars(layer_idx):
+    layer_vars = []
+    for w_idx in SHIFT_INV_W_IDX:
+        layer_vars.append(tf.get_variable(MULTI_WEIGHT.format(layer_idx, w_idx)))
+    layer_vars.append(tf.get_variable(BIAS_TAG.format(layer_idx)))
+    return layer_vars # [W1, W2, W3, W4, B]
+
+def get_scoped_vcoeff():
+    vcoeff = tf.get_variable(VEL_COEFF_TAG)
+    return vcoeff
 
 
 #=============================================================================
