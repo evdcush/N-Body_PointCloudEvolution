@@ -603,7 +603,7 @@ def next_minibatch(X_in, batch_size, data_aug=False):
     if data_aug:
         batches = random_augmentation_shift(batches)
 
-    assert np.all(batches[0,:,:,-1] > batches[1,:,:,-1])
+    #assert np.all(batches[0,:,:,-1] > batches[1,:,:,-1])
     return batches
 
 

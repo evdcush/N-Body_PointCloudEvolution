@@ -37,7 +37,7 @@ num_rs_layers = num_rs - 1
 
 # Load data
 # ----------------
-X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)
+X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)[...,:-1]
 #X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)[...,:-1]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=NUM_VAL_SAMPLES)
 X = None # reduce memory overhead
@@ -173,7 +173,7 @@ np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
     # Data batching
     # ----------------
-    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False)[...,:-1] # shape (2, b, N, 6)
+    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (2, b, N, 6)
 
     # split data
     x_in    = _x_batch[0] # (b, N, 6)
@@ -217,7 +217,6 @@ print('elapsed time: {}'.format(time.time() - start_time))
 # Save trained variables and session
 saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
 X_train = None # reduce memory overhead
-X_test = X_test[...,:-1]
 
 
 #=============================================================================
@@ -272,7 +271,7 @@ inputs_median = np.median(inputs_loss)
 print('{:<18} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
-utils.save_loss(loss_path + model_name, test_looss, validation=True)
+utils.save_loss(loss_path + model_name, test_loss, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
 

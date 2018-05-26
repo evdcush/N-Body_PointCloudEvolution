@@ -546,7 +546,7 @@ def to_coo_batch(A):
         COO_feats[2, k:q] = cube
 
     # sanity check
-    confirm_CSR_to_COO_index_integrity(A, COO_feats)
+    #confirm_CSR_to_COO_index_integrity(A, COO_feats) # checked out
     return COO_feats
 
 def confirm_CSR_to_COO_index_integrity(A, COO_feats):
