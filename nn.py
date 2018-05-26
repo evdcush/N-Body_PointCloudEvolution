@@ -58,7 +58,7 @@ def shift_inv_layer(H_in, COO_idx, bN, layer_id, is_last=False):
     # ========================================
     # split inputs
     b, N = bN
-    rows, cols, cubes = tf.split(COO_idx, 3, axis=0)
+    row_idx, col_idx, cube_idx = tf.split(COO_idx, 3, axis=0)
 
     # get layer weights
     W1, W2, W3, W4, B = utils.get_ShiftInv_layer_vars(layer_id)
@@ -80,15 +80,15 @@ def shift_inv_layer(H_in, COO_idx, bN, layer_id, is_last=False):
     H1 = _left_mult(H_in, W1) # (c, q)
 
     # H2 - pool rows
-    H_rooled_rows = _pool(H_in, cols)
+    H_rooled_rows = _pool(H_in, col_idx)
     H2 = _left_mult(H_pooled_rows, W2) # (c, q)
 
     # H3 - pool cols
-    H_pooled_cols = _pool(H_in, rows)
+    H_pooled_cols = _pool(H_in, row_idx)
     H3 = _left_mult(H_pooled_rows, W3) # (c, q)
 
     # H4 - pool cubes
-    H_pooled_all = _pool(H_in, cubes)
+    H_pooled_all = _pool(H_in, cube_idx)
     H4 =  _left_mult(H_pooled_all, W4) # (c, q)
 
     # Output
@@ -96,23 +96,32 @@ def shift_inv_layer(H_in, COO_idx, bN, layer_id, is_last=False):
     H_out = (H1 + H2 + H3 + H4) + B
     if is_last:
         #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        H_out = tf.reshape(_pool(H_out, cols, broadcast=False), (b, N, -1))
+        H_out = tf.reshape(_pool(H_out, col_idx, broadcast=False), (b, N, -1))
     return H_out
 
 
-def include_node_features(X_in, V, row_idx, col_idx):
+def include_node_features(X_in_edges, X_in_nodes, COO_idx):
     """ Broadcast node features to edges for input layer
     Args:
-        X_in (tensor): (c, 3), input edge features (relative positions of neighbors)
-        V (tensor):  (b*N, 3), input node features (velocities)
-        rows, cols (tensor): (c,)
+        X_in_edges (tensor):   (c, 3), input edge features (relative pos of neighbors)
+        X_in_nodes (tensor): (b*N, 3), input node features (velocities)
+        COO_idx (tensor): (3, c), rows, cols, cube indices (respectively)
     Returns:
-        tensor (c, 9), with node features broadcasted to edges
+        X_in_graph (tensor): (c, 9), input with node features broadcasted to edges
     """
-    R = tf.gather_nd(V, tf.expand_dims(row_idx, axis=1))
-    C = tf.gather_nd(V, tf.expand_dims(col_idx, axis=1))
+    # get row, col indices
+    row_idx = COO_idx[0]
+    col_idx = COO_idx[1]
 
-    return tf.concat([X_in, R, C], axis=1)  # (c, 9)
+    # get node row, columns
+    node_rows = tf.gather_nd(X_in_nodes, tf.expand_dims(row_idx, axis=1))
+    node_cols = tf.gather_nd(X_in_nodes, tf.expand_dims(col_idx, axis=1))
+
+    # full node, edges graph
+    X_in_graph = tf.concat([X_in_edges, node_rows, node_cols], axis=1) # (c, 9)
+
+    return X_in_graph
+
 
 #------------------------------------------------------------------------------
 # Shift invariant network func
