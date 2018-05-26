@@ -92,7 +92,7 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
     row_idx, col_idx, cube_idx = tf.split(COO_feats, 3, axis=0)
 
     # get layer weights
-    W1, W2, W3, W4, B = utils.get_ShiftInv_layer_vars(layer_id)
+    W1, W2, W3, W4, B = utils.get_scoped_ShiftInv_layer_vars(layer_id)
 
     # Helper funcs
     # ========================================
@@ -189,7 +189,7 @@ def ShiftInv_model_func(X_in_edges, X_in_nodes, COO_feats, model_specs):
 
         # skip connections
         if use_vcoeff:
-            theta = utils.get_vcoeff()
+            theta = utils.get_scoped_vcoeff()
             H_out = theta * H_out
     return H_out
 
@@ -531,7 +531,7 @@ def to_coo_batch2(A):
     a = A[0].tocoo()
     rows = a.row # (N*M)
     cols = a.col # (N*M)
-    idx = np.zeros_like(rows)
+    cubes = np.zeros_like(rows)
     for i in range(1, b):
         # concat each to batched rows, cols
         a = A[i].tocoo()
@@ -540,10 +540,10 @@ def to_coo_batch2(A):
         e = np.zeros_like(r) + i
         #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
-        rows = np.concatenate([rows, r], axis=0)
-        cols = np.concatenate([cols, c], axis=0)
-        idx  = np.concatenate([idx,  e], axis=0)
-    return rows.astype(np.int32), cols.astype(np.int32), idx.astype(np.int32)
+        rows  = np.concatenate([rows, r], axis=0)
+        cols  = np.concatenate([cols, c], axis=0)
+        cubes = np.concatenate([cubes, e], axis=0)
+    return rows.astype(np.int32), cols.astype(np.int32), cubes.astype(np.int32)
 
 
 def pre_process_adjacency(A):
@@ -807,7 +807,7 @@ def pbc_loss(readout, x_truth, vel=False):
     if vel:
         assert readout.get_shape().as_list()[-1] > 3
         dist_vel = tf.squared_difference(readout[...,3:], x_truth[...,3:])
-        error *= tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1))
+        error += tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1))
     return error
 
 

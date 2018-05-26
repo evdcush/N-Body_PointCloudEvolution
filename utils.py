@@ -194,7 +194,7 @@ def get_ShiftInv_layer_vars(layer_idx, var_scope=VAR_SCOPE):
         layer_vars.append(tf.get_variable(BIAS_TAG.format(layer_idx)))
     return layer_vars # [W1, W2, W3, W4, B]
 
-def get_vel_coeff(var_scope):
+def get_vcoeff(var_scope):
     with tf.variable_scope(var_scope, reuse=True):
         vel_coeff = tf.get_variable(VEL_COEFF_TAG)
     return vel_coeff
@@ -208,11 +208,21 @@ def get_scoped_layer_vars(layer_idx):
     return W, B
 
 def get_scoped_ShiftInv_layer_vars(layer_idx):
-    layer_vars = []
-    for w_idx in SHIFT_INV_W_IDX:
-        layer_vars.append(tf.get_variable(MULTI_WEIGHT.format(layer_idx, w_idx)))
-    layer_vars.append(tf.get_variable(BIAS_TAG.format(layer_idx)))
-    return layer_vars # [W1, W2, W3, W4, B]
+    #layer_vars = []
+    #for w_idx in SHIFT_INV_W_IDX:
+    #    layer_vars.append(tf.get_variable(MULTI_WEIGHT.format(layer_idx, w_idx)))
+    #layer_vars.append(tf.get_variable(BIAS_TAG.format(layer_idx)))
+    #return layer_vars # [W1, W2, W3, W4, B]
+
+    # TRYING EXPLICIT GETS iNSTEAD OF LIST, just in case
+    # riskier, careful of var name to W_idx
+    W1 = tf.get_variable(MULTI_WEIGHT.format(layer_idx, 1))
+    W2 = tf.get_variable(MULTI_WEIGHT.format(layer_idx, 2))
+    W3 = tf.get_variable(MULTI_WEIGHT.format(layer_idx, 3))
+    W4 = tf.get_variable(MULTI_WEIGHT.format(layer_idx, 4))
+
+    B  = tf.get_variable(BIAS_TAG.format(layer_idx))
+    return W1, W2, W3, W4, B
 
 def get_scoped_vcoeff():
     vcoeff = tf.get_variable(VEL_COEFF_TAG)
