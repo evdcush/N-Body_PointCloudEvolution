@@ -92,7 +92,7 @@ utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 #=============================================================================
 # Init model params
 # ----------------
-vscope = utils.VAR_SCOPE_SINGLE_MULTI.format(zX, zY)
+vscope = utils.VAR_SCOPE.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
 utils.init_ShiftInv_params(channels, vscope, restore=restore, vcoeff=use_coeff)
 
@@ -119,18 +119,18 @@ def get_list_csr(h_in):
 
 # Model static func args
 # ----------------
-train_args = nn.ModelFuncArgs(num_layers, vscope, dims=(b,N), vcoeff=use_coeff)
+train_args = nn.ModelFuncArgs(num_layers, vscope, dims=(batch_size,N), vcoeff=use_coeff)
 val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=(1,N), vcoeff=use_coeff)
 
 # Model outputs
 # ----------------
 # Train
 H_out = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features, train_args) # (b, N, k_out)
-X_pred = readout_func(X_input + H_out)
+X_pred = nn.get_readout(X_input[...,:3] + H_out)
 
 # Validation
 H_out_val = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features_val, val_args) # (1, N, k_out)
-X_pred_val = readout_func(X_input + H_out_val)
+X_pred_val = nn.get_readout(X_input[...,:3] + H_out_val)
 
 # Loss
 # ----------------
@@ -226,8 +226,8 @@ X_test = X_test[...,:-1]
 # Eval data containers
 # ----------------
 test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
-test_errors   = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
-inputs_errors = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
+test_loss   = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
+inputs_loss = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
 
 print('\nEvaluation:\n{}'.format('='*78))
 for j in range(X_test.shape[1]):
@@ -259,20 +259,20 @@ for j in range(X_test.shape[1]):
     # ----------------
     x_pred, v_error, ins_diff = sess.run([X_pred_val, val_error, inputs_diff], feed_dict=fdict)
     test_predictions[j] = x_pred[0]
-    test_errors[j]   = v_error
-    inputs_errors[j] = truth_error
+    test_loss[j]   = v_error
+    inputs_loss[j] = ins_diff
     print('{:>3d}: {:.6f}'.format(j, v_error))
 
 # END Validation
 # ========================================
 # median error
-test_median = np.median(test_loss_history)
-inputs_median = np.median(inputs_loss_history)
+test_median = np.median(test_loss)
+inputs_median = np.median(inputs_loss)
 #print('{:<18} median: {:.9f}'.format(model_name, test_median))
 print('{:<18} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
-utils.save_loss(loss_path + model_name, test_loss_history, validation=True)
+utils.save_loss(loss_path + model_name, test_looss, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
 

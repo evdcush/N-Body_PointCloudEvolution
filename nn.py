@@ -89,7 +89,10 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
     # ========================================
     # split inputs
     b, N = bN
-    row_idx, col_idx, cube_idx = tf.split(COO_feats, 3, axis=0)
+    #row_idx, col_idx, cube_idx = tf.split(COO_feats, 3, axis=0)
+    row_idx  = COO_feats[0]
+    col_idx  = COO_feats[1]
+    cube_idx = COO_feats[2]
 
     # get layer weights
     W1, W2, W3, W4, B = utils.get_scoped_ShiftInv_layer_vars(layer_id)
@@ -100,7 +103,7 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
         # row : col
         # col : row
         # cubes : cubes
-        return pool_graph(H, idx, b*N)
+        return pool_graph(H, idx, b*N, broadcast)
 
     def _left_mult(h, W):
         return tf.einsum("ck,kq->cq", h, W)
@@ -111,7 +114,7 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
     H1 = _left_mult(H_in, W1) # (c, q)
 
     # H2 - pool rows
-    H_rooled_rows = _pool(H_in, col_idx)
+    H_pooled_rows = _pool(H_in, col_idx)
     H2 = _left_mult(H_pooled_rows, W2) # (c, q)
 
     # H3 - pool cols
@@ -179,7 +182,7 @@ def ShiftInv_model_func(X_in_edges, X_in_nodes, COO_feats, model_specs):
     var_scope  = model_specs.var_scope
     num_layers = model_specs.num_layers
     use_vcoeff = model_specs.vcoeff
-    activation = model_specs.activation # default tf.nn.relu
+    activation = model_specs.activation_func # default tf.nn.relu
     dims = model_specs.dims
 
     # Network forward
@@ -523,7 +526,7 @@ def to_coo_batch(A):
     # ----------------
     b = len(A) # batch size
     N = A[0].shape[0] # (32**3)
-    M = A[0].indices // N
+    M = A[0].indices.shape[0] // N
 
     # Get COO feats
     # ----------------
@@ -532,8 +535,8 @@ def to_coo_batch(A):
         coo = A[i].tocoo()
 
         # Offset coo feats
-        row = a.row + i*N
-        col = a.col + i*N
+        row = coo.row + i*N
+        col = coo.col + i*N
         cube = np.zeros_like(row) + i
 
         # Assign coo feats
@@ -559,7 +562,7 @@ def get_indices_from_list_CSR(A, offset=True):
     # ----------------
     b = len(A) # batch size
     N = A[0].shape[0] # (32**3)
-    M = A[0].indices // N
+    M = A[0].indices.shape[0] // N
 
     # Get CSR feats (indices)
     # ----------------
@@ -646,7 +649,7 @@ def get_radNeighbor_coo(X_in, R):
     coo = coo_matrix((coo_data, (rad_coo.row, rad_coo.col)), shape=(N, N)).astype(np.float32)
     return coo
 
-def get_radNeighbor_coo_batch(X_in, R=RADIUS):
+def get_radNeighbor_coo_batch(X_in, R):
     b, N = X_in.shape[:2]
 
     # accumulators
@@ -674,7 +677,7 @@ def get_radNeighbor_sparseT_attributes(coo):
     idx = np.mat([coo.row, coo.col]).transpose()
     return idx, coo.data, coo.shape
 
-def get_radius_graph_input(X_in, R=RADIUS):
+def get_radius_graph_input(X_in, R):
     coo = get_radNeighbor_coo_batch(X_in, R)
     sparse_tensor_attributes = get_radNeighbor_sparseT_attributes(coo)
     return sparse_tensor_attributes
