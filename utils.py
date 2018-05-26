@@ -24,7 +24,7 @@ DATA_PATH_ZUNI_NPY = '/home/evan/Data/nbody_simulations/N_uniform/npy_data/X_{:.
 REDSHIFTS_ZUNI = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
                  1.1212, 0.9438, 0.7955, 0.6688, 0.5588, 0.4620, 0.3758,
                  0.2983, 0.2280, 0.1639, 0.1049, 0.0505, 0.0000]
-
+SAVE_FILE_NAMES = ['utils.py', 'nn.py', 'z_train.py', 'z_rad_train.py', 'train_ShiftInv.py',]
 
 # rng seeds
 PARAMS_SEED  = 77743196 # for graph, set models do better with 98765
@@ -38,6 +38,7 @@ NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S'},
                 1:{'channels': GRAPH_CHANNELS, 'tag': 'G'},}
 
 LEARNING_RATE = 0.01
+NUM_VAL_SAMPLES = 200
 
 # variable tags
 WEIGHT_TAG = 'W_{}'
@@ -143,7 +144,7 @@ def init_params(channels, var_scope=VAR_SCOPE, vcoeff=False, seed=None, restore=
             init_vel_coeff(restore)
 
 # shift-inv params
-def init_ShiftInv_params(channels, var_scope=VAR_SCOPE, rescale=None, vcoeff=False, restore=False, seed=None):
+def init_ShiftInv_params(channels, var_scope, rescale=None, vcoeff=False, restore=False, seed=None):
     """ Init parameters for 'new' perm-equivariant, shift-invariant model
     For every layer in this model, there are 4 weights and 1 bias
         W1: (k, q) no-pooling
@@ -167,7 +168,7 @@ def init_ShiftInv_params(channels, var_scope=VAR_SCOPE, rescale=None, vcoeff=Fal
             init_vel_coeff(restore, vinit)
 
 # Multi-step params for aggregate model
-def init_params_multi(channels, num_rs, var_scope=VAR_SCOPE_MULTI, seed=None, restore=False):
+def init_params_multi(channels, num_rs, var_scope=VAR_SCOPE, seed=None, restore=False):
     """ Initialize network parameters for multi-step model, for predicting
     across multiple redshifts. (eg 6.0 -> 4.0 -> ... -> <target rs>)
     Multi-step model is network where each layer is a single-step model
@@ -425,10 +426,10 @@ def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
     if redshifts is None:
         redshifts = list(range(len(REDSHIFTS_ZUNI))) # copy
     num_rs = len(redshifts)
-    N = 1000
-    M = 32**3
+    S = 1000
+    N = 32**3
     D = 7
-    X = np.zeros((num_rs, N, M, D)).astype(np.float32)
+    X = np.zeros((num_rs, S, N, D)).astype(np.float32)
     for idx, z_idx in enumerate(redshifts):
         z_rs   = REDSHIFTS_ZUNI[z_idx]
         z_path = DATA_PATH_ZUNI_NPY.format(z_rs)
@@ -437,10 +438,9 @@ def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
         X[idx,:,:,-1] = z_rs
     if norm_coo:
         X[...,:3] = X[...,:3] / 32.0
+        assert np.max(X[...,:3]) <= 1.0
+        assert np.min(X[...,:3]) >= 0.0
     return X
-
-
-
 
 
 #=============================================================================
@@ -519,7 +519,7 @@ def normalize_fullrs(X, scale_range=(0,1)):
     return X
 
 
-def split_data_validation(X, Y, num_val_samples=200, seed=DATASET_SEED):
+def split_data_validation(X, Y, num_val_samples=NUM_VAL_SAMPLES, seed=DATASET_SEED):
     """ split dataset into training and validation sets
 
     Args:
@@ -588,35 +588,24 @@ def random_augmentation_shift(batch):
     return batch
 
 
-def next_minibatch(X_in, batch_size, data_aug=True):
+def next_minibatch(X_in, batch_size, data_aug=False):
     """ randomly select samples for training batch
 
     Args:
-        X_in (ndarray): (num_rs, N, D, 6) data input
+        X_in (ndarray): (num_rs, S, N, 6) data input
         batch_size (int): minibatch size
         data_aug: if data_aug, randomly shift input data
     Returns:
         batches (ndarray): randomly selected and shifted data
     """
     index_list = np.random.choice(X_in.shape[1], batch_size)
-    batches = X_in[:,index_list]
+    batches = np.copy(X_in[:,index_list])
     if data_aug:
-        return random_augmentation_shift(batches)
-    else:
-        return batches
+        batches = random_augmentation_shift(batches)
 
-def next_minibatch_shiftInv(X_in, batch_size, **kwargs):
-    """ minibatch func for the perm-eqvariant, shift-invariant data format
-    Args:
-        X_in (ndarray): (num_rs, num_samples, N, k)
-    RETURNS: X_out of shape (num_rs, N, k, b)
-    """
-    index_list = np.random.choice(X_in.shape[1], batch_size)
-    batches = X_in[:,index_list] # (num_rs, b, N, k)
+    assert np.all(batches[0,:,:,-1] > batches[1,:,:,-1])
+    return batches
 
-    # move batch axis to end
-    X_out = np.moveaxis(batches, 1, -1) # (num_rs, N, k, b)
-    return X_out
 
 def next_zuni_minibatch(X_in, batch_size, data_aug=True):
     """ randomly select samples for training batch
@@ -671,9 +660,7 @@ def save_pyfiles(model_dir):
     """
     save_path = model_dir + '.original_files/'
     make_dirs([save_path])
-    #file_names = ['train.py', 'utils.py', 'nn.py', 'z_multi_train.py', 'multi_train.py']
-    file_names = ['z_train.py', 'utils.py', 'nn.py', 'z_multi_train.py', 'z_rad_train.py', 'z_single_multi.py']
-    for fname in file_names:
+    for fname in SAVE_FILE_NAMES:
         src = './{}'.format(fname)
         dst = '{}{}'.format(save_path, fname)
         shutil.copyfile(src, dst)

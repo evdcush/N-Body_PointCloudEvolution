@@ -6,7 +6,7 @@ from scipy.sparse import coo_matrix
 import tensorflow as tf
 
 import utils
-from utils import VAR_SCOPE, VAR_SCOPE_MULTI
+from utils import VAR_SCOPE
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 
@@ -179,7 +179,7 @@ def ShiftInv_model_func(X_in_edges, X_in_nodes, COO_feats, model_specs):
     var_scope  = model_specs.var_scope
     num_layers = model_specs.num_layers
     use_vcoeff = model_specs.vcoeff
-    activation = model_specs.activation
+    activation = model_specs.activation # default tf.nn.relu
     dims = model_specs.dims
 
     # Network forward
@@ -391,50 +391,16 @@ def get_input_edge_features_batch(X_in, lst_csrs, M, offset_idx=False):
     x = X_in[...,:3] # (b, N, 3)
     b, N, k = x.shape
 
-    x_out = np.zeros((b, N*M, k)).astype(np.float32)
+    #x_out = np.zeros((b, N*M, k)).astype(np.float32)
+    x_out = np.zeros((b, N, M, k)).astype(np.float32)
     # have to loop, since mem issues with full X_in[adj_list]
     for i in range(b):
         h = x[i]     # (N, 3)
         a = lst_csrs[i].indices.reshape(N, M) # (N, M)
         h_sel = h[a] # (N, M, 3)
         h_out = h_sel - h[:,None,:] # (N, M, 3) - (N, 1, 3)
-        x_out[i] = h_out.reshape(-1, k)
+        x_out[i] = h_out
     return x_out.reshape(-1, k)
-
-def get_input_edge_features_batch_rad(X_in, lst_csrs, M, offset_idx=False):
-    """ get relative distances of each particle from its M neighbors
-    Args:
-        X_in (ndarray): (b, N, 6), input data
-        lst_csrs (list(csr)): len b list of csrs
-    """
-    x = X_in[...,:3] # (b, N, 3)
-    b, N, k = x.shape
-
-    x_out = np.zeros((b, N*M, k)).astype(np.float32)
-    # have to loop, since mem issues with full X_in[adj_list]
-    for i in range(b):
-        h = x[i]     # (N, 3)
-        a = lst_csrs[i].indices.reshape(N, M) # (N, M)
-        h_sel = h[a] # (N, M, 3)
-        h_out = h_sel - h[:,None,:] # (N, M, 3) - (N, 1, 3)
-        x_out[i] = h_out.reshape(-1, k)
-    return x_out.reshape(-1, k)
-
-def _get_input_edge_features_batch_offset(X_in, lst_csrs, M):
-    """ get relative distances of each particle from its M neighbors
-    Args:
-        X_in (ndarray): (b, N, 6), input data
-        lst_csrs (list(csr)): len b list of csrs
-    """
-    x = X_in[...,:3] # (b, N, 3)
-    b, N, k = x.shape
-    x = x.reshape(-1, k)
-    adj = lst_csrs[0].indices.reshape(N, M)
-    for i in range(1, b):
-        cur = lst_csrs[i].indices.reshape(N, M)
-        adj = np.concatenate([adj, cur], axis=0)
-    x_out = x[adj] - x[:,None,:] # (B*N, M, k)
-    return np.reshape(x_out, (b, N*M, k))
 
 
 def get_input_node_features(X_in):
@@ -545,6 +511,69 @@ def to_coo_batch2(A):
         cubes = np.concatenate([cubes, e], axis=0)
     return rows.astype(np.int32), cols.astype(np.int32), cubes.astype(np.int32)
 
+def to_coo_batch(A):
+    """ Get row and column indices from csr
+    DOES NOT LIKE OFFSET IDX, tocoo() method will complain about index being
+    greater than matrix size
+
+    Args:
+        A (csr): list of csrs of shape (N, N)
+    """
+    # Dims
+    # ----------------
+    b = len(A) # batch size
+    N = A[0].shape[0] # (32**3)
+    M = A[0].indices // N
+
+    # Get COO feats
+    # ----------------
+    COO_feats = np.zeros((3, b*N*M)).astype(np.int32)
+    for i in range(b):
+        coo = A[i].tocoo()
+
+        # Offset coo feats
+        row = a.row + i*N
+        col = a.col + i*N
+        cube = np.zeros_like(row) + i
+
+        # Assign coo feats
+        k, q = i*N*M, (i+1)*N*M
+        COO_feats[0, k:q] = row
+        COO_feats[1, k:q] = col
+        COO_feats[2, k:q] = cube
+
+    # sanity check
+    confirm_CSR_to_COO_index_integrity(A, COO_feats)
+    return COO_feats
+
+def confirm_CSR_to_COO_index_integrity(A, COO_feats):
+    """ CSR.indices compared against COO.cols
+    Sanity check to ensure that my indexing algebra is correct
+    """
+    CSR_feats = get_indices_from_list_CSR(A)
+    cols = COO_feats[1]
+    assert np.all(CSR_feats == cols)
+
+def get_indices_from_list_CSR(A, offset=True):
+    # Dims
+    # ----------------
+    b = len(A) # batch size
+    N = A[0].shape[0] # (32**3)
+    M = A[0].indices // N
+
+    # Get CSR feats (indices)
+    # ----------------
+    CSR_feats = np.zeros((b*N*M)).astype(np.int32)
+    for i in range(b):
+        # Offset indices
+        idx = A[i].indices + i*N
+
+        # Assign csr feats
+        k, q = i*N*M, (i+1)*N*M
+        CSR_feats[k:q] = idx
+    return CSR_feats
+
+
 
 def pre_process_adjacency(A):
     """
@@ -601,7 +630,7 @@ def radius_graph_fn(x, R):
     """
     return radius_neighbors_graph(x[:,:3], R, include_self=True).astype(np.float32)
 
-def get_radNeighbor_coo(X_in, R=RADIUS):
+def get_radNeighbor_coo(X_in, R):
     N = X_in.shape[0]
     # just easier to diff indptr for now
     # get csr
