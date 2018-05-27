@@ -18,7 +18,7 @@ parser.add_argument('--batch_size','-b', default=8,          type=int,  help='tr
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
 parser.add_argument('--vcoeff',    '-c', default=0,          type=int,  help='use timestep coefficient on velocity')
 parser.add_argument('--save_prefix','-n', default='',        type=str,  help='model name prefix')
-#parser.add_argument('--search_param', '-q', default=0,          type=int,  help='hyperparameter search')
+parser.add_argument('--var_param', '-q', default=0,          type=int,  help='hyperparameter search')
 pargs = vars(parser.parse_args())
 start_time = time.time()
 
@@ -123,21 +123,31 @@ train_args = nn.ModelFuncArgs(num_layers, vscope, dims=(batch_size,N), vcoeff=us
 val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=(1,N), vcoeff=use_coeff)
 
 #theta = 0.0132
-#theta = utils.get_vcoeff(vscope)
+#theta = -0.0139551
+def init_Atheta():
+    with tf.variable_scope(vscope):
+        vinit = tf.constant([0.002])
+        tf.get_variable('Atheta', dtype=tf.float32, initializer=vinit)
 
+def get_Atheta():
+    with tf.variable_scope(vscope, reuse=True):
+        return tf.get_variable('Atheta')
+if pargs['var_param'] == 1:
+    init_Atheta()
 # Model outputs
 # ----------------
 # Train
 H_out = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features, train_args) # (b, N, k_out)
 X_pred = nn.get_readout(X_input[...,:3] + H_out)
 #X_pred = nn.get_readout(X_input[...,:3] + theta*H_out)
-#X_pred = nn.get_readout(X_input[...,:3] + theta*H_out)
 #X_pred = nn.get_readout(X_input[...,:3] + theta*X_input[...,3:] + (1/2)*H_out*tf.square(theta))
 
 # Validation
 H_out_val = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features_val, val_args) # (1, N, k_out)
 X_pred_val = nn.get_readout(X_input[...,:3] + H_out_val)
+#X_pred_val = nn.get_readout(X_input[...,:3] + theta*H_out_val)
 #X_pred_val = nn.get_readout(X_input[...,:3] + theta*X_input[...,3:] + (1/2)*H_out_val*tf.square(theta))
+
 
 # Loss
 # ----------------
@@ -163,6 +173,9 @@ sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.run(tf.global_variables_initializer())
 if restore:
     utils.load_graph(sess, model_path)
+
+#theta = utils.get_vcoeff(vscope).eval()
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 # Session saver
 # ----------------
@@ -274,7 +287,7 @@ for j in range(X_test.shape[1]):
     test_predictions[j] = x_pred[0]
     test_loss[j]   = v_error
     inputs_loss[j] = ins_diff
-    print('{:>3d}: {:.6f}'.format(j, v_error))
+    #print('{:>3d}: {:.6f}'.format(j, v_error))
 
 # END Validation
 # ========================================
@@ -287,6 +300,5 @@ print('{:<18} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_med
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
-
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use

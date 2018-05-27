@@ -72,7 +72,7 @@ def pool_graph(X, idx, num_segs, broadcast):
     return X_pooled
 
 
-def OG_ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
+def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
     """
     Args:
         H_in (tensor): (c, k), stores shift-invariant edge features, row-major
@@ -133,7 +133,7 @@ def OG_ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
         H_out = tf.reshape(_pool(H_out, row_idx, broadcast=False), (b, N, -1))
     return H_out
 
-def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
+def scaled_ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
     """ # SCALE OUT
     Args:
         H_in (tensor): (c, k), stores shift-invariant edge features, row-major
@@ -188,8 +188,8 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
 
     # Output
     # ========================================
-    #H_out = (H1 + H2 + H3 + H4) / 4.0 + B
-    H_out = (H1 + H2 + H3 + H4) + B
+    H_out = (H1 + H2 + H3 + H4) / 4.0 + B
+    #H_out = (H1 + H2 + H3 + H4) + B
     if is_last:
         #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         H_out = tf.reshape(_pool(H_out, row_idx, broadcast=False), (b, N, -1))
