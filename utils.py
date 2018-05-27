@@ -100,6 +100,7 @@ def init_bias(k_in, k_out, name, restore=False):
     """
     if not restore:
         init = tf.ones((k_out,), dtype=tf.float32) * 1e-8
+        #init = tf.zeros((k_out,), dtype=tf.float32)
         tf.get_variable(name, dtype=tf.float32, initializer=init)
     else:
         tf.get_variable(name, (k_out,), dtype=tf.float32, initializer=None)

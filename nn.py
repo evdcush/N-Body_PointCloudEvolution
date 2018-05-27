@@ -188,7 +188,8 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
 
     # Output
     # ========================================
-    H_out = (H1 + H2 + H3 + H4) / 4.0 + B
+    #H_out = (H1 + H2 + H3 + H4) / 4.0 + B
+    H_out = (H1 + H2 + H3 + H4) + B
     if is_last:
         #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         H_out = tf.reshape(_pool(H_out, row_idx, broadcast=False), (b, N, -1))
