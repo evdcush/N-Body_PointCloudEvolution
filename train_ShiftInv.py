@@ -94,7 +94,7 @@ utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 # ----------------
 vscope = utils.VAR_SCOPE.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_ShiftInv_params(channels, vscope, rescale=None, restore=restore, vcoeff=use_coeff)
+utils.init_ShiftInv_params(channels, vscope, rescale=8, restore=restore, vcoeff=use_coeff)
 
 # CUBE DATA
 # ----------------
@@ -124,23 +124,23 @@ val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=(1,N), vcoeff=use_coeff)
 
 #theta = 0.0132
 #theta = -0.0139551
-theta = pargs['variable'] #
-print('theta: {}'.format(theta))
+#theta = pargs['variable'] #
+#print('theta: {}'.format(theta))
 
 # Model outputs
 # ----------------
 # Train
 H_out = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features, train_args) # (b, N, k_out)
-#X_pred = nn.get_readout(X_input[...,:3] + H_out)
+X_pred = nn.get_readout(X_input[...,:3] + H_out)
 #X_pred = nn.get_readout(X_input + H_out)
-X_pred = nn.get_readout(X_input[...,:3] + theta*H_out)
+#X_pred = nn.get_readout(X_input[...,:3] + theta*H_out)
 #X_pred = nn.get_readout(X_input[...,:3] + theta*X_input[...,3:] + (1/2)*H_out*tf.square(theta))
 
 # Validation
 H_out_val = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features_val, val_args) # (1, N, k_out)
-#X_pred_val = nn.get_readout(X_input[...,:3] + H_out_val)
+X_pred_val = nn.get_readout(X_input[...,:3] + H_out_val)
 #X_pred_val = nn.get_readout(X_input + H_out_val)
-X_pred_val = nn.get_readout(X_input[...,:3] + theta*H_out_val)
+#X_pred_val = nn.get_readout(X_input[...,:3] + theta*H_out_val)
 #X_pred_val = nn.get_readout(X_input[...,:3] + theta*X_input[...,3:] + (1/2)*H_out_val*tf.square(theta))
 
 

@@ -83,8 +83,11 @@ def init_weight(k_in, k_out, name, ShiftInv_rescale=None, seed=None, restore=Fal
         var_args = var_args + ((k_in, k_out),)
     else:
         if ShiftInv_rescale is not None:
-            std = tf.sqrt(2. / (k_in+k_out))
-            init = tf.random_normal((k_in,k_out), stddev=std, seed=seed) / ShiftInv_rescale
+            #std = tf.sqrt(2. / (k_in+k_out))
+            std = 0.001
+            #init = tf.random_normal((k_in,k_out), stddev=std, seed=seed) / ShiftInv_rescale
+            init = tf.truncated_normal_initializer(stddev=std)
+            var_args = var_args + ((k_in, k_out),)
             #init = np.random.rand(k_in, k_out).astype(np.float32) - 0.5
         else:
             init = tf.glorot_normal_initializer(seed=seed)
