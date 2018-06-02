@@ -57,6 +57,8 @@ VAR_SCOPE = 'params_{}-{}' # formerly just 'params'
 
 SHIFT_INV_W_IDX = [1,2,3,4]
 
+# ROTATION
+SEGNAMES_3D = ['no-pooling', 'col-depth', 'row-depth', 'row-col', 'depth', 'col', 'row', 'all']
 
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 #<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
@@ -229,6 +231,11 @@ def get_scoped_ShiftInv_layer_vars(layer_idx):
 
     B  = tf.get_variable(BIAS_TAG.format(layer_idx))
     return W1, W2, W3, W4, B
+
+def get_scoped_RotInv_weight(layer_idx, rot_tag):
+    W = tf.get_variable(MULTI_WEIGHT_TAG.format(layer_idx, rot_tag))
+    return W
+
 
 def get_scoped_vcoeff():
     vcoeff = tf.get_variable(VEL_COEFF_TAG)

@@ -6,7 +6,7 @@ from scipy.sparse import coo_matrix
 import tensorflow as tf
 
 import utils
-from utils import VAR_SCOPE
+from utils import VAR_SCOPE, SEGNAMES_3D
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 
@@ -45,6 +45,81 @@ class ModelFuncArgs():
     def __call__(self):
         # return the only two things EVERY model will have
         return self.num_layers, self.var_scope
+#=============================================================================
+# ROTATION INVARIANT NETWORK/LAYER OPS
+#=============================================================================
+#------------------------------------------------------------------------------
+# ROTATION invariant layer ops
+#------------------------------------------------------------------------------
+def pool_rot_graph(X, idx, num_segs, broadcast):
+    """
+    Args:
+        X (tensor): has shape (c, k), row-major order
+        idx (numpy array): has shape (c),
+            must be row idx of non-zero entries to pool over columns
+            must be column idx of non-zero entries to pool over rows
+        N (int): number of segments (number of particles in this case)
+        b (int): batch size
+        broadcast (bool): if True, after pooling re-broadcast to original shape
+
+    Returns:
+        tensor of shape (c, k) if broadcast, else (b*N, k)
+    """
+    num_segs = tf.reduce_max(idx) + 1
+    X_pooled = tf.unsorted_segment_mean(X, idx, num_segs)
+    if broadcast:
+        X_pooled = tf.gather_nd(X_pooled, tf.expand_dims(idx, axis=2))
+    else:
+        X_pooled = tf.reshape(X_pooled, [tf.shape(X)[0], -1, tf.shape(X)[2]])
+    return X_pooled
+
+
+def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
+    """
+    Args:
+        H_in (tensor): (b, e, k)
+            b=batch_size
+            e=N*(M-1)*(M-2), num of edges in 3D adjacency (diags removed), N=num_part, M=num_neigh
+            k=channel size
+        segID_3D: (b, 7, e) segment ids for pooling, there are 7:
+            col-depth, row-depth, row-col, depth, col, row, all
+        W: 8 (or 6) set of weights for pooling
+        B: bias
+    Returns:
+        H_out (tensor): (c, q), or (b, N, q) if is_last
+    """
+    # Prepare data and parameters
+    # ========================================
+    # split inputs
+    b, N = bN
+    #row_idx, col_idx, cube_idx = tf.split(COO_feats, 3, axis=0)
+    row_idx  = COO_feats[0]
+    col_idx  = COO_feats[1]
+    cube_idx = COO_feats[2]
+
+    # Helper funcs
+    # ========================================
+    def _left_mult(h, W_name):
+        W = utils.get_scoped_RotInv_weight(layer_idx, W_name)
+        return tf.einsum("ijk,kq->ijq", h, W)
+
+    # Layer forward pass
+    # ========================================
+    H_out = _left_mult(H_in, SEGNAMES_3D[0])
+    for idx, seg_name in enumerate(SEGNAMES_3D[1:]):
+        H_pooled = pool_rot_graph(H_in, segID_3D[:, idx], True)
+        H_out = H_out + _left_mult(H_pooled, seg_name)
+
+    # Output
+    # ========================================
+    bias = tf.get_variable(utils.BIAS_TAG.format(layer_idx))
+    H_out = H_out + bias
+    if is_last: # pool over depth dim
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        H_out = pool_rot_graph(H_out, segID_3D[:,3], False)
+    return H_out
+
+
 
 #=============================================================================
 # SHIFT INVARIANT NETWORK/LAYER OPS
