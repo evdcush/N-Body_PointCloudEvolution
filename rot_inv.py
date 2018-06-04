@@ -443,3 +443,26 @@ def toy_example():
 
 if __name__ == "__main__":
     toy_example()
+
+
+'''
+#############
+
+Hey guys,
+
+sorry for the delay. Attached is my code for the rotational invariant model. It required some work - but I think it should implement what we discussed. Here are some remarks, I'd appreciate if you could share your comments.
+
+1. I have included an end-to-end toy example, which shows how the different parts should be used together, and how poolings (which are the tricky part) work.
+
+2. Inputs for the rot-invariant layers have now shape X = (b, e, k), where b=batch, k=channels and e is the number of edge features. Edge features sit on the non-zero entries of a 3D adjacency with shape (N, M, M), which is symmetric under exchange of the last two dimensions. The number of edge features is e=N*(M-1)*(M-2). I'm working under the assumption of fixed number of neighbors M for now, and the code removes the diagonals from the 3D adjacency (given that we fill edges with the angle between <nm, nm'>, one should have n!=m and n!=m'; additionally, broadcasting surface features to edges (see below for details) also requires m != m', so I have removed all diagonal elements). Note that the subsampling trick Siamak suggested last time for dealing with variable number of neighbors, required a fixed number of 2D edges across the batch (i.e., fixed total number of non-zero entries in the adjacency across the batch) for the shift-invariant case; but now it would require a fixed number of 3D edges, which is not guaranteed to be constant even if the 2D edges are fixed. I'm postponing these issues for later discussion, and sticking with fixed M for now.
+
+3. As you can see, the layer is very simple in principle, all operations are very symmetric. Here is the main idea: we have a three-dimensional adjacency tensor, whose non-zero elements (there are e of them) are contained in X, in row-column-depth order (generalization of row-major order). There are 7 possible pooling + no-pooling, which correspond to 8 sets of weights. Think about the 2D case first: row indices of non-zero adjacency elements define segments for pooling over columns, and viceversa column indices define segments for pooling over rows. For the 3D case we have row, column and depth indices which indicate the non-zero entries and correspond exactly to pooling over col-and-depth, row-and-depth, row-and-col, respectively. Additionally, a proper combination of row and col indices defines segments for pooling over depth, a combination of row and depth indices defines segments for pooling over col, and a combination of col and depth indices defines segments for pooling over row (you can see the code for how the combination is calculated). Finally, there is a pool over all e edges.
+
+4. Because adjacency is symmetric for exchange of col and depth, I think we should actually have 6 independent sets of weights, instead of 8. row-and-col and row-and-depth should share the same weight. Same for col and depth, as I did in the toy example. Also, I've assumed the batch of adjacency is in csr (or any other scipy sparse format).
+
+5. There are functions for preprocessing and postprocessing. Preprocessing: the input data is a tensor of shape (b, e, 10). There are 10 channels because: 1 true edge feature (angle between <nm, nm'> + 9 features coming from surface broadcasting. Assume that the surface is IJ, where I and J can be {row, col, depth}, and they are indexed by ij. There are 3 possible surfaces, and for each surface there are 1 scalar distance for the pair ij + 1 projection of velocity_i onto vector_ij + 1 projection of velocity_j onto vector_ji = - vector_ij. This gives 3 surfaces x 3 features = 9 features coming from surface broadcasting. I think this is one possible way of encoding the input (possibly redundant?), there could be others. For example, once we have a triplet of particles identified by an edge, we could add all 3 relative angles on the edge, instead of only one angle and two scalar distances on the surface.
+
+6. Postprocessing: last layer of the network (once you set is_last=True) pools over the depth dimension, and so returns an output X_out of shape (b, N*(M-1), q). With q=1 this can be reshaped to (b, N, M-1, 1). For each particle, we take a linear combination of the relative distances of its neighbors with weight given by X_out, this gives the displacement. Once summed to the initial position, you get the final position.
+
+7. I have tested separate pieces of the code and some overall functionalities - but I have not done extensive tests. Some code, especially for the pre or post processing, can definitely be cleaned up.
+'''
