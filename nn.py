@@ -51,7 +51,7 @@ class ModelFuncArgs():
 #------------------------------------------------------------------------------
 # ROTATION invariant layer ops
 #------------------------------------------------------------------------------
-def pool_rot_graph(X, idx, num_segs, broadcast):
+def pool_rot_graph(X, idx, broadcast):
     """
     Args:
         X (tensor): has shape (c, k), row-major order

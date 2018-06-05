@@ -74,6 +74,30 @@ def get_scoped_bias(layer_idx):
 #------------------------------------------------------------------------------
 # ROTATION invariant layer ops
 #------------------------------------------------------------------------------
+def pool_RotInv(X, idx, broadcast=True):
+    """
+    Args:
+        X (tensor): has shape (c, k), row-major order
+        idx (numpy array): has shape (c),
+            must be row idx of non-zero entries to pool over columns
+            must be column idx of non-zero entries to pool over rows
+        N (int): number of segments (number of particles in this case)
+        b (int): batch size
+        broadcast (bool): if True, after pooling re-broadcast to original shape
+
+    Returns:
+        tensor of shape (c, k) if broadcast, else (b*N, k)
+    """
+    num_segs = tf.reduce_max(idx) + 1 # number of segments
+    X_pooled = tf.unsorted_segment_mean(X, idx, num_segs)
+
+    if broadcast: # same shape as X
+        X_pooled = tf.gather_nd(X_pooled, tf.expand_dims(idx, axis=2))
+    else:
+        X_pooled = tf.reshape(X_pooled, [tf.shape(X)[0], -1, tf.shape(X)[2]])
+    return X_pooled
+
+
 def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
     """
     Args:
@@ -91,29 +115,28 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
     """
     # Helper funcs
     # ========================================
-    def _left_mult(h, W_name):
-        W =
-    # Prepare data and parameters
+    def _left_mult(h, w_idx):
+        W = get_scoped_RotInv_weight(layer_id, w_idx)
+        return tf.einsum("bek,kq->beq", h, W)
+
+    # Forward pass
     # ========================================
-    # No pooling.
-    outputs = [tf.einsum("ijk,kw->ijw", X_edges, W.get("no-pooling"))]
+    # No pooling
+    H = _left_mult(H_in, WMAP_3D['Z'])
 
-    # All poolings operations - as specified by segment_idx.
-    # Pool over col-depth, row-depth, row-col, depth, col, row, all, respectively
-    segment_names = ["col-depth", "row-depth", "row-col", "depth", "col", "row", "all"]
-    for i, name in enumerate(segment_names):
-        X_pooled = _pool(X=X_edges, idx=segment_idx_3D[:, i, :], broadcast=True)
-        outputs.append(tf.einsum("ijk,kw->ijw", X_pooled, W.get(name)))
+    # Pooling ops, ORDER MATTERS
+    for i, pool_op in enumerate(SEGNAMES_3D):
+        pooled_H = pool_RotInv(H_in, segID_3D[:,i], broadcast=True)
+        H = H + _left_mult(pooled_H, WMAP_3D[pool_op])
 
-    # Sum, add bias, apply activation
-    X_out = activation(tf.add_n(outputs) + tf.reshape(B, [1, 1, -1]))
-
+    # Output
+    # ========================================
+    H_out = H + get_scoped_bias(layer_id) # (b, e, q)
     if is_last:
-        # pool over depth dimension, i.e. segment_idx[3]
-        return _pool(X=X_out, idx=segment_idx_3D[:, 3, :], broadcast=False)  # (b, N * (M - 1), q)
+        # pool over depth dimension: (b, e, q) --> (b, N*(M-1), q)
+        H_out = pool_RotInv(H_out, segID_3D[:,3], broadcast=False)
+    return H_out
 
-    else:
-        return X_out  # (b, e, q)
 
 
 # Helpers
