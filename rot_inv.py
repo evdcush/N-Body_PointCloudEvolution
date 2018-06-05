@@ -1,41 +1,100 @@
-import numpy as np
-import tensorflow as tf
-from scipy.sparse import csr_matrix
+import os, code, sys, time
 from tabulate import tabulate
+import numpy as np
+from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
+from scipy.sparse import coo_matrix, csr_matrix
+import tensorflow as tf
 
+#import utils
+#from utils import VAR_SCOPE
+#=============================================================================
+# Globals
+#=============================================================================
+# segment labels
+SEGNAMES_3D = ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
 
-# Rotation invariant layer
-# ========================================
-def rot_inv_layer(
-        X_edges,
-        segment_idx_3D,
-        W,
-        B,
-        activation=tf.nn.relu,
-        is_last=False
-):
+# weight mapping
+WMAP_3D = {'CD': 1, # col-depth
+           'RD': 2, # row-depth
+           'RC': 2, # row-col
+           'D' : 3, # depth
+           'C' : 3, # col
+           'R' : 4, # row
+           'A' : 5, # all
+           'Z' : 6} # none (no pooling)
 
+#=============================================================================
+# ROTATION INVARIANT UTILS (normally in utils.py)
+#=============================================================================
+#------------------------------------------------------------------------------
+# Network params init
+#------------------------------------------------------------------------------
+def init_RotInv_params(channels, var_scope, vcoeff=False, restore=False, seed=None):
+    """ Init parameters for perm-equivariant, rotation-invariant model
+    For every layer in this model, there are 6 weights (k, q) and 1 bias (q,)
+        row-depth, row-col share weight
+        depth, col share weight
+    """
+    #vinit = 0.002 # best vcoeff constant for 15-19 redshifts on shiftInv model
+
+    # Get (k_in, k_out) tuples from channels
+    # ========================================
+    kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
+
+    # Initialize all layer weights
+    # ========================================
+    with tf.variable_scope(var_scope):
+        for layer_idx, ktup in enumerate(kdims):
+            # bias
+            utils.init_bias(*ktup, utils.BIAS_TAG.format(layer_idx), restore=restore) # B
+
+            # weights
+            for w_idx in set(WMAP_3D.values()): # [1, 2, 3, 4, 5, 6]
+                wtag = utils.MULTI_WEIGHT_TAG.format(layer_idx, w_idx)
+                utils.init_weight(*ktup, wtag, restore=restore, seed=seed)
+
+        if vcoeff:
+            assert False # don't use vcoeff yet
+            utils.init_vel_coeff(restore, vinit)
+
+#------------------------------------------------------------------------------
+# Var getters (CALLEE ASSUMES with tf.variable_scope)
+#------------------------------------------------------------------------------
+def get_scoped_RotInv_weight(layer_idx, w_idx):
+    W = tf.get_variable(utils.MULTI_WEIGHT_TAG.format(layer_idx, w_idx))
+    return W
+
+def get_scoped_bias(layer_idx):
+    B = tf.get_variable(utils.BIAS_TAG.format(layer_idx))
+    return B
+
+#=============================================================================
+# ROTATION INVARIANT NETWORK/LAYER OPS
+#=============================================================================
+#------------------------------------------------------------------------------
+# ROTATION invariant layer ops
+#------------------------------------------------------------------------------
+def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
     """
     Args:
-        X_edges. Input has shape (b, e, k)
-            b=minibatch size
-            e=N*(M-1)*(M-2), number of edges in 3D adjacency (diagonals removed), N=num of particles, M=num of neighbors
-            k=input channels
-
-        segment_idx_3D. Segments has shape (b, 7, e)
-            The seven components correspond to segment_idx for pooling over col-depth, row-depth, row-col, depth,
-            col, row, all, respectively.
-        W (dict). Weights. {"col-depth": W1, "row-depth": W2, "row-col": W3, "depth": W4, "col": W5,
-            "row": W6, "all": W7, "no-pooling": W8}. Each weight has shape (k, q), q=output channels.
-        B. Bias has shape (q).
-        activation.
-        is_last (Bool).
-
+        H_in (tensor): (b, e, k)
+            b = minibatch size
+            e = N*(M-1)*(M-2), number of edges in 3D adjacency (no diagonals)
+              N = num_particles
+              M = num neighbors
+            k = input channels
+        segID_3D (tensor): (b, 7, e) segment ids for pooling, 7 total:
+            [col-depth, row-depth, row-col, depth, col, row, all]
+        layer_id (int): layer id in network, for retrieving layer vars
     Returns:
-        tensor of shape (b, e, q) if is_last is False
-        tensor of shape (b, N * (M - 1), q) if is_last is True
+        tensor of shape (b, e, q) if not is_last else (b, N*(M-1), q)
     """
-
+    # Helper funcs
+    # ========================================
+    def _left_mult(h, W_name):
+        W =
+    # Prepare data and parameters
+    # ========================================
     # No pooling.
     outputs = [tf.einsum("ijk,kw->ijw", X_edges, W.get("no-pooling"))]
 
@@ -450,19 +509,74 @@ if __name__ == "__main__":
 
 Hey guys,
 
-sorry for the delay. Attached is my code for the rotational invariant model. It required some work - but I think it should implement what we discussed. Here are some remarks, I'd appreciate if you could share your comments.
+sorry for the delay. Attached is my code for the rotational invariant model.
+It required some work - but I think it should implement what we discussed.
+Here are some remarks, I'd appreciate if you could share your comments.
 
-1. I have included an end-to-end toy example, which shows how the different parts should be used together, and how poolings (which are the tricky part) work.
+1. I have included an end-to-end toy example, which shows how the different
+parts should be used together, and how poolings (which are the tricky part) work.
 
-2. Inputs for the rot-invariant layers have now shape X = (b, e, k), where b=batch, k=channels and e is the number of edge features. Edge features sit on the non-zero entries of a 3D adjacency with shape (N, M, M), which is symmetric under exchange of the last two dimensions. The number of edge features is e=N*(M-1)*(M-2). I'm working under the assumption of fixed number of neighbors M for now, and the code removes the diagonals from the 3D adjacency (given that we fill edges with the angle between <nm, nm'>, one should have n!=m and n!=m'; additionally, broadcasting surface features to edges (see below for details) also requires m != m', so I have removed all diagonal elements). Note that the subsampling trick Siamak suggested last time for dealing with variable number of neighbors, required a fixed number of 2D edges across the batch (i.e., fixed total number of non-zero entries in the adjacency across the batch) for the shift-invariant case; but now it would require a fixed number of 3D edges, which is not guaranteed to be constant even if the 2D edges are fixed. I'm postponing these issues for later discussion, and sticking with fixed M for now.
+2. Inputs for the rot-invariant layers have now shape X = (b, e, k),
+where b=batch, k=channels and e is the number of edge features. Edge features
+sit on the non-zero entries of a 3D adjacency with shape (N, M, M), which is
+symmetric under exchange of the last two dimensions. The number of edge
+features is e=N*(M-1)*(M-2). I'm working under the assumption of fixed number
+of neighbors M for now, and the code removes the diagonals from the 3D
+adjacency (given that we fill edges with the angle between <nm, nm'>, one
+should have n!=m and n!=m'; additionally, broadcasting surface features to
+edges (see below for details) also requires m != m', so I have removed all
+diagonal elements). Note that the subsampling trick Siamak suggested last
+time for dealing with variable number of neighbors, required a fixed number
+of 2D edges across the batch (i.e., fixed total number of non-zero entries in
+the adjacency across the batch) for the shift-invariant case; but now it would
+require a fixed number of 3D edges, which is not guaranteed to be constant
+even if the 2D edges are fixed. I'm postponing these issues for later
+discussion, and sticking with fixed M for now.
 
-3. As you can see, the layer is very simple in principle, all operations are very symmetric. Here is the main idea: we have a three-dimensional adjacency tensor, whose non-zero elements (there are e of them) are contained in X, in row-column-depth order (generalization of row-major order). There are 7 possible pooling + no-pooling, which correspond to 8 sets of weights. Think about the 2D case first: row indices of non-zero adjacency elements define segments for pooling over columns, and viceversa column indices define segments for pooling over rows. For the 3D case we have row, column and depth indices which indicate the non-zero entries and correspond exactly to pooling over col-and-depth, row-and-depth, row-and-col, respectively. Additionally, a proper combination of row and col indices defines segments for pooling over depth, a combination of row and depth indices defines segments for pooling over col, and a combination of col and depth indices defines segments for pooling over row (you can see the code for how the combination is calculated). Finally, there is a pool over all e edges.
+3. As you can see, the layer is very simple in principle, all operations
+are very symmetric. Here is the main idea: we have a three-dimensional
+adjacency tensor, whose non-zero elements (there are e of them) are contained
+in X, in row-column-depth order (generalization of row-major order). There are
+7 possible pooling + no-pooling, which correspond to 8 sets of weights. Think
+about the 2D case first: row indices of non-zero adjacency elements define
+segments for pooling over columns, and viceversa column indices define segments
+for pooling over rows. For the 3D case we have row, column and depth indices
+which indicate the non-zero entries and correspond exactly to pooling over
+col-and-depth, row-and-depth, row-and-col, respectively. Additionally, a
+proper combination of row and col indices defines segments for pooling over
+depth, a combination of row and depth indices defines segments for pooling
+over col, and a combination of col and depth indices defines segments for
+pooling over row (you can see the code for how the combination is calculated).
+Finally, there is a pool over all e edges.
 
-4. Because adjacency is symmetric for exchange of col and depth, I think we should actually have 6 independent sets of weights, instead of 8. row-and-col and row-and-depth should share the same weight. Same for col and depth, as I did in the toy example. Also, I've assumed the batch of adjacency is in csr (or any other scipy sparse format).
+4. Because adjacency is symmetric for exchange of col and depth, I think we
+should actually have 6 independent sets of weights, instead of 8. row-and-col
+and row-and-depth should share the same weight. Same for col and depth, as I
+did in the toy example. Also, I've assumed the batch of adjacency is in csr
+(or any other scipy sparse format).
 
-5. There are functions for preprocessing and postprocessing. Preprocessing: the input data is a tensor of shape (b, e, 10). There are 10 channels because: 1 true edge feature (angle between <nm, nm'> + 9 features coming from surface broadcasting. Assume that the surface is IJ, where I and J can be {row, col, depth}, and they are indexed by ij. There are 3 possible surfaces, and for each surface there are 1 scalar distance for the pair ij + 1 projection of velocity_i onto vector_ij + 1 projection of velocity_j onto vector_ji = - vector_ij. This gives 3 surfaces x 3 features = 9 features coming from surface broadcasting. I think this is one possible way of encoding the input (possibly redundant?), there could be others. For example, once we have a triplet of particles identified by an edge, we could add all 3 relative angles on the edge, instead of only one angle and two scalar distances on the surface.
+5. There are functions for preprocessing and postprocessing.
+Preprocessing: the input data is a tensor of shape (b, e, 10).
+There are 10 channels because: 1 true edge feature
+(angle between <nm, nm'> + 9 features coming from surface broadcasting.
+Assume that the surface is IJ, where I and J can be {row, col, depth},
+and they are indexed by ij. There are 3 possible surfaces, and for each
+surface there are 1 scalar distance for the pair ij + 1 projection of
+velocity_i onto vector_ij + 1 projection of velocity_j onto vector_ji = - vector_ij.
+This gives 3 surfaces x 3 features = 9 features coming from surface broadcasting.
+I think this is one possible way of encoding the input (possibly redundant?),
+there could be others. For example, once we have a triplet of particles
+identified by an edge, we could add all 3 relative angles on the edge,
+instead of only one angle and two scalar distances on the surface.
 
-6. Postprocessing: last layer of the network (once you set is_last=True) pools over the depth dimension, and so returns an output X_out of shape (b, N*(M-1), q). With q=1 this can be reshaped to (b, N, M-1, 1). For each particle, we take a linear combination of the relative distances of its neighbors with weight given by X_out, this gives the displacement. Once summed to the initial position, you get the final position.
+6. Postprocessing: last layer of the network (once you set is_last=True) pools
+over the depth dimension, and so returns an output X_out of shape (b, N*(M-1), q).
+With q=1 this can be reshaped to (b, N, M-1, 1). For each particle, we take a
+linear combination of the relative distances of its neighbors with weight given
+by X_out, this gives the displacement. Once summed to the initial position, you
+get the final position.
 
-7. I have tested separate pieces of the code and some overall functionalities - but I have not done extensive tests. Some code, especially for the pre or post processing, can definitely be cleaned up.
+7. I have tested separate pieces of the code and some overall functionalities -
+but I have not done extensive tests. Some code, especially for the pre or
+post processing, can definitely be cleaned up.
 '''

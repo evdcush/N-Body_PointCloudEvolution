@@ -232,10 +232,13 @@ def get_scoped_ShiftInv_layer_vars(layer_idx):
     B  = tf.get_variable(BIAS_TAG.format(layer_idx))
     return W1, W2, W3, W4, B
 
-def get_scoped_RotInv_weight(layer_idx, rot_tag):
-    W = tf.get_variable(MULTI_WEIGHT_TAG.format(layer_idx, rot_tag))
+def get_scoped_RotInv_weight(layer_idx, w_idx):
+    W = tf.get_variable(MULTI_WEIGHT_TAG.format(layer_idx, w_idx))
     return W
 
+def get_scoped_bias(layer_idx):
+    B = tf.get_variable(BIAS_TAG.format(layer_idx))
+    return B
 
 def get_scoped_vcoeff():
     vcoeff = tf.get_variable(VEL_COEFF_TAG)
