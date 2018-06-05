@@ -139,29 +139,6 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
 
 
 
-# Helpers
-# ========================================
-def _pool(X, idx, broadcast):
-    """
-    Args:
-        X. Shape (b, e, k).
-        idx. Shape (b, e).
-        broadcast (bool).
-
-    Returns:
-        tensor of shape (b, e, k) if broadcast is True
-        tensor of shape (b, number of segments, k) if broadcast is False
-    """
-    n_segments = tf.reduce_max(idx) + 1  # number of segments
-    X_pooled = tf.unsorted_segment_mean(X, idx, n_segments)
-
-    if broadcast:
-        return tf.gather_nd(X_pooled, tf.expand_dims(idx, axis=2))  # same shape as X
-
-    else:
-        return tf.reshape(X_pooled, [tf.shape(X)[0], -1, tf.shape(X)[2]])  # (b, number of segments, k)
-
-
 # Pre-process adjacency batch
 # ========================================
 def pre_process_adjacency_batch(batch, m, sparse=True):
