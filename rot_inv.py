@@ -134,9 +134,55 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
     return H_out
 
 
+#=============================================================================
+# ROTATION INVARIANT PRE/POST PROCESSING
+#=============================================================================
+#------------------------------------------------------------------------------
+# Pre-process adjacency matrices
+#------------------------------------------------------------------------------
+def get_3D_adjacency(adj_graph, M):
+    """ Build 3D adjacency from csr_matrix (though any matrix from scipy.sparse works)
+    Args:
+        adj_graph (csr_matrix): neighbor graph (assumes kneighbors_graph)
+        M (int): number of neighbors
+    Returns:
+        row, col, depth. npy arrays for indices of non-zero entries. Diagonals removed.
+    """
+    adj_graph.setdiag(0)  # Don't need diagonal elements
+    m_eff = M - 1 # Wouldn't need this if include_self=False, but keep for now
 
-# Pre-process adjacency batch
-# ========================================
+    # get COO features
+    # NB: this is not the same as COO conversion, since nonzero() will return neighbor indices sorted
+    rows, cols = adj_graph.nonzero()
+    num_elements = rows.size # N*(M-1)
+
+    # 3D-projected features for row, col, depth
+    r = np.repeat(rows, m_eff-1) # tested equivalent
+    c = np.repeat(cols, m_eff-1) # tested equivalent
+
+    # depth indexing algebra is more complicated, # tested equivalent
+    d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1)
+    del_idx = np.array([(i%m_eff) + (i*m_eff) for i in range(num_elements)])
+    d = np.delete(d, del_idx)
+
+    return r, c, d
+
+
+def prep_RotInv_adjacency_batch(lst_csrs, M):
+    """ preprocess batch of adjacency matrices for segment ids
+    Total of 7 segments for 3D graph, in order:
+    col-depth, row-depth, row-col, depth, col, row, all
+
+    Args:
+        lst_csrs (list(csr_matrix)): list of csr_matrix for neighbor graph, of len num_batches
+        M (int): number of neighbors
+    Returns:
+        ndarray (b, 7, e)
+          where e=N*(M-1)*(M-2), num of edges in 3D adjacency matrix (no diags)
+          N: num_particles
+    """
+
+
 def pre_process_adjacency_batch(batch, m, sparse=True):
     """
     Process batch of adjacency matrices and return segment_idx.
