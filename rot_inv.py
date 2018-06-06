@@ -76,17 +76,13 @@ def get_scoped_bias(layer_idx):
 #------------------------------------------------------------------------------
 def pool_RotInv(X, idx, broadcast=True):
     """
+    Pooling for rotation invariant model, assumes everything in row-major order
     Args:
-        X (tensor): has shape (c, k), row-major order
-        idx (numpy array): has shape (c),
-            must be row idx of non-zero entries to pool over columns
-            must be column idx of non-zero entries to pool over rows
-        N (int): number of segments (number of particles in this case)
-        b (int): batch size
+        X (tensor): (b,e,k)
+        idx (tensor): (b,e)
         broadcast (bool): if True, after pooling re-broadcast to original shape
-
     Returns:
-        tensor of shape (c, k) if broadcast, else (b*N, k)
+        tensor of shape (b,e,k) if broadcast, else (b,N*(M-1),k)
     """
     num_segs = tf.reduce_max(idx) + 1 # number of segments
     X_pooled = tf.unsorted_segment_mean(X, idx, num_segs)
@@ -125,7 +121,7 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
     H = _left_mult(H_in, WMAP_3D['Z'])
 
     # Pooling ops, ORDER MATTERS
-    for i, pool_op in enumerate(SEGNAMES_3D):
+    for i, pool_op in enumerate(SEGNAMES_3D): # ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
         pooled_H = pool_RotInv(H_in, segID_3D[:,i], broadcast=True)
         H = H + _left_mult(pooled_H, WMAP_3D[pool_op])
 
