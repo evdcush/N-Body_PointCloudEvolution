@@ -5,6 +5,13 @@ from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
 from scipy.sparse import coo_matrix, csr_matrix
 import tensorflow as tf
 
+#=============================================================================
+# NOTES
+#=============================================================================
+'''
+ - Are you sure you need to offset the segment ids in prep_RotInv_adjacency_batch?
+
+'''
 #import utils
 #from utils import VAR_SCOPE
 #=============================================================================
@@ -181,6 +188,178 @@ def prep_RotInv_adjacency_batch(lst_csrs, M):
           where e=N*(M-1)*(M-2), num of edges in 3D adjacency matrix (no diags)
           N: num_particles
     """
+    # Helper funcs
+    # ========================================
+    def _combine_segment_idx(idx1, idx2):
+        combined_idx = np.transpose(np.array([idx1, idx2]))
+        vals, idx = np.unique(combined_idx, axis=0, return_inverse=True) # why not return_index?
+        return idx
+
+    # process each adjacency in batch
+    # ========================================
+    seg_idx = []
+    for adj in batch:
+        # get row, col, depth segment idx (pools col-depth, row-depth, row-col, respectively)
+        r, c, d = get_3D_adjacency(adj, M)
+
+        # combine segment idx (pools rc->d, rd->c, cd->r, respectively)
+        rc = _combine_segment_idx(r, c)
+        rd = _combine_segment_idx(r, d)
+        cd = _combine_segment_idx(c, d)
+
+        # idx for pooling over all
+        a = np.zeros_like(r)
+
+        # order seg ids
+        seg_idx.append(np.array([cd, rd, rc, d, c, r, a])) # ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
+    seg_idx = np.array(seg_idx)
+
+    # Offset indices # CARE, ARE YOU SURE YOU NEED TO OFFSET?
+    # ========================================
+    for i in range(1, seg_idx.shape[0]): # batch_size
+        for j in range(seg_idx.shape[1]): # 7
+            seg_idx[i][j] += np.max(seg_idx[i-1][j]) + 1
+
+    return seg_idx
+
+
+def get_segment_idx_2D(batch_A_sparse):
+    """
+    Return row, col, indices of a list of 2D sparse adjacencies with batch indices too.
+        Sorry, using a different indexing system from 3D adjacency case. TODO: make indexing consistent for clarity.
+
+    Args:
+        batch_A_sparse. List of csr (or any other sparse format) adjacencies.
+
+    Returns:
+        array of shape (2, b * N * (M-1), 2). Each pair in the third axis is a batch idx - row idx or
+            batch idx - col idx for non-zero entries of 2D adjacency. 0-axis is rows/cols respectively.
+    """
+    rows = []
+    cols = []
+
+    for i in range(len(batch_A_sparse)):
+        a = batch_A_sparse[i]
+        a.setdiag(0)
+        r, c = a.nonzero()
+        batch = np.zeros_like(r) + i
+        rows.append(np.transpose([batch, r]))
+        cols.append(np.transpose([batch, c]))
+
+    rows = np.reshape(np.array(rows), (-1, 2))
+    cols = np.reshape(np.array(cols), (-1, 2))
+
+    return np.array([rows, cols])
+
+
+# Pre-process input
+# ========================================
+def rot_invariant_input(batch_X, batch_V, batch_A, m):
+    """
+    Args:
+         batch_X. Shape (b, N, 3). Coordinates.
+         batch_V. Shape (b, N, 3), Velocties.
+         batch_A. List of csr adjacencies.
+         m (int). Number of neighbors.
+
+    Returns:
+        numpy array of shape (b, e, 10)
+            e=N*(M-1)*(M-2), number of edges in 3D adjacency (diagonals removed), N=num of particles, M=num of neighbors
+            10 input channels corresponding to 1 edge feature + 9 broadcasted surface features, those are broken
+            down into 3 surfaces x (1 scalar distance + 1 row velocity projected onto cols + 1 col velocity
+            projected onto rows)
+    """
+    def _process(X, V, A):
+        def _angle(v1, v2):
+            return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+
+        def _norm(v):
+            return np.linalg.norm(v)
+
+        def _project(v1, v2):
+            return np.dot(v1, v2) / np.linalg.norm(v2)
+
+        rows, cols, depth = _make_cube_adjacency_sparse(A, m)
+
+        X_out = []
+        for r, c, d in zip(rows, cols, depth):
+
+            # Relative distance vectors
+            dx1 = X[c] - X[r]
+            dx2 = X[d] - X[r]
+            dx3 = X[d] - X[c]
+
+            # Edge features
+            features = [_angle(dx1, dx2)]
+
+            # rc surface features
+            # scalar distance + projection of row vel to rc vectors + projection of col vel to cr vectors
+            features.extend([_norm(dx1), _project(V[r], dx1), _project(V[c], -dx1)])
+
+            # rd surface features
+            # scalar distance + projection of row vel to rd vectors + projection of depth vel to dr vectors
+            features.extend([_norm(dx2), _project(V[r], dx2), _project(V[d], -dx2)])
+
+            # cd surface features
+            # scalar distance + projection of col vel to cd vectors + projection of depth vel to dc vectors
+            features.extend([_norm(dx3), _project(V[c], dx3), _project(V[d], -dx3)])
+
+            X_out.append(features)
+
+        return X_out
+
+    return np.array([_process(batch_X[i], batch_V[i], batch_A[i]) for i in range(len(batch_X))])
+
+
+# Post-process output
+# ========================================
+def get_final_position(X_in, segment_idx_2D, weights, m):
+    """
+    Calculate displacement vectors = linear combination of neighbor relative positions, with weights = last layer
+    outputs (pooled over depth), and add diplacements to initial position to get final position.
+
+    Args:
+        X_in. Shape (b, N, 3). Initial positions.
+        segment_idx_2D . Shape (2, b * N * (M-1), 2). Each pair in the third axis is a batch idx - row idx or
+            batch idx - col idx for non-zero entries of 2D adjacency.
+            0-axis is rows/cols respectively. Get it from get_segment_idx_2D()
+        weights. Shape (b, N, M - 1, 1). Outputs from last layer (pooled over depth dimension).
+        m (int). Number of neighbors.
+
+    Returns:
+        Tensor of shape (b, N, 3). Final positions.
+    """
+
+    # Find relative position of neighbors (neighbor - node)
+    dX = tf.gather_nd(X_in, segment_idx_2D[1]) - tf.gather_nd(X_in, segment_idx_2D[0])
+    dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], m - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
+
+    # Return initial position + displacement (=weighted combination of neighbor relative distances)
+    return X_in + tf.reduce_sum(tf.multiply(dX_reshaped, weights), axis=2)
+
+
+#=============================================================================
+# ROTATION INVARIANT PRE/POST PROCESSING
+#=============================================================================
+#=============================================================================
+# ROTATION INVARIANT PRE/POST PROCESSING
+#=============================================================================
+#=============================================================================
+# ROTATION INVARIANT PRE/POST PROCESSING
+#=============================================================================
+#=============================================================================
+# ROTATION INVARIANT PRE/POST PROCESSING
+#=============================================================================
+#=============================================================================
+# ROTATION INVARIANT PRE/POST PROCESSING
+#=============================================================================
+
+
+
+
+
+
+
 
 
 def pre_process_adjacency_batch(batch, m, sparse=True):
@@ -202,6 +381,7 @@ def pre_process_adjacency_batch(batch, m, sparse=True):
     def _combine_segment_idx(idx_1, idx_2):
         """
         Combine pairs of segment idx.
+        # Why use return_inverse instead of return_index?
         """
         idx_12 = np.transpose(np.array([idx_1, idx_2]))  # pair up idx
         vals, idx = np.unique(idx_12, axis=0, return_inverse=True)
