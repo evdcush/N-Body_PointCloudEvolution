@@ -212,7 +212,7 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
 #------------------------------------------------------------------------------
 # Shift invariant network ops
 #------------------------------------------------------------------------------
-def include_node_features(X_in_edges, X_in_nodes, COO_feats):
+def include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=None):
     """ Broadcast node features to edges for input layer
     Args:
         X_in_edges (tensor):   (c, 3), input edge features (relative pos of neighbors)
@@ -232,13 +232,18 @@ def include_node_features(X_in_edges, X_in_nodes, COO_feats):
     # full node, edges graph
     X_in_graph = tf.concat([X_in_edges, node_rows, node_cols], axis=1) # (c, 9)
 
+    # broadcast redshifts (for multi)
+    if redshift is not None:
+        X_in_graph = tf.concat([X_in_graph, redshift], axis=1) # (c, 10)
+
     return X_in_graph
 
+
 # ==== Network fn
-def ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, activation):
+def ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, activation, redshift=None):
     # Input layer
     # ========================================
-    H_in = include_node_features(X_in_edges, X_in_nodes, COO_feats)
+    H_in = include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=redshift)
     H = activation(ShiftInv_layer(H_in, COO_feats, dims, 0))
 
     # Hidden layers
@@ -250,8 +255,11 @@ def ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, a
             H = activation(H)
     return H
 
+#------------------------------------------------------------------------------
+# Shift invariant model funcs
+#------------------------------------------------------------------------------
 # ==== Model fn
-def ShiftInv_model_func(X_in_edges, X_in_nodes, COO_feats, model_specs):
+def ShiftInv_model_func(X_in_edges, X_in_nodes, COO_feats, model_specs, redshift=None):
     # Get relevant model specs
     # ========================================
     var_scope  = model_specs.var_scope
@@ -263,7 +271,7 @@ def ShiftInv_model_func(X_in_edges, X_in_nodes, COO_feats, model_specs):
     # Network forward
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        H_out = ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, activation)
+        H_out = ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, activation, redshift)
 
         # skip connections
         if use_vcoeff:
@@ -271,6 +279,72 @@ def ShiftInv_model_func(X_in_edges, X_in_nodes, COO_feats, model_specs):
             H_out = theta * H_out
     return H_out
 
+
+# ==== Multi-A Model fn
+def ShiftInv_multi_model_func(X_in_edges, X_in_nodes, COO_feats, CSR_batch,
+                              coeffs, redshifts, edges_pyfunc, model_specs):
+    """
+    model0: [(c, 3), (b*N, 3), (3,c), (c, 1)] -> (b, N, 6)
+    pre: [(b, N, 6), CSR_batch[j]] -> (c, 3), (b*N, 3)
+    pyfunc: CSR_batch[j] -> (3, c)
+    """
+    # Get relevant model specs
+    # ========================================
+    var_scope  = model_specs.var_scope
+    num_layers = model_specs.num_layers
+    #use_vcoeff = model_specs.vcoeff
+    activation = model_specs.activation_func # default tf.nn.relu
+    dims = model_specs.dims # (b, N)
+
+    # Helpers
+    # ========================================
+    def _ShiftInv_fwd(edges, nodes, coo_feats, theta):
+        h = ShiftInv_network_func(edges, nodes, coo_feats, num_layers, dims, activation) # (b, N, 6)
+        h_loc = h[...,:3] * theta
+        h_vel = h[...,3:]
+        h_out = tf.concat([h_loc, h_vel], axis=-1)
+#=============================================================================
+# LAYER OPS
+#=============================================================================
+#=============================================================================
+#=============================================================================
+#=============================================================================
+#=============================================================================
+#=============================================================================
+# STOPPED HERE
+'''
+suspicious of the split, theta, concat op. how affect gradient flow?
+Anyway to elem-mult along just loc space?
+'''
+#=============================================================================
+#=============================================================================
+#=============================================================================
+#=============================================================================
+#=============================================================================
+#=============================================================================
+# LAYER OPS
+#=============================================================================
+        return h_out
+
+
+
+    def _process_ShiftInv_out(H_out, rs_idx):
+        # readout
+
+
+
+
+
+    # Network forward
+    # ========================================
+    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
+        H_out = ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, activation)
+
+        # skip connections
+        if use_vcoeff:
+            theta = utils.get_scoped_vcoeff()
+            H_out = theta * H_out
+    return H_out
 
 #=============================================================================
 # LAYER OPS

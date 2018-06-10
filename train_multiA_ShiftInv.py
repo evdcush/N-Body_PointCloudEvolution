@@ -37,7 +37,8 @@ num_rs_layers = num_rs - 1
 
 # Load data
 # ----------------
-X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)[...,:-1]
+#X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)[...,:-1]
+X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)
 #X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)[...,:-1]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=NUM_VAL_SAMPLES)
 X = None # reduce memory overhead
@@ -56,8 +57,8 @@ use_coeff  = pargs['vcoeff'] == 1
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
 channels = [6, 32, 16, 8, 3]
-channels[0]  = 9
-channels[-1] = 3
+channels[0]  = 10
+channels[-1] = 6
 num_layers = len(channels) - 1
 M = pargs['graph_var']
 
@@ -128,16 +129,10 @@ val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=(1,N), vcoeff=use_coeff)
 # Train
 H_out = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features, train_args) # (b, N, k_out)
 X_pred = nn.get_readout(X_input[...,:3] + H_out)
-#X_pred = nn.get_readout(X_input + H_out)
-#X_pred = nn.get_readout(X_input[...,:3] + theta*H_out)
-#X_pred = nn.get_readout(X_input[...,:3] + theta*X_input[...,3:] + (1/2)*H_out*tf.square(theta))
 
 # Validation
 H_out_val = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features_val, val_args) # (1, N, k_out)
 X_pred_val = nn.get_readout(X_input[...,:3] + H_out_val)
-#X_pred_val = nn.get_readout(X_input + H_out_val)
-#X_pred_val = nn.get_readout(X_input[...,:3] + theta*H_out_val)
-#X_pred_val = nn.get_readout(X_input[...,:3] + theta*X_input[...,3:] + (1/2)*H_out_val*tf.square(theta))
 
 
 # Loss
