@@ -94,7 +94,7 @@ utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 # ----------------
 vscope = utils.VAR_SCOPE.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_ShiftInv_params(channels, vscope, rescale=8, restore=restore, vcoeff=use_coeff)
+utils.init_ShiftInv_params(channels, vscope, restore=restore, vcoeff=use_coeff)
 
 # CUBE DATA
 # ----------------
@@ -122,10 +122,6 @@ def get_list_csr(h_in):
 train_args = nn.ModelFuncArgs(num_layers, vscope, dims=(batch_size,N), vcoeff=use_coeff)
 val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=(1,N), vcoeff=use_coeff)
 
-#theta = 0.0132
-#theta = -0.0139551
-#theta = pargs['variable'] #
-#print('theta: {}'.format(theta))
 
 # Model outputs
 # ----------------
