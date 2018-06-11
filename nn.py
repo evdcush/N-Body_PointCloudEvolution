@@ -286,8 +286,8 @@ Impl notes for multi:
 """
 
 # ==== Multi-A Model fn
-def ShiftInv_multi_model_func(X_in_edges, X_in_nodes, COO_feats, CSR_batch,
-                              coeffs, redshifts, edges_pyfunc, model_specs):
+def ShiftInv_multi_model_func(X_in_edges, X_in_nodes, COO_feats, coeffs,
+                              redshifts, model_specs):
     """
     model0: [(c, 3), (b*N, 3), (3,c), (c, 1)] -> (b, N, 6)
     pre: [(b, N, 6), CSR_batch[j]] -> (c, 3), (b*N, 3)
@@ -299,30 +299,32 @@ def ShiftInv_multi_model_func(X_in_edges, X_in_nodes, COO_feats, CSR_batch,
     num_layers = model_specs.num_layers
     #use_vcoeff = model_specs.vcoeff
     activation = model_specs.activation_func # default tf.nn.relu
-    dims = model_specs.dims # (b, N)
+    b, N, M = model_specs.dims # (b, N, M)
+    dims = (b, N)
 
     # Helpers
     # ========================================
-    def _ShiftInv_fwd(edges, nodes, coo_feats, theta):
-        h = ShiftInv_network_func(edges, nodes, coo_feats, num_layers, dims, activation) # (b, N, 6)
+    def _get_input_feats(x_pred, rs_idx):
+        return get_input_features_TF(x_pred, COO_feats[rs_idx], model_specs.dims) # (edges, nodes)
+
+    def _ShiftInv_fwd(edges, nodes, rs_idx):
+        h = ShiftInv_network_func(edges, nodes, COO_feats[rs_idx], num_layers, dims, activation, redshifts[rs_idx]) # (b, N, 6)
         """
         Suspicious of the split-n-concat workaround here. How affect gradient flow?
         """
-        h_loc = h[...,:3] * theta
+        h_loc = h[...,:3] * coeffs[rs_idx]
         h_vel = h[...,3:]
         h_out = tf.concat([h_loc, h_vel], axis=-1)
-        return h_out
+        return get_readout(h_out)
 
     # Network forward
     # ========================================
+    h_pred = _ShiftInv_fwd(X_in_edges, X_in_nodes, 0)
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        H_out = ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, activation)
-
-        # skip connections
-        if use_vcoeff:
-            theta = utils.get_scoped_vcoeff()
-            H_out = theta * H_out
-    return H_out
+        for i in range(1, num_rs):
+            h_edges, h_nodes = _get_input_feats(h_pred, i)
+            h_pred = _ShiftInv_fwd(h_edges, h_nodes, i)
+        return h_pred
 
 #=============================================================================
 # LAYER OPS
@@ -511,7 +513,7 @@ def aggregate_multiStep_fwd_validation(x_rs, num_layers, var_scopes, graph_fn, *
 # adj list ops for shift inv data
 #=============================================================================
 
-def get_input_features_TF(X_in, cols, dims, offset_idx=False):
+def get_input_features_TF(X_in, cols, dims):
     """ get edges and nodes with TF ops
 
     get relative distances of each particle from its M neighbors
