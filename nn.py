@@ -284,18 +284,52 @@ Impl notes for multi:
    - may need to keep intermediate predictions in "edge/node" form, and only pool
      for the final redshift prediction
 """
-
-# ==== Multi-A Model fn
-def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, num_rs, coeffs=None):
+# ==== single fn
+def ShiftInv_single_model_func(X_in, COO_feats, model_specs, redshift):
     """
     Args:
         X_in (tensor): (b, N, 6)
-        COO_feats (tensor): (3, b*N*M), segment ids for rows, cols, all
+        COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
+        redshift (tensor): (b*N*M, 1) redshift broadcasted
     """
     # Get relevant model specs
     # ========================================
     var_scope  = model_specs.var_scope
     num_layers = model_specs.num_layers
+    #use_vcoeff = model_specs.vcoeff
+    activation = model_specs.activation_func # default tf.nn.relu
+    dims = model_specs.dims
+    b,N,M = dims
+
+    # Get graph inputs
+    # ========================================
+    edges, nodes = get_input_features_TF(X_in, COO_feats, dims)
+
+    # Network forward
+    # ========================================
+    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
+        H_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
+        '''
+        # skip connections
+        if use_vcoeff:
+            theta = utils.get_scoped_vcoeff()
+            H_out = theta * H_out
+        '''
+    #return H_out
+    return get_readout(X_in + H_out)
+
+# ==== Multi-A Model fn
+def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, coeffs=None):
+    """
+    Args:
+        X_in (tensor): (b, N, 6)
+        COO_feats (tensor): (num_rs, 3, b*N*M), segment ids for rows, cols, all
+    """
+    # Get relevant model specs
+    # ========================================
+    var_scope  = model_specs.var_scope
+    num_layers = model_specs.num_layers
+    num_rs = len(redshifts) - 1
     #use_vcoeff = model_specs.vcoeff
     activation = model_specs.activation_func # default tf.nn.relu
     b, N, M = model_specs.dims # (b, N, M)
@@ -330,7 +364,7 @@ def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, num_rs, c
         for i in range(1, num_rs):
             h_edges, h_nodes = _get_input_feats(h_pred, i)
             h_pred = _ShiftInv_fwd(h_edges, h_nodes, i)
-        return h_pred
+    return h_pred
 
 #=============================================================================
 # LAYER OPS
@@ -519,15 +553,16 @@ def aggregate_multiStep_fwd_validation(x_rs, num_layers, var_scopes, graph_fn, *
 # adj list ops for shift inv data
 #=============================================================================
 
-def get_input_features_TF(X_in, cols, dims):
+def get_input_features_TF(X_in, coo, dims):
     """ get edges and nodes with TF ops
     TESTED EQUIVALENT TO numpy-BASED FUNC
 
     get relative distances of each particle from its M neighbors
     Args:
         X_in (tensor): (b, N, 6), input data
-        cols (tensor): (b*N*M)
+        coo (tensor): (3,b*N*M)
     """
+    cols = coo[1]
     b, N, M = dims
     # split input
     X = tf.reshape(X_in, (-1, 6))

@@ -4,7 +4,7 @@ from sklearn.neighbors import kneighbors_graph
 import tensorflow as tf
 import nn
 import utils
-from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS, NUM_VAL_SAMPLES
+from utils import REDSHIFTS_ZUNI, PARAMS_SEED, LEARNING_RATE, RS_TAGS, NUM_VAL_SAMPLES
 
 parser = argparse.ArgumentParser()
 # argparse not handle bools well so 0,1 used instead
@@ -32,13 +32,14 @@ start_time = time.time()
 num_particles = pargs['particles'] # 32
 N = num_particles**3
 redshift_steps = pargs['redshifts']
+redshifts = REDSHIFTS_ZUNI[redshift_steps]
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
+print('redshifts: {}'.format(redshifts))
 
 # Load data
 # ----------------
 X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)[...,:-1]
-#X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)
 #X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)[...,:-1]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=NUM_VAL_SAMPLES)
 X = None # reduce memory overhead
@@ -120,14 +121,15 @@ def get_list_csr(h_in):
 
 # Model static func args
 # ----------------
-train_args = nn.ModelFuncArgs(num_layers, vscope, dims=(batch_size,N,M), vcoeff=use_coeff)
-val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=(1,N,M), vcoeff=use_coeff)
+train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M], vcoeff=use_coeff)
+val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=[1,N,M], vcoeff=use_coeff)
 
 
 # Model outputs
 # ----------------
 # Train
-H_out = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features, train_args) # (b, N, k_out)
+H_out = nn.ShiftInv_single_model_func(X_input, COO_features, redshifts, train_args, coeffs=None) # (b, N, k_out)
+X_pred_multi = ShiftInv_multi_model_func(X_input, COO_features, redshifts, train_args, coeffs=None)
 X_pred = nn.get_readout(X_input[...,:3] + H_out)
 
 # Validation
