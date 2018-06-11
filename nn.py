@@ -299,7 +299,6 @@ def ShiftInv_single_model_func(X_in, COO_feats, model_specs, redshift):
     #use_vcoeff = model_specs.vcoeff
     activation = model_specs.activation_func # default tf.nn.relu
     dims = model_specs.dims
-    b,N,M = dims
 
     # Get graph inputs
     # ========================================
@@ -327,43 +326,21 @@ def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, coeffs=No
     """
     # Get relevant model specs
     # ========================================
-    var_scope  = model_specs.var_scope
-    num_layers = model_specs.num_layers
     num_rs = len(redshifts) - 1
-    #use_vcoeff = model_specs.vcoeff
-    activation = model_specs.activation_func # default tf.nn.relu
     b, N, M = model_specs.dims # (b, N, M)
-    dims = (b, N)
 
     # Helpers
     # ========================================
-    def _get_input_feats(x, rs_idx):
-        coo = COO_feats[rs_idx]
-        return get_input_features_TF(x, coo, model_specs.dims) # (edges, nodes)
-
     def _ShiftInv_fwd(h_in, rs_idx):
-        edges, nodes = _get_input_feats(h_in, rs_idx)
         coo = COO_feats[rs_idx]
-        rs  = tf.ones([b*N*M, 1]) * redshifts[rs_idx]
-        h = ShiftInv_network_func(edges, nodes, coo, num_layers, dims, activation, rs) # (b, N, 6)
-        """
-        Suspicious of the split-n-concat workaround here. How affect gradient flow?
-        h_loc = h[...,:3] * coeffs[rs_idx]
-        h_vel = h[...,3:]
-        h_out = tf.concat([h_loc, h_vel], axis=-1)
-        return get_readout(h_out)
-        """
-        h_out = get_readout(h_in + h)
-        return h_out
-
+        rs = tf.ones([b*N*M, 1]) * redshifts[rs_idx]
+        return ShiftInv_single_model_func(h_in, coo, model_specs, rs)
 
     # Network forward
-    # ========================================
-    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        h_pred = _ShiftInv_fwd(X_in, 0)
-        for i in range(1, num_rs):
-            h_edges, h_nodes = _get_input_feats(h_pred, i)
-            h_pred = _ShiftInv_fwd(h_edges, h_nodes, i)
+    # ======================================== # don't think you need to do var scope here
+    h_pred = _ShiftInv_fwd(X_in, 0)
+    for i in range(1, num_rs):
+        h_pred = _ShiftInv_fwd(h_pred, i)
     return h_pred
 
 #=============================================================================
