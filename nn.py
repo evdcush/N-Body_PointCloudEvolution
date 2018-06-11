@@ -285,7 +285,7 @@ Impl notes for multi:
      for the final redshift prediction
 """
 # ==== single fn
-def ShiftInv_single_model_func(X_in, COO_feats, model_specs, redshift):
+def ShiftInv_single_model_func(X_in, COO_feats, redshift, model_specs):
     """
     Args:
         X_in (tensor): (b, N, 6)
@@ -334,7 +334,7 @@ def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, coeffs=No
     def _ShiftInv_fwd(h_in, rs_idx):
         coo = COO_feats[rs_idx]
         rs = tf.ones([b*N*M, 1]) * redshifts[rs_idx]
-        return ShiftInv_single_model_func(h_in, coo, model_specs, rs)
+        return ShiftInv_single_model_func(h_in, coo, rs, model_specs)
 
     # Network forward
     # ======================================== # don't think you need to do var scope here
@@ -342,6 +342,7 @@ def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, coeffs=No
     for i in range(1, num_rs):
         h_pred = _ShiftInv_fwd(h_pred, i)
     return h_pred
+
 
 #=============================================================================
 # LAYER OPS

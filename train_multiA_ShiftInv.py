@@ -102,14 +102,14 @@ utils.init_ShiftInv_params(channels, vscope, restore=restore, vcoeff=use_coeff)
 # ----------------
 X_input = tf.placeholder(tf.float32, shape=(None, N, 6))
 X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
-X_input_edges = tf.placeholder(tf.float32, shape=(None, 3))
-X_input_nodes = tf.placeholder(tf.float32, shape=(None, 3))
+RS_in = tf.placeholder(tf.float32,   shape=(None, 1))
 
 # NEIGHBOR GRAPH DATA
 # ----------------
 # these shapes must be concrete for unsorted_segment_mean
-COO_features     = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
-COO_features_val = tf.placeholder(tf.int32, shape=(3,            N*M,))
+COO_seg_single = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
+COO_seg_multi  = tf.placeholder(tf.int32, shape=(num_rs_layers, 3, batch_size*N*M,))
+COO_seg_val = tf.placeholder(tf.int32, shape=(3, N*M,))
 
 
 #=============================================================================
@@ -128,20 +128,25 @@ val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=[1,N,M], vcoeff=use_coeff
 # Model outputs
 # ----------------
 # Train
-H_out = nn.ShiftInv_single_model_func(X_input, COO_features, redshifts, train_args, coeffs=None) # (b, N, k_out)
-X_pred_multi = ShiftInv_multi_model_func(X_input, COO_features, redshifts, train_args, coeffs=None)
-X_pred = nn.get_readout(X_input[...,:3] + H_out)
+X_pred_single = nn.ShiftInv_single_model_func(X_input, COO_seg_single,     RS_in, train_args, coeffs=None)
+X_pred_multi  = nn.ShiftInv_multi_model_func( X_input, COO_seg_multi,  redshifts, train_args, coeffs=None)
 
 # Validation
-H_out_val = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features_val, val_args) # (1, N, k_out)
-X_pred_val = nn.get_readout(X_input[...,:3] + H_out_val)
+X_pred_val = nn.ShiftInv_single_model_func(X_input, COO_seg_val, RS_in, val_args, coeffs=None)
 
 
 # Loss
 # ----------------
-# Training error and Optimizer
-error = nn.pbc_loss(X_pred, X_truth, vel=False)
-train = tf.train.AdamOptimizer(learning_rate).minimize(error)
+# Optimizer
+opt = tf.train.AdamOptimizer(learning_rate)
+
+# Training error
+s_error = nn.pbc_loss(X_pred_single, X_truth, vel=True)
+m_error = nn.pbc_loss(X_pred_multi,  X_truth, vel=True)
+
+# Backprop on loss
+s_train = opt.minimize(s_error)
+m_train = opt.minimize(m_error)
 
 # Validation error
 val_error   = nn.pbc_loss(X_pred_val, X_truth, vel=False)
@@ -176,12 +181,16 @@ save_checkpoint = lambda step: (step+1) % checkpoint == 0
 #=============================================================================
 # TRAINING
 #=============================================================================
-print('\nTraining:\n{}'.format('='*78))
+# SINGLE-STEP
+# ----------------
+print('\nTraining Single-step:\n{}'.format('='*78))
 np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
     # Data batching
     # ----------------
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (2, b, N, 6)
+    rs_in = False
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@STOPPED HERE
 
     # split data
     x_in    = _x_batch[0] # (b, N, 6)
@@ -190,21 +199,15 @@ for step in range(num_iters):
     # Graph data
     # ----------------
     csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
-
-    # get edges (relative dists) and nodes (velocities)
-    x_in_edges = nn.get_input_edge_features_batch(x_in, csr_list, M) # (b*N*M, 3)
-    x_in_nodes = nn.get_input_node_features(x_in) # (b*N, 3)
-
-    # get coo features
     COO_feats = nn.to_coo_batch(csr_list)
 
     # Feed data to tensors
     # ----------------
     fdict = {X_input: x_in,
              X_truth: x_truth,
-             X_input_edges: x_in_edges,
-             X_input_nodes: x_in_nodes,
-             COO_features: COO_feats,}
+             COO_features: COO_feats,
+             RS_in:
+             }
 
     # training pass
     train.run(feed_dict=fdict)
@@ -223,6 +226,7 @@ for step in range(num_iters):
         tr_error = sess.run(error, feed_dict=fdict)
         print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+
 
 
 # END training
