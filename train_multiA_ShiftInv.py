@@ -37,8 +37,8 @@ num_rs_layers = num_rs - 1
 
 # Load data
 # ----------------
-#X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)[...,:-1]
-X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)
+X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)[...,:-1]
+#X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)
 #X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)[...,:-1]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=NUM_VAL_SAMPLES)
 X = None # reduce memory overhead

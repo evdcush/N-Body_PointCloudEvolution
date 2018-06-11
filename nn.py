@@ -515,6 +515,7 @@ def aggregate_multiStep_fwd_validation(x_rs, num_layers, var_scopes, graph_fn, *
 
 def get_input_features_TF(X_in, cols, dims):
     """ get edges and nodes with TF ops
+    TESTED EQUIVALENT TO numpy-BASED FUNC
 
     get relative distances of each particle from its M neighbors
     Args:
@@ -531,7 +532,7 @@ def get_input_features_TF(X_in, cols, dims):
     edges = tf.reshape(tf.gather(edges, cols), [b, N, M, 3])
     edges = edges - tf.expand_dims(X_in[...,:3], axis=2) # (b, N, M, 3) - (b, N, 1, 3)
 
-    return edges, nodes
+    return tf.reshape(edges, [-1, 3]), nodes
 
 
 def get_input_edge_features_batch(X_in, lst_csrs, M, offset_idx=False):
