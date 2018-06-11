@@ -286,12 +286,11 @@ Impl notes for multi:
 """
 
 # ==== Multi-A Model fn
-def ShiftInv_multi_model_func(X_in_edges, X_in_nodes, COO_feats, coeffs,
-                              redshifts, model_specs):
+def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, num_rs, coeffs=None):
     """
-    model0: [(c, 3), (b*N, 3), (3,c), (c, 1)] -> (b, N, 6)
-    pre: [(b, N, 6), CSR_batch[j]] -> (c, 3), (b*N, 3)
-    pyfunc: CSR_batch[j] -> (3, c)
+    Args:
+        X_in (tensor): (b, N, 6)
+        COO_feats (tensor): (3, b*N*M), segment ids for rows, cols, all
     """
     # Get relevant model specs
     # ========================================
@@ -304,23 +303,30 @@ def ShiftInv_multi_model_func(X_in_edges, X_in_nodes, COO_feats, coeffs,
 
     # Helpers
     # ========================================
-    def _get_input_feats(x_pred, rs_idx):
-        return get_input_features_TF(x_pred, COO_feats[rs_idx], model_specs.dims) # (edges, nodes)
+    def _get_input_feats(x, rs_idx):
+        coo = COO_feats[rs_idx]
+        return get_input_features_TF(x, coo, model_specs.dims) # (edges, nodes)
 
-    def _ShiftInv_fwd(edges, nodes, rs_idx):
-        h = ShiftInv_network_func(edges, nodes, COO_feats[rs_idx], num_layers, dims, activation, redshifts[rs_idx]) # (b, N, 6)
+    def _ShiftInv_fwd(h_in, rs_idx):
+        edges, nodes = _get_input_feats(h_in, rs_idx)
+        coo = COO_feats[rs_idx]
+        rs  = tf.ones([b*N*M, 1]) * redshifts[rs_idx]
+        h = ShiftInv_network_func(edges, nodes, coo, num_layers, dims, activation, rs) # (b, N, 6)
         """
         Suspicious of the split-n-concat workaround here. How affect gradient flow?
-        """
         h_loc = h[...,:3] * coeffs[rs_idx]
         h_vel = h[...,3:]
         h_out = tf.concat([h_loc, h_vel], axis=-1)
         return get_readout(h_out)
+        """
+        h_out = get_readout(h_in + h)
+        return h_out
+
 
     # Network forward
     # ========================================
-    h_pred = _ShiftInv_fwd(X_in_edges, X_in_nodes, 0)
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
+        h_pred = _ShiftInv_fwd(X_in, 0)
         for i in range(1, num_rs):
             h_edges, h_nodes = _get_input_feats(h_pred, i)
             h_pred = _ShiftInv_fwd(h_edges, h_nodes, i)

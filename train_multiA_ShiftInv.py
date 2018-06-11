@@ -120,8 +120,8 @@ def get_list_csr(h_in):
 
 # Model static func args
 # ----------------
-train_args = nn.ModelFuncArgs(num_layers, vscope, dims=(batch_size,N), vcoeff=use_coeff)
-val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=(1,N), vcoeff=use_coeff)
+train_args = nn.ModelFuncArgs(num_layers, vscope, dims=(batch_size,N,M), vcoeff=use_coeff)
+val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=(1,N,M), vcoeff=use_coeff)
 
 
 # Model outputs
