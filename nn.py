@@ -278,7 +278,12 @@ def ShiftInv_model_func(X_in_edges, X_in_nodes, COO_feats, model_specs, redshift
             theta = utils.get_scoped_vcoeff()
             H_out = theta * H_out
     return H_out
-
+"""
+Impl notes for multi:
+ - There may be too many pre/post processing steps to effectively do this
+   - may need to keep intermediate predictions in "edge/node" form, and only pool
+     for the final redshift prediction
+"""
 
 # ==== Multi-A Model fn
 def ShiftInv_multi_model_func(X_in_edges, X_in_nodes, COO_feats, CSR_batch,
@@ -300,40 +305,13 @@ def ShiftInv_multi_model_func(X_in_edges, X_in_nodes, COO_feats, CSR_batch,
     # ========================================
     def _ShiftInv_fwd(edges, nodes, coo_feats, theta):
         h = ShiftInv_network_func(edges, nodes, coo_feats, num_layers, dims, activation) # (b, N, 6)
+        """
+        Suspicious of the split-n-concat workaround here. How affect gradient flow?
+        """
         h_loc = h[...,:3] * theta
         h_vel = h[...,3:]
         h_out = tf.concat([h_loc, h_vel], axis=-1)
-#=============================================================================
-# LAYER OPS
-#=============================================================================
-#=============================================================================
-#=============================================================================
-#=============================================================================
-#=============================================================================
-#=============================================================================
-# STOPPED HERE
-'''
-suspicious of the split, theta, concat op. how affect gradient flow?
-Anyway to elem-mult along just loc space?
-'''
-#=============================================================================
-#=============================================================================
-#=============================================================================
-#=============================================================================
-#=============================================================================
-#=============================================================================
-# LAYER OPS
-#=============================================================================
         return h_out
-
-
-
-    def _process_ShiftInv_out(H_out, rs_idx):
-        # readout
-
-
-
-
 
     # Network forward
     # ========================================
@@ -533,6 +511,27 @@ def aggregate_multiStep_fwd_validation(x_rs, num_layers, var_scopes, graph_fn, *
 # adj list ops for shift inv data
 #=============================================================================
 
+def get_input_features_TF(X_in, cols, dims, offset_idx=False):
+    """ get edges and nodes with TF ops
+
+    get relative distances of each particle from its M neighbors
+    Args:
+        X_in (tensor): (b, N, 6), input data
+        cols (tensor): (b*N*M)
+    """
+    b, N, M = dims
+    # split input
+    X = tf.reshape(X_in, (-1, 6))
+    edges = X[...,:3] # loc
+    nodes = X[...,3:] # vel
+
+    # get edges (neighbors)
+    edges = tf.reshape(tf.gather(edges, cols), [b, N, M, 3])
+    edges = edges - tf.expand_dims(X_in[...,:3], axis=2) # (b, N, M, 3) - (b, N, 1, 3)
+
+    return edges, nodes
+
+
 def get_input_edge_features_batch(X_in, lst_csrs, M, offset_idx=False):
     """ get relative distances of each particle from its M neighbors
     Args:
@@ -633,34 +632,6 @@ def get_kneighbor_list(X_in, M, offset_idx=False, inc_self=False):
         lst_csrs.append(kgraph)
     return lst_csrs
 
-def to_coo_batch2(A):
-    """ Get row and column indices from csr
-    DOES NOT LIKE OFFSET IDX, tocoo() method will complain about index being
-    greater than matrix size
-
-    Args:
-        A (csr): list of csrs of shape (N, N)
-    """
-    b = len(A) # batch size
-    N = A[0].shape[0] # (32**3)
-
-    # initial coo mat
-    a = A[0].tocoo()
-    rows = a.row # (N*M)
-    cols = a.col # (N*M)
-    cubes = np.zeros_like(rows)
-    for i in range(1, b):
-        # concat each to batched rows, cols
-        a = A[i].tocoo()
-        r = a.row + (i*N)
-        c = a.col + (i*N)
-        e = np.zeros_like(r) + i
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-
-        rows  = np.concatenate([rows, r], axis=0)
-        cols  = np.concatenate([cols, c], axis=0)
-        cubes = np.concatenate([cubes, e], axis=0)
-    return rows.astype(np.int32), cols.astype(np.int32), cubes.astype(np.int32)
 
 def to_coo_batch(A):
     """ Get row and column indices from csr
