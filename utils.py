@@ -131,6 +131,15 @@ def init_vel_coeff(restore=False, vinit=None):
             args = args + ((1,))
     tf.get_variable(*args, dtype=tf.float32, initializer=init)
 
+MCOEFFTAG = 'coeff_{}'
+def init_coeff_multi(num_rs, restore=False, vinit=0.002):
+    for i in range(num_rs):
+        tag = MCOEFFTAG.format(i)
+        tf.get_variable(tag, dtype=tf.float32, initializer=tf.constant([vinit]))
+
+def get_scoped_coeff_multi(idx):
+    return tf.get_variable(MCOEFFTAG.format(idx))
+
 # Model init wrappers ========================================================
 
 # Single-step

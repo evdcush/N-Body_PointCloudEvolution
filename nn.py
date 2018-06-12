@@ -285,7 +285,7 @@ Impl notes for multi:
      for the final redshift prediction
 """
 # ==== single fn
-def ShiftInv_single_model_func(X_in, COO_feats, redshift, model_specs):
+def ShiftInv_single_model_func(X_in, COO_feats, redshift, model_specs, coeff_idx=None):
     """
     Args:
         X_in (tensor): (b, N, 6)
@@ -308,17 +308,15 @@ def ShiftInv_single_model_func(X_in, COO_feats, redshift, model_specs):
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         H_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
-        '''
         # skip connections
-        if use_vcoeff:
-            theta = utils.get_scoped_vcoeff()
+        if coeff_idx is not None:
+            theta = utils.get_scoped_coeff_multi(coeff_idx)
             H_out = theta * H_out
-        '''
     #return H_out
     return get_readout(X_in + H_out)
 
 # ==== Multi-A Model fn
-def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, coeffs=None):
+def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, use_coeff=False):
     """
     Args:
         X_in (tensor): (b, N, 6)
@@ -334,7 +332,8 @@ def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, coeffs=No
     def _ShiftInv_fwd(h_in, rs_idx):
         coo = COO_feats[rs_idx]
         rs = tf.fill([b*N*M, 1], redshifts[rs_idx])
-        return ShiftInv_single_model_func(h_in, coo, rs, model_specs)
+        cidx = rs_idx if use_coeff else None
+        return ShiftInv_single_model_func(h_in, coo, rs, model_specs, cidx)
 
     # Network forward
     # ======================================== # don't think you need to do var scope here

@@ -32,7 +32,7 @@ start_time = time.time()
 num_particles = pargs['particles'] # 32
 N = num_particles**3
 redshift_steps = pargs['redshifts']
-redshifts = REDSHIFTS_ZUNI[redshift_steps]
+redshifts = [REDSHIFTS_ZUNI[i] for i in redshift_steps]
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 print('redshifts: {}'.format(redshifts))
@@ -112,6 +112,12 @@ COO_seg_single = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
 COO_seg_multi  = tf.placeholder(tf.int32, shape=m_coo_shape)
 COO_seg_val = tf.placeholder(tf.int32, shape=(3, N*M,))
 
+# COEFFS
+# ----------------
+with tf.variable_scope(vscope):
+    utils.init_coeff_multi(num_rs_layers)
+
+Cidx = tf.placeholder(tf.int32)
 
 #=============================================================================
 # MODEL output and optimization
@@ -122,15 +128,15 @@ def get_list_csr(h_in):
 
 # Model static func args
 # ----------------
-train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M], vcoeff=use_coeff)
-val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=[1,N,M], vcoeff=use_coeff)
+train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M],)
+val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=[1,N,M], )
 
 
 # Model outputs
 # ----------------
 # Train
-X_pred_single = nn.ShiftInv_single_model_func(X_input, COO_seg_single,     RS_in, train_args, coeffs=None)
-X_pred_multi  = nn.ShiftInv_multi_model_func( X_input, COO_seg_multi,  redshifts, train_args, coeffs=None)
+X_pred_single = nn.ShiftInv_single_model_func(X_input, COO_seg_single,     RS_in, train_args, cidx_tensor=Cidx)
+X_pred_multi  = nn.ShiftInv_multi_model_func( X_input, COO_seg_multi,  redshifts, train_args, use_coeff=use_coeff)
 
 # Validation
 X_pred_val = nn.ShiftInv_single_model_func(X_input, COO_seg_val, RS_in, val_args, coeffs=None)
@@ -197,7 +203,7 @@ for step in range(num_iters):
     np.random.shuffle(rs_tups)
     for zx, zy in rs_tups:
         # redshift
-        rs_in = np.full([b*N*M, 1], redshifts[zx], dtype=np.float32)
+        rs_in = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
 
         # split data
         x_in    = _x_batch[zx] # (b, N, 6)
@@ -214,6 +220,7 @@ for step in range(num_iters):
                  X_truth: x_truth,
                  COO_seg_single: coo_segs,
                  RS_in: rs_in,
+                 Cidx: zx,
                  }
 
         # training pass
