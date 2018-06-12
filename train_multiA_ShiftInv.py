@@ -107,8 +107,9 @@ RS_in = tf.placeholder(tf.float32,   shape=(None, 1))
 # NEIGHBOR GRAPH DATA
 # ----------------
 # these shapes must be concrete for unsorted_segment_mean
+m_coo_shape = (num_rs_layers, 3, batch_size*N*M,)
 COO_seg_single = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
-COO_seg_multi  = tf.placeholder(tf.int32, shape=(num_rs_layers, 3, batch_size*N*M,))
+COO_seg_multi  = tf.placeholder(tf.int32, shape=m_coo_shape)
 COO_seg_val = tf.placeholder(tf.int32, shape=(3, N*M,))
 
 
@@ -141,8 +142,8 @@ X_pred_val = nn.ShiftInv_single_model_func(X_input, COO_seg_val, RS_in, val_args
 opt = tf.train.AdamOptimizer(learning_rate)
 
 # Training error
-s_error = nn.pbc_loss(X_pred_single, X_truth, vel=True)
-m_error = nn.pbc_loss(X_pred_multi,  X_truth, vel=True)
+s_error = nn.pbc_loss(X_pred_single, X_truth, vel=False)
+m_error = nn.pbc_loss(X_pred_multi,  X_truth, vel=False)
 
 # Backprop on loss
 s_train = opt.minimize(s_error)
@@ -183,49 +184,103 @@ save_checkpoint = lambda step: (step+1) % checkpoint == 0
 #=============================================================================
 # SINGLE-STEP
 # ----------------
+rs_tups = [(i,i+1) for i in range(num_rs_layers)]
 print('\nTraining Single-step:\n{}'.format('='*78))
 np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
     # Data batching
     # ----------------
-    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (2, b, N, 6)
-    rs_in = False
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@STOPPED HERE
+    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (3, b, N, 6)
+
+    # Train on redshift pairs
+    # ----------------
+    np.random.shuffle(rs_tups)
+    for zx, zy in rs_tups:
+        # redshift
+        rs_in = np.full([b*N*M, 1], redshifts[zx], dtype=np.float32)
+
+        # split data
+        x_in    = _x_batch[zx] # (b, N, 6)
+        x_truth = _x_batch[zy] # (b, N, 6)
+
+        # Graph data
+        # ----------------
+        csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
+        coo_segs = nn.to_coo_batch(csr_list)
+
+        # Feed data to tensors
+        # ----------------
+        fdict = {X_input: x_in,
+                 X_truth: x_truth,
+                 COO_seg_single: coo_segs,
+                 RS_in: rs_in,
+                 }
+
+        # training pass
+        s_train.run(feed_dict=fdict)
+
+        # Checkpoint
+        # ----------------
+        # Track error
+        #"""
+        if (step + 1) % 5 == 0:
+            e = sess.run(s_error, feed_dict=fdict)
+            print('{:>5}: {}'.format(step+1, e))
+        #"""
+
+    # Save
+    if save_checkpoint(step):
+        tr_error = sess.run(s_error, feed_dict=fdict)
+        print('checkpoint {:>5}: {}'.format(step, tr_error))
+        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+
+# MULTI-STEP
+# ----------------
+def get_multi_coo(x):
+    multi_coo = np.zeros((m_coo_shape)).astype(np.int32)
+    for i in range(num_rs_layers):
+        multi_coo[i] = nn.to_coo_batch(get_list_csr(x[i]))
+    return multi_coo
+
+print('\nTraining Multi-step:\n{}'.format('='*78))
+#np.random.seed(utils.DATASET_SEED)
+for step in range(num_iters):
+    # Data batching
+    # ----------------
+    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (3, b, N, 6)
 
     # split data
-    x_in    = _x_batch[0] # (b, N, 6)
-    x_truth = _x_batch[1] # (b, N, 6)
+    x_in    = _x_batch[0]  # (b, N, 6)
+    x_truth = _x_batch[-1] # (b, N, 6)
 
     # Graph data
     # ----------------
-    csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
-    COO_feats = nn.to_coo_batch(csr_list)
+    coo_segs = get_multi_coo(_x_batch[:-1]) # (num_rs_layers, 3, c)
 
     # Feed data to tensors
     # ----------------
     fdict = {X_input: x_in,
              X_truth: x_truth,
-             COO_features: COO_feats,
-             RS_in:
+             COO_seg_multi: coo_segs,
              }
 
     # training pass
-    train.run(feed_dict=fdict)
+    m_train.run(feed_dict=fdict)
 
     # Checkpoint
     # ----------------
     # Track error
-    """
+    #"""
     if (step + 1) % 5 == 0:
-        e = sess.run(error, feed_dict=fdict)
+        e = sess.run(m_error, feed_dict=fdict)
         print('{:>5}: {}'.format(step+1, e))
-    """
+    #"""
 
     # Save
     if save_checkpoint(step):
-        tr_error = sess.run(error, feed_dict=fdict)
+        tr_error = sess.run(m_error, feed_dict=fdict)
         print('checkpoint {:>5}: {}'.format(step, tr_error))
-        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+        saver.save(sess, model_path + model_name, global_step=step+num_iters, write_meta_graph=True)
 
 
 
@@ -234,10 +289,10 @@ for step in range(num_iters):
 print('elapsed time: {}'.format(time.time() - start_time))
 
 # Save trained variables and session
-saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
+saver.save(sess, model_path + model_name, global_step=2*num_iters, write_meta_graph=True)
 X_train = None # reduce memory overhead
 
-
+'''
 #=============================================================================
 # EVALUATION
 #=============================================================================
@@ -294,3 +349,4 @@ utils.save_loss(loss_path + model_name, test_loss, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+'''

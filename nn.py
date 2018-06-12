@@ -333,7 +333,7 @@ def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, coeffs=No
     # ========================================
     def _ShiftInv_fwd(h_in, rs_idx):
         coo = COO_feats[rs_idx]
-        rs = tf.ones([b*N*M, 1]) * redshifts[rs_idx]
+        rs = tf.fill([b*N*M, 1], redshifts[rs_idx])
         return ShiftInv_single_model_func(h_in, coo, rs, model_specs)
 
     # Network forward
