@@ -135,7 +135,7 @@ val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=[1,N,M], )
 # Model outputs
 # ----------------
 # Train
-X_pred_single = nn.ShiftInv_single_model_func(X_input, COO_seg_single,     RS_in, train_args, cidx_tensor=Cidx)
+X_pred_single = nn.ShiftInv_single_model_func(X_input, COO_seg_single,     RS_in, train_args)
 X_pred_multi  = nn.ShiftInv_multi_model_func( X_input, COO_seg_multi,  redshifts, train_args, use_coeff=use_coeff)
 
 # Validation
