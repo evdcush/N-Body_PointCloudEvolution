@@ -261,12 +261,11 @@ def get_RotInv_features(X, V, adj):
     _project = lambda v1, v2: np.dot(v1, v2) / _norm(v2)
 
 
-
-def get_RotInv_input(batch_X, batch_V, lst_csrs, M):
+def get_RotInv_input(X, V, lst_csrs, M):
     """
     Args:
-         batch_X. Shape (b, N, 3). Coordinates.
-         batch_V. Shape (b, N, 3), Velocties.
+         X. Shape (b, N, 3). Coordinates.
+         V. Shape (b, N, 3), Velocties.
          batch_A. List of csr adjacencies.
          m (int). Number of neighbors.
 
@@ -277,6 +276,34 @@ def get_RotInv_input(batch_X, batch_V, lst_csrs, M):
             down into 3 surfaces x (1 scalar distance + 1 row velocity projected onto cols + 1 col velocity
             projected onto rows)
     """
+    # out dims
+    batch_size, N = X.shape[:2]
+    e = N*(M-1)*(M-2)
+    X_out = np.zeros((batch_size, e, 10)).astype(np.float32)
+
+    # Iterate over each cube in batch
+    # ========================================
+    for i in range(batch_size):
+        x = X[i]
+        v = V[i]
+        adj = lst_csrs[i]
+
+        # Get 3D seg ID (coo features)
+        rows, cols, depth = get_3D_segmentID(adj, M)
+
+        # Relative dist vectors
+        dist_cr = x[cols] - x[rows]
+        dist_dr = x[depth] - x[rows]
+        dist_dc = x[depth] - x[cols]
+
+        # Edge features
+
+# STOPPED HERE
+#=============================================================================
+#=============================================================================
+#=============================================================================
+#=============================================================================
+
     def _process(X, V, A):
         def _angle(v1, v2):
             return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
@@ -287,7 +314,7 @@ def get_RotInv_input(batch_X, batch_V, lst_csrs, M):
         def _project(v1, v2):
             return np.dot(v1, v2) / np.linalg.norm(v2)
 
-        rows, cols, depth = _make_cube_adjacency_sparse(A, M)
+        rows, cols, depth = get_3D_segmentID(A, M)
 
         X_out = []
         for r, c, d in zip(rows, cols, depth):
@@ -347,7 +374,7 @@ def get_RotInv_input(batch_X, batch_V, lst_csrs, M):
         rows, cols, depth = _make_cube_adjacency_sparse(A, M)
 
         X_out = []
-        for r, c, d in zip(rows, cols, depth):
+        for r, c, d in zip(rows, cols, depth): # why are we iterating by element?
 
             # Relative distance vectors
             dx1 = X[c] - X[r]
