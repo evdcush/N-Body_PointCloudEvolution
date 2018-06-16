@@ -145,9 +145,39 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
 # ROTATION INVARIANT PRE/POST PROCESSING
 #=============================================================================
 #------------------------------------------------------------------------------
-# Pre-process adjacency matrices
+# Segment IDs
 #------------------------------------------------------------------------------
-def get_3D_adjacency(adj_graph, M):
+def get_batch_2D_segmentID(batch_graph):
+    """
+    Return row, col, indices of a list of 2D sparse adjacencies with batch indices too.
+        Sorry, using a different indexing system from 3D adjacency case. TODO: make indexing consistent for clarity.
+
+    Args:
+        batch_A_sparse. List of csr (or any other sparse format) adjacencies.
+
+    Returns:
+        array of shape (2, b * N * (M-1), 2). Each pair in the third axis is a batch idx - row idx or
+            batch idx - col idx for non-zero entries of 2D adjacency. 0-axis is rows/cols respectively.
+    """
+    b = len(batch_graph)
+    rows = []
+    cols = []
+
+    for i in range(b):
+        adj = batch_graph[i]
+        adj.setdiag(0)
+        r, c = adj.nonzero()
+        batch_idx = np.zeros_like(r) + i
+        rows.append(np.transpose([batch_idx, r]))
+        cols.append(np.transpose([batch_idx, c]))
+
+    rows = np.reshape(np.array(rows), (-1, 2))
+    cols = np.reshape(np.array(cols), (-1, 2))
+
+    return np.array([rows, cols])
+
+
+def get_3D_segmentID(adj_graph, M):
     """ Build 3D adjacency from csr_matrix (though any matrix from scipy.sparse works)
     Args:
         adj_graph (csr_matrix): neighbor graph (assumes kneighbors_graph)
@@ -175,7 +205,7 @@ def get_3D_adjacency(adj_graph, M):
     return r, c, d
 
 
-def prep_RotInv_adjacency_batch(lst_csrs, M):
+def get_segmentID(lst_csrs, M):
     """ preprocess batch of adjacency matrices for segment ids
     Total of 7 segments for 3D graph, in order:
     col-depth, row-depth, row-col, depth, col, row, all
@@ -191,7 +221,7 @@ def prep_RotInv_adjacency_batch(lst_csrs, M):
     # Helper funcs
     # ========================================
     def _combine_segment_idx(idx1, idx2):
-        combined_idx = np.transpose(np.array([idx1, idx2]))
+        combined_idx = np.transpose(np.array([idx1, idx2])) # pair idx
         vals, idx = np.unique(combined_idx, axis=0, return_inverse=True) # why not return_index?
         return idx
 
@@ -200,7 +230,7 @@ def prep_RotInv_adjacency_batch(lst_csrs, M):
     seg_idx = []
     for adj in batch:
         # get row, col, depth segment idx (pools col-depth, row-depth, row-col, respectively)
-        r, c, d = get_3D_adjacency(adj, M)
+        r, c, d = get_3D_segmentID(adj, M)
 
         # combine segment idx (pools rc->d, rd->c, cd->r, respectively)
         rc = _combine_segment_idx(r, c)
@@ -219,42 +249,20 @@ def prep_RotInv_adjacency_batch(lst_csrs, M):
     for i in range(1, seg_idx.shape[0]): # batch_size
         for j in range(seg_idx.shape[1]): # 7
             seg_idx[i][j] += np.max(seg_idx[i-1][j]) + 1
-
     return seg_idx
 
 
-def get_segment_idx_2D(batch_A_sparse):
-    """
-    Return row, col, indices of a list of 2D sparse adjacencies with batch indices too.
-        Sorry, using a different indexing system from 3D adjacency case. TODO: make indexing consistent for clarity.
-
-    Args:
-        batch_A_sparse. List of csr (or any other sparse format) adjacencies.
-
-    Returns:
-        array of shape (2, b * N * (M-1), 2). Each pair in the third axis is a batch idx - row idx or
-            batch idx - col idx for non-zero entries of 2D adjacency. 0-axis is rows/cols respectively.
-    """
-    rows = []
-    cols = []
-
-    for i in range(len(batch_A_sparse)):
-        a = batch_A_sparse[i]
-        a.setdiag(0)
-        r, c = a.nonzero()
-        batch = np.zeros_like(r) + i
-        rows.append(np.transpose([batch, r]))
-        cols.append(np.transpose([batch, c]))
-
-    rows = np.reshape(np.array(rows), (-1, 2))
-    cols = np.reshape(np.array(cols), (-1, 2))
-
-    return np.array([rows, cols])
+#------------------------------------------------------------------------------
+# Make rotational invariant input
+#------------------------------------------------------------------------------
+def get_RotInv_features(X, V, adj):
+    _norm = lambda v: np.linalg.norm(v)
+    _angle   = lambda v1, v2: np.dot(v1, v2) / (_norm(v1) * _norm(v2))
+    _project = lambda v1, v2: np.dot(v1, v2) / _norm(v2)
 
 
-# Pre-process input
-# ========================================
-def rot_invariant_input(batch_X, batch_V, batch_A, m):
+
+def get_RotInv_input(batch_X, batch_V, lst_csrs, M):
     """
     Args:
          batch_X. Shape (b, N, 3). Coordinates.
@@ -279,7 +287,7 @@ def rot_invariant_input(batch_X, batch_V, batch_A, m):
         def _project(v1, v2):
             return np.dot(v1, v2) / np.linalg.norm(v2)
 
-        rows, cols, depth = _make_cube_adjacency_sparse(A, m)
+        rows, cols, depth = _make_cube_adjacency_sparse(A, M)
 
         X_out = []
         for r, c, d in zip(rows, cols, depth):
@@ -308,7 +316,65 @@ def rot_invariant_input(batch_X, batch_V, batch_A, m):
 
         return X_out
 
-    return np.array([_process(batch_X[i], batch_V[i], batch_A[i]) for i in range(len(batch_X))])
+    return np.array([_process(batch_X[i], batch_V[i], lst_csrs[i]) for i in range(len(batch_X))])
+
+
+def get_RotInv_input(batch_X, batch_V, lst_csrs, M):
+    """
+    Args:
+         batch_X. Shape (b, N, 3). Coordinates.
+         batch_V. Shape (b, N, 3), Velocties.
+         batch_A. List of csr adjacencies.
+         m (int). Number of neighbors.
+
+    Returns:
+        numpy array of shape (b, e, 10)
+            e=N*(M-1)*(M-2), number of edges in 3D adjacency (diagonals removed), N=num of particles, M=num of neighbors
+            10 input channels corresponding to 1 edge feature + 9 broadcasted surface features, those are broken
+            down into 3 surfaces x (1 scalar distance + 1 row velocity projected onto cols + 1 col velocity
+            projected onto rows)
+    """
+    def _process(X, V, A):
+        def _angle(v1, v2):
+            return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+
+        def _norm(v):
+            return np.linalg.norm(v)
+
+        def _project(v1, v2):
+            return np.dot(v1, v2) / np.linalg.norm(v2)
+
+        rows, cols, depth = _make_cube_adjacency_sparse(A, M)
+
+        X_out = []
+        for r, c, d in zip(rows, cols, depth):
+
+            # Relative distance vectors
+            dx1 = X[c] - X[r]
+            dx2 = X[d] - X[r]
+            dx3 = X[d] - X[c]
+
+            # Edge features
+            features = [_angle(dx1, dx2)]
+
+            # rc surface features
+            # scalar distance + projection of row vel to rc vectors + projection of col vel to cr vectors
+            features.extend([_norm(dx1), _project(V[r], dx1), _project(V[c], -dx1)])
+
+            # rd surface features
+            # scalar distance + projection of row vel to rd vectors + projection of depth vel to dr vectors
+            features.extend([_norm(dx2), _project(V[r], dx2), _project(V[d], -dx2)])
+
+            # cd surface features
+            # scalar distance + projection of col vel to cd vectors + projection of depth vel to dc vectors
+            features.extend([_norm(dx3), _project(V[c], dx3), _project(V[d], -dx3)])
+
+            X_out.append(features)
+
+        return X_out
+
+    return np.array([_process(batch_X[i], batch_V[i], lst_csrs[i]) for i in range(len(batch_X))])
+
 
 
 # Post-process output
