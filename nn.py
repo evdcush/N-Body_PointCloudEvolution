@@ -1001,8 +1001,8 @@ def pbc_loss_scaled(x_input, x_pred, x_truth):
     def rmse(x, y, vel=False):
         # velocity not bounded, so no pbc dist if vel
         sqr_err = tf.squared_difference(x, y) if vel else pbc_squared_diff(x, y)
-        sqrt_sqr_err = tf.sqrt(sqr_diff)
-        sum_sqrt_sqr_err = tf.reduce_sum(sqrt_diff, axis=-1)
+        sqrt_sqr_err = tf.sqrt(sqr_err)
+        sum_sqrt_sqr_err = tf.reduce_sum(sqrt_sqr_err, axis=-1)
         mean_sum_sqrt_sqr_err = tf.reduce_mean(sum_sqrt_sqr_err)
         return mean_sum_sqrt_sqr_err
 
@@ -1031,6 +1031,47 @@ def pbc_loss_scaled(x_input, x_pred, x_truth):
 
     error = (loc_error / loc_scalar) + (vel_error / vel_scalar)
     return error
+
+def pbc_loss_coo_scaled(x_input, x_pred, x_truth):
+    # TESTING FUNC, scaled error but COO only
+
+    # Helpers
+    # ========================================
+    def rmse(x, y, vel=False):
+        # velocity not bounded, so no pbc dist if vel
+        sqr_err = pbc_squared_diff(x, y)
+        sqrt_sqr_err = tf.sqrt(sqr_err)
+        sum_sqrt_sqr_err = tf.reduce_sum(sqrt_sqr_err, axis=-1)
+        mean_sum_sqrt_sqr_err = tf.reduce_mean(sum_sqrt_sqr_err)
+        return mean_sum_sqrt_sqr_err
+
+    # Split data
+    # ========================================
+    j = 3
+    # input
+    loc_in = x_input[...,:j]
+    vel_in = x_input[...,j:]
+    # truth
+    loc_truth = x_truth[...,:j]
+    vel_truth = x_truth[...,j:]
+    # pred
+    loc_pred = x_pred[...,:j]
+    vel_pred = x_pred[...,j:]
+
+    # Scalars
+    # ========================================
+    loc_scalar = rmse(loc_in, loc_truth)
+
+    # Prediction error
+    # ========================================
+    loc_error = rmse(loc_pred, loc_truth)
+    error = (loc_error / loc_scalar)# + (vel_error / vel_scalar)
+    return error
+
+
+
+
+
 
 #------------------------------------------------------------------------------
 # Numpy-based loss

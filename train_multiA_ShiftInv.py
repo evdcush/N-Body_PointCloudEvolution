@@ -112,12 +112,13 @@ COO_seg_single = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
 COO_seg_multi  = tf.placeholder(tf.int32, shape=m_coo_shape)
 COO_seg_val = tf.placeholder(tf.int32, shape=(3, N*M,))
 
+'''
 # COEFFS
 # ----------------
 with tf.variable_scope(vscope):
     utils.init_coeff_multi(num_rs_layers)
-
 Cidx = tf.placeholder(tf.int32)
+'''
 
 #=============================================================================
 # MODEL output and optimization
@@ -131,26 +132,74 @@ def get_list_csr(h_in):
 train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M],)
 val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=[1,N,M], )
 
-
 # Model outputs
 # ----------------
 # Train
-X_pred_single0 = nn.ShiftInv_single_model_func(X_input, COO_seg_single,     RS_in, train_args, coeff)
-X_pred_single1 = nn.ShiftInv_single_model_func(X_input, COO_seg_single,     RS_in, train_args, coeff)
-
+X_pred_single = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args)
 X_pred_multi  = nn.ShiftInv_multi_model_func( X_input, COO_seg_multi,  redshifts, train_args, use_coeff=use_coeff)
 
 # Validation
-X_pred_val = nn.ShiftInv_single_model_func(X_input, COO_seg_val, RS_in, val_args, coeffs=None)
+X_pred_val = nn.ShiftInv_single_model_func(X_input, COO_seg_val, RS_in, val_args)
 
 
 # Loss
 # ----------------
+# Experimental loss func
+def pbc_squared_diff(x, y): # can't really do pbc (min) without square diff
+    d1 = tf.squared_difference(x, y)
+    d2 = tf.squared_difference(x, (1+y))
+    d3 = tf.squared_difference((1+x), y)
+    dist = tf.minimum(tf.minimum(d1, d2), d3)
+    return dist
+
+def Rmse(x, y, vel=False):
+    # velocity not bounded, so no pbc dist if vel
+    sqr_err = tf.squared_difference(x, y) if vel else pbc_squared_diff(x, y)
+    sqrt_sqr_err = tf.sqrt(sqr_err)
+    sum_sqrt_sqr_err = tf.reduce_sum(sqrt_sqr_err, axis=-1)
+    mean_sum_sqrt_sqr_err = tf.reduce_mean(sum_sqrt_sqr_err)
+    return mean_sum_sqrt_sqr_err
+
+def mse(x, y, vel=False):
+    # velocity not bounded, so no pbc dist if vel
+    sqr_err = tf.squared_difference(x, y) if vel else pbc_squared_diff(x, y)
+    sum_sqr_err = tf.reduce_sum(sqr_err, axis=-1)
+    mean_sum_sqr_err = tf.reduce_mean(sum_sqr_err)
+    return mean_sum_sqr_err
+
+j = 3
+# input
+loc_in = X_input[...,:j]
+vel_in = X_input[...,j:]
+# truth
+loc_truth = X_truth[...,:j]
+vel_truth = X_truth[...,j:]
+# pred
+loc_pred = X_pred_single[...,:j]
+vel_pred = X_pred_single[...,j:]
+
+# Scalars
+# ========================================
+#loc_scalar = Rmse(loc_in, loc_truth)
+loc_scalar = mse(loc_in, loc_truth)
+vel_scalar = mse(vel_in, vel_truth, vel=True)
+
+# Prediction error
+# ========================================
+#loc_error = Rmse(loc_pred, loc_truth)
+loc_error = mse(loc_pred, loc_truth)
+vel_error = mse(vel_pred, vel_truth, vel=True)
+s_error = (loc_error / loc_scalar) + (vel_error / vel_scalar)
+
+
 # Optimizer
 opt = tf.train.AdamOptimizer(learning_rate)
 
 # Training error
-s_error = nn.pbc_loss(X_pred_single, X_truth, vel=False)
+#s_error = nn.pbc_loss_scaled(X_input, X_pred_single, X_truth)
+#m_error = nn.pbc_loss_scaled(X_input, X_pred_multi,  X_truth)
+
+#s_error = nn.pbc_loss(X_pred_single, X_truth, vel=False)
 m_error = nn.pbc_loss(X_pred_multi,  X_truth, vel=False)
 
 # Backprop on loss
@@ -222,7 +271,6 @@ for step in range(num_iters):
                  X_truth: x_truth,
                  COO_seg_single: coo_segs,
                  RS_in: rs_in,
-                 Cidx: zx,
                  }
 
         # training pass
@@ -232,9 +280,14 @@ for step in range(num_iters):
         # ----------------
         # Track error
         #"""
-        if (step + 1) % 5 == 0:
-            e = sess.run(s_error, feed_dict=fdict)
-            print('{:>5}: {}'.format(step+1, e))
+        #if (step + 1) % 5 == 0:
+        #loc_s, loc_e, e = sess.run([loc_scalar, loc_error, s_error], feed_dict=fdict)
+        #print('{:>5} | sca: {:.6f}, rse: {:.6f}, err: {:.6f}'.format(step+1, loc_s, loc_e, e))
+        vel_s, vel_e, loc_s, loc_e, e = sess.run([vel_scalar, vel_error, loc_scalar, loc_error, s_error], feed_dict=fdict)
+        print('{:>5} | sca: {:.6f}, mse: {:.6f}, err: {:.6f}'.format(step+1, loc_s, loc_e, e))
+        print('{:>5} | sca: {:.6f}, mse: {:.6f}\n'.format(' ', vel_s, vel_e,))
+        #print('{:>5}: {}'.format(step+1, e))
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         #"""
 
     # Save
