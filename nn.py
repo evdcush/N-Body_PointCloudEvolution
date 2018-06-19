@@ -983,6 +983,22 @@ def pbc_loss(readout, x_truth, vel=False):
     return error
 
 
+def pbc_loss_scaled(x_input, x_pred, x_truth):
+    """ MSE scaled by x_input,
+    mean root error
+    Args:
+        x_input (tensor): (b, N, 6), input data
+        x_pred  (tensor): (b, N, 6), model prediction
+        x_truth (tensor): (b, N, 6), true data
+    """
+    # true cube diff
+    loc_true_diff = periodic_boundary_dist(x_input, x_truth)
+    vel_true_diff = periodic_boundary_dist(x_input, x_truth)
+
+    # get input diffs, the scale unsquared errors by input diffs
+    return False
+
+
 ##### Numpy based loss
 
 def npy_periodic_boundary_dist(readout_full, x_truth):
