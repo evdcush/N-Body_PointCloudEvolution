@@ -112,13 +112,12 @@ COO_seg_single = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
 COO_seg_multi  = tf.placeholder(tf.int32, shape=m_coo_shape)
 COO_seg_val = tf.placeholder(tf.int32, shape=(3, N*M,))
 
-'''
 # COEFFS
 # ----------------
-with tf.variable_scope(vscope):
-    utils.init_coeff_multi(num_rs_layers)
-Cidx = tf.placeholder(tf.int32)
-'''
+if use_coeff:
+    with tf.variable_scope(vscope):
+        utils.init_coeff_multi(num_rs_layers)
+
 
 #=============================================================================
 # MODEL output and optimization
@@ -135,7 +134,10 @@ val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=[1,N,M], )
 # Model outputs
 # ----------------
 # Train
-X_pred_single = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args)
+#X_pred_single = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args)
+X_pred_single0 = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args, coeff_idx=0)
+X_pred_single1 = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args, coeff_idx=1)
+
 X_pred_multi  = nn.ShiftInv_multi_model_func( X_input, COO_seg_multi,  redshifts, train_args, use_coeff=use_coeff)
 
 # Validation
@@ -167,29 +169,31 @@ def mse(x, y, vel=False):
     mean_sum_sqr_err = tf.reduce_mean(sum_sqr_err)
     return mean_sum_sqr_err
 
-j = 3
-# input
-loc_in = X_input[...,:j]
-vel_in = X_input[...,j:]
-# truth
-loc_truth = X_truth[...,:j]
-vel_truth = X_truth[...,j:]
-# pred
-loc_pred = X_pred_single[...,:j]
-vel_pred = X_pred_single[...,j:]
+def loss_fun(x_in, x_pred, x_truth):
+    j = 3
+    # input
+    loc_in = x_in[...,:j]
+    vel_in = x_in[...,j:]
+    # truth
+    loc_truth = x_truth[...,:j]
+    vel_truth = x_truth[...,j:]
+    # pred
+    loc_pred = x_pred[...,:j]
+    vel_pred = x_pred[...,j:]
 
-# Scalars
-# ========================================
-#loc_scalar = Rmse(loc_in, loc_truth)
-loc_scalar = mse(loc_in, loc_truth)
-vel_scalar = mse(vel_in, vel_truth, vel=True)
+    # scalars
+    loc_scalar = mse(loc_in, loc_truth)
+    vel_scalar = mse(vel_in, vel_truth, vel=True)
 
-# Prediction error
-# ========================================
-#loc_error = Rmse(loc_pred, loc_truth)
-loc_error = mse(loc_pred, loc_truth)
-vel_error = mse(vel_pred, vel_truth, vel=True)
-s_error = (loc_error / loc_scalar) + (vel_error / vel_scalar)
+    # error
+    loc_error = mse(loc_pred, loc_truth)
+    vel_error = mse(vel_pred, vel_truth, vel=True)
+    l_error = (loc_error / loc_scalar) + (vel_error / vel_scalar)
+    return l_error, loc_scalar, loc_error, vel_scalar, vel_error
+
+
+s_error0, loc_scalar, loc_error0, vel_scalar, vel_error0 = loss_fun(X_input, X_pred_single0, X_truth)
+s_error1, loc_scalar, loc_error1, vel_scalar, vel_error1 = loss_fun(X_input, X_pred_single1, X_truth)
 
 
 # Optimizer
@@ -203,7 +207,9 @@ opt = tf.train.AdamOptimizer(learning_rate)
 m_error = nn.pbc_loss(X_pred_multi,  X_truth, vel=False)
 
 # Backprop on loss
-s_train = opt.minimize(s_error)
+#s_train = opt.minimize(s_error)
+s_train0 = opt.minimize(s_error0)
+s_train1 = opt.minimize(s_error1)
 m_train = opt.minimize(m_error)
 
 # Validation error
@@ -239,6 +245,72 @@ save_checkpoint = lambda step: (step+1) % checkpoint == 0
 #=============================================================================
 # TRAINING
 #=============================================================================
+# SINGLE-STEP
+# ----------------
+rs_tups = [(i,i+1) for i in range(num_rs_layers)]
+print('\nTraining Single-step:\n{}'.format('='*78))
+np.random.seed(utils.DATASET_SEED)
+for step in range(num_iters):
+    # Data batching
+    # ----------------
+    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (3, b, N, 6)
+
+    # Train on redshift pairs
+    # ----------------
+    #np.random.shuffle(rs_tups)
+    for rsi, tup in enumerate(rs_tups):
+        zx, zy = tup
+        # redshift
+        rs_in = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
+
+        # split data
+        x_in    = _x_batch[zx] # (b, N, 6)
+        x_truth = _x_batch[zy] # (b, N, 6)
+
+        # Graph data
+        # ----------------
+        csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
+        coo_segs = nn.to_coo_batch(csr_list)
+
+        # Feed data to tensors
+        # ----------------
+        fdict = {X_input: x_in,
+                 X_truth: x_truth,
+                 COO_seg_single: coo_segs,
+                 RS_in: rs_in,
+                 }
+
+        # training pass
+        if rsi == 0:
+            s_train0.run(feed_dict=fdict)
+            vel_s, vel_e, loc_s, loc_e, e = sess.run([vel_scalar, vel_error0, loc_scalar, loc_error0, s_error0], feed_dict=fdict)
+            print('{:>5} 0| sca: {:.6f}, mse: {:.6f}, err: {:.6f}'.format(step+1, loc_s, loc_e, e))
+            print('{:>5} 0| sca: {:.6f}, mse: {:.6f}\n'.format(' ', vel_s, vel_e,))
+        elif rsi == 1:
+            s_train1.run(feed_dict=fdict)
+            vel_s, vel_e, loc_s, loc_e, e = sess.run([vel_scalar, vel_error1, loc_scalar, loc_error1, s_error1], feed_dict=fdict)
+            print('{:>5} 1| sca: {:.6f}, mse: {:.6f}, err: {:.6f}'.format(step+1, loc_s, loc_e, e))
+            print('{:>5} 1| sca: {:.6f}, mse: {:.6f}\n'.format(' ', vel_s, vel_e,))
+
+
+        # Checkpoint
+        # ----------------
+        # Track error
+        #"""
+        #if (step + 1) % 5 == 0:
+        #loc_s, loc_e, e = sess.run([loc_scalar, loc_error, s_error], feed_dict=fdict)
+        #print('{:>5} | sca: {:.6f}, rse: {:.6f}, err: {:.6f}'.format(step+1, loc_s, loc_e, e))
+
+        #print('{:>5}: {}'.format(step+1, e))
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        #"""
+
+    # Save
+    if save_checkpoint(step):
+        tr_error = sess.run(s_error, feed_dict=fdict)
+        print('checkpoint {:>5}: {}'.format(step, tr_error))
+        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+'''
 # SINGLE-STEP
 # ----------------
 rs_tups = [(i,i+1) for i in range(num_rs_layers)]
@@ -295,7 +367,7 @@ for step in range(num_iters):
         tr_error = sess.run(s_error, feed_dict=fdict)
         print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
-
+'''
 # MULTI-STEP
 # ----------------
 def get_multi_coo(x):
