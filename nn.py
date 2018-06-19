@@ -982,7 +982,7 @@ def pbc_loss(readout, x_truth, vel=False):
         error += tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1))
     return error
 
-def dist_error(x, y): # can't really do pbc (min) without square diff
+def pbc_squared_diff(x, y): # can't really do pbc (min) without square diff
     d1 = tf.squared_difference(x, y)
     d2 = tf.squared_difference(x, (1+y))
     d3 = tf.squared_difference((1+x), y)
@@ -1000,7 +1000,7 @@ def pbc_loss_scaled(x_input, x_pred, x_truth):
     # ========================================
     def rmse(x, y, vel=False):
         # velocity not bounded, so no pbc dist if vel
-        sqr_err = tf.squared_difference(x, y) if vel else dist_error(x, y)
+        sqr_err = tf.squared_difference(x, y) if vel else pbc_squared_diff(x, y)
         sqrt_sqr_err = tf.sqrt(sqr_diff)
         sum_sqrt_sqr_err = tf.reduce_sum(sqrt_diff, axis=-1)
         mean_sum_sqrt_sqr_err = tf.reduce_mean(sum_sqrt_sqr_err)
