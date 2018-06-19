@@ -982,25 +982,59 @@ def pbc_loss(readout, x_truth, vel=False):
         error += tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1))
     return error
 
+def dist_error(x, y): # can't really do pbc (min) without square diff
+    d1 = tf.squared_difference(x, y)
+    d2 = tf.squared_difference(x, (1+y))
+    d3 = tf.squared_difference((1+x), y)
+    dist = tf.minimum(tf.minimum(d1, d2), d3)
+    return dist
 
 def pbc_loss_scaled(x_input, x_pred, x_truth):
-    """ MSE scaled by x_input,
-    mean root error
+    """ rMSE loss scaled by x_input
     Args:
         x_input (tensor): (b, N, 6), input data
         x_pred  (tensor): (b, N, 6), model prediction
         x_truth (tensor): (b, N, 6), true data
     """
-    # true cube diff
-    loc_true_diff = periodic_boundary_dist(x_input, x_truth)
-    vel_true_diff = periodic_boundary_dist(x_input, x_truth)
+    # Helpers
+    # ========================================
+    def rmse(x, y, vel=False):
+        # velocity not bounded, so no pbc dist if vel
+        sqr_err = tf.squared_difference(x, y) if vel else dist_error(x, y)
+        sqrt_sqr_err = tf.sqrt(sqr_diff)
+        sum_sqrt_sqr_err = tf.reduce_sum(sqrt_diff, axis=-1)
+        mean_sum_sqrt_sqr_err = tf.reduce_mean(sum_sqrt_sqr_err)
+        return mean_sum_sqrt_sqr_err
 
-    # get input diffs, the scale unsquared errors by input diffs
-    return False
+    # Split data
+    # ========================================
+    j = 3
+    # input
+    loc_in = x_input[...,:j]
+    vel_in = x_input[...,j:]
+    # truth
+    loc_truth = x_truth[...,:j]
+    vel_truth = x_truth[...,j:]
+    # pred
+    loc_pred = x_pred[...,:j]
+    vel_pred = x_pred[...,j:]
 
+    # Scalars
+    # ========================================
+    loc_scalar = rmse(loc_in, loc_truth)
+    vel_scalar = rmse(vel_in, vel_truth, vel=True)
 
-##### Numpy based loss
+    # Prediction error
+    # ========================================
+    loc_error = rmse(loc_pred, loc_truth)
+    vel_error = rmse(vel_pred, vel_truth, vel=True)
 
+    error = (loc_error / loc_scalar) + (vel_error / vel_scalar)
+    return error
+
+#------------------------------------------------------------------------------
+# Numpy-based loss
+#------------------------------------------------------------------------------
 def npy_periodic_boundary_dist(readout_full, x_truth):
     readout = readout_full[...,:3]
     x_truth_coo = x_truth[...,:3]
