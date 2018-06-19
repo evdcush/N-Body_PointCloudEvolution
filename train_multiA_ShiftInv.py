@@ -116,7 +116,8 @@ COO_seg_val = tf.placeholder(tf.int32, shape=(3, N*M,))
 # ----------------
 if use_coeff:
     with tf.variable_scope(vscope):
-        utils.init_coeff_multi(num_rs_layers)
+        #utils.init_coeff_multi(num_rs_layers)
+        utils.init_coeff_multi2(num_rs_layers)
 
 
 #=============================================================================
@@ -318,8 +319,8 @@ for step in range(num_iters):
         print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
-np.save('tr_error', tr_errors)
-np.save('tr_diffs', tr_diffs)
+np.save('tr3_error', tr_errors)
+np.save('tr3_diffs', tr_diffs)
 '''
 # SINGLE-STEP
 # ----------------
@@ -429,7 +430,7 @@ for step in range(num_iters):
         print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step+num_iters, write_meta_graph=True)
 
-np.save('mu_error', merrors)
+np.save('mu3_error', merrors)
 
 # END training
 # ========================================

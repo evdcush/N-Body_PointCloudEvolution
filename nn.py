@@ -310,8 +310,11 @@ def ShiftInv_single_model_func(X_in, COO_feats, redshift, model_specs, coeff_idx
         H_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
         # skip connections
         if coeff_idx is not None:
-            theta = utils.get_scoped_coeff_multi(coeff_idx)
-            H_out = theta * H_out
+            #theta = utils.get_scoped_coeff_multi(coeff_idx)
+            t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx)
+            h_coo = H_out[...,:3] * t0
+            h_vel = H_out[...,3:] * t1
+            H_out = tf.concat([h_coo, h_vel], axis=-1)
     #return H_out
     return get_readout(X_in + H_out)
 
