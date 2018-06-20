@@ -192,9 +192,35 @@ def loss_fun(x_in, x_pred, x_truth):
     l_error = (loc_error / loc_scalar) + (vel_error / vel_scalar)
     return l_error, loc_scalar, loc_error, vel_scalar, vel_error
 
+def loss_fun_noscale(x_in, x_pred, x_truth):
+    j = 3
+    # input
+    #loc_in = x_in[...,:j]
+    #vel_in = x_in[...,j:]
+    # truth
+    loc_truth = x_truth[...,:j]
+    vel_truth = x_truth[...,j:]
+    # pred
+    loc_pred = x_pred[...,:j]
+    vel_pred = x_pred[...,j:]
 
-s_error0, loc_scalar, loc_error0, vel_scalar, vel_error0 = loss_fun(X_input, X_pred_single0, X_truth)
-s_error1, loc_scalar, loc_error1, vel_scalar, vel_error1 = loss_fun(X_input, X_pred_single1, X_truth)
+    # scalars
+    #loc_scalar = mse(loc_in, loc_truth)
+    #vel_scalar = mse(vel_in, vel_truth, vel=True)
+
+    # error
+    loc_error = mse(loc_pred, loc_truth)
+    #vel_error = mse(vel_pred, vel_truth, vel=True)
+    #l_error = (loc_error / loc_scalar) + (vel_error / vel_scalar)
+    #return l_error, loc_scalar, loc_error, vel_scalar, vel_error
+    return loc_error
+
+
+#s_error0, loc_scalar, loc_error0, vel_scalar, vel_error0 = loss_fun(X_input, X_pred_single0, X_truth)
+#s_error1, loc_scalar, loc_error1, vel_scalar, vel_error1 = loss_fun(X_input, X_pred_single1, X_truth)
+s_error0 = loss_fun_noscale(X_input, X_pred_single0, X_truth)
+s_error1 = loss_fun_noscale(X_input, X_pred_single1, X_truth)
+
 
 
 # Optimizer
@@ -206,7 +232,7 @@ opt = tf.train.AdamOptimizer(learning_rate)
 
 #s_error = nn.pbc_loss(X_pred_single, X_truth, vel=False)
 #m_error = nn.pbc_loss(X_pred_multi,  X_truth, vel=False)
-m_error = loss_fun(X_input, X_pred_multi, X_truth)[0]
+m_error = loss_fun_noscale(X_input, X_pred_multi, X_truth)
 
 # Backprop on loss
 #s_train = opt.minimize(s_error)
@@ -248,7 +274,7 @@ save_checkpoint = lambda step: (step+1) % checkpoint == 0
 # TRAINING
 #=============================================================================
 tr_errors = np.zeros((num_iters, 2)).astype(np.float32)
-tr_diffs = np.zeros((num_iters, 2, 4)).astype(np.float32) # vels, vele, locs, loce
+#tr_diffs = np.zeros((num_iters, 2, 4)).astype(np.float32) # vels, vele, locs, loce
 # SINGLE-STEP
 # ----------------
 rs_tups = [(i,i+1) for i in range(num_rs_layers)]
@@ -287,16 +313,20 @@ for step in range(num_iters):
         # training pass
         if rsi == 0:
             s_train0.run(feed_dict=fdict)
-            vel_s, vel_e, loc_s, loc_e, e = sess.run([vel_scalar, vel_error0, loc_scalar, loc_error0, s_error0], feed_dict=fdict)
-            tr_errors[step, 0] = e
-            tr_diffs[step, 0] = [vel_s, vel_e, loc_s, loc_e]
+            #vel_s, vel_e, loc_s, loc_e, e = sess.run([vel_scalar, vel_error0, loc_scalar, loc_error0, s_error0], feed_dict=fdict)
+            #tr_errors[step, 0] = e
+            #tr_diffs[step, 0] = [vel_s, vel_e, loc_s, loc_e]
+            loc_e = sess.run(s_error0, feed_dict=fdict)
+            tr_errors[step, 0] = loc_e
             #print('{:>5} 0| sca: {:.6f}, mse: {:.6f}, err: {:.6f}'.format(step+1, loc_s, loc_e, e))
             #print('{:>5} 0| sca: {:.6f}, mse: {:.6f}\n'.format(' ', vel_s, vel_e,))
         elif rsi == 1:
             s_train1.run(feed_dict=fdict)
-            vel_s, vel_e, loc_s, loc_e, e = sess.run([vel_scalar, vel_error1, loc_scalar, loc_error1, s_error1], feed_dict=fdict)
-            tr_errors[step, 1] = e
-            tr_diffs[step, 1] = [vel_s, vel_e, loc_s, loc_e]
+            #vel_s, vel_e, loc_s, loc_e, e = sess.run([vel_scalar, vel_error1, loc_scalar, loc_error1, s_error1], feed_dict=fdict)
+            #tr_errors[step, 1] = e
+            #tr_diffs[step, 1] = [vel_s, vel_e, loc_s, loc_e]
+            loc_e = sess.run(s_error1, feed_dict=fdict)
+            tr_errors[step, 1] = loc_e
             #print('{:>5} 1| sca: {:.6f}, mse: {:.6f}, err: {:.6f}'.format(step+1, loc_s, loc_e, e))
             #print('{:>5} 1| sca: {:.6f}, mse: {:.6f}\n'.format(' ', vel_s, vel_e,))
 
@@ -315,12 +345,12 @@ for step in range(num_iters):
 
     # Save
     if save_checkpoint(step):
-        tr_error = sess.run(s_error, feed_dict=fdict)
-        print('checkpoint {:>5}: {}'.format(step, tr_error))
+        #tr_error = sess.run(s_error, feed_dict=fdict)
+        #print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
-np.save('tr3_error', tr_errors)
-np.save('tr3_diffs', tr_diffs)
+np.save('tr_noscale_error', tr_errors)
+#np.save('tr_noscale_diffs', tr_diffs)
 '''
 # SINGLE-STEP
 # ----------------
@@ -426,11 +456,11 @@ for step in range(num_iters):
 
     # Save
     if save_checkpoint(step):
-        tr_error = sess.run(m_error, feed_dict=fdict)
-        print('checkpoint {:>5}: {}'.format(step, tr_error))
+        #tr_error = sess.run(m_error, feed_dict=fdict)
+        #print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step+num_iters, write_meta_graph=True)
 
-np.save('mu3_error', merrors)
+np.save('mu_noscale_error', merrors)
 
 # END training
 # ========================================
