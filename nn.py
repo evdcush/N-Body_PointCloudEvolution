@@ -984,96 +984,54 @@ def pbc_loss(readout, x_truth, vel=False):
         dist_vel = tf.squared_difference(readout[...,3:], x_truth[...,3:])
         error += tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1))
     return error
-
-def pbc_squared_diff(x, y): # can't really do pbc (min) without square diff
+#------------------------------------------------------------------------------
+# Rescaled MSE loss functions, for velocity predictions
+#------------------------------------------------------------------------------
+# ==== Helpers
+def pbc_squared_diff(x, y):
+    # Squared difference function with PeriodicBoundaryConditions (pbc)
     d1 = tf.squared_difference(x, y)
     d2 = tf.squared_difference(x, (1+y))
     d3 = tf.squared_difference((1+x), y)
     dist = tf.minimum(tf.minimum(d1, d2), d3)
     return dist
 
+def mse(x, y, vel=False):
+    # Mean Squared Error function
+    # velocity not bounded, so no pbc dist if vel
+    sqr_err = tf.squared_difference(x, y) if vel else pbc_squared_diff(x, y)
+    sum_sqr_err = tf.reduce_sum(sqr_err, axis=-1) # eg (b, N, 3) -> (b, N)
+    mean_sum_sqr_err = tf.reduce_mean(sum_sqr_err)
+    return mean_sum_sqr_err
+
+# ==== Loss func
 def pbc_loss_scaled(x_input, x_pred, x_truth):
-    """ rMSE loss scaled by x_input
+    """ MSE loss (with pbc) rescaled by difference between x_input and truth
     Args:
         x_input (tensor): (b, N, 6), input data
         x_pred  (tensor): (b, N, 6), model prediction
         x_truth (tensor): (b, N, 6), true data
     """
-    # Helpers
-    # ========================================
-    def rmse(x, y, vel=False):
-        # velocity not bounded, so no pbc dist if vel
-        sqr_err = tf.squared_difference(x, y) if vel else pbc_squared_diff(x, y)
-        sqrt_sqr_err = tf.sqrt(sqr_err)
-        sum_sqrt_sqr_err = tf.reduce_sum(sqrt_sqr_err, axis=-1)
-        mean_sum_sqrt_sqr_err = tf.reduce_mean(sum_sqrt_sqr_err)
-        return mean_sum_sqrt_sqr_err
-
     # Split data
     # ========================================
-    j = 3
-    # input
-    loc_in = x_input[...,:j]
-    vel_in = x_input[...,j:]
-    # truth
-    loc_truth = x_truth[...,:j]
-    vel_truth = x_truth[...,j:]
-    # pred
-    loc_pred = x_pred[...,:j]
-    vel_pred = x_pred[...,j:]
+    # not a fan of interpreted split over explicit splitting idx
+    split_div = 2
+    loc_input, vel_input = tf.split(x_input, split_div, axis=-1)
+    loc_truth, vel_truth = tf.split(x_truth, split_div, axis=-1)
+    loc_pred,  vel_pred  = tf.split(x_pred,  split_div, axis=-1)
 
     # Scalars
     # ========================================
-    loc_scalar = rmse(loc_in, loc_truth)
-    vel_scalar = rmse(vel_in, vel_truth, vel=True)
+    loc_scalar = mse(loc_input, loc_truth)
+    vel_scalar = mse(vel_input, vel_truth, vel=True)
 
     # Prediction error
     # ========================================
-    loc_error = rmse(loc_pred, loc_truth)
-    vel_error = rmse(vel_pred, vel_truth, vel=True)
+    loc_error = mse(loc_pred, loc_truth)
+    vel_error = mse(vel_pred, vel_truth, vel=True)
 
     error = (loc_error / loc_scalar) + (vel_error / vel_scalar)
     return error
-
-def pbc_loss_coo_scaled(x_input, x_pred, x_truth):
-    # TESTING FUNC, scaled error but COO only
-
-    # Helpers
-    # ========================================
-    def rmse(x, y, vel=False):
-        # velocity not bounded, so no pbc dist if vel
-        sqr_err = pbc_squared_diff(x, y)
-        sqrt_sqr_err = tf.sqrt(sqr_err)
-        sum_sqrt_sqr_err = tf.reduce_sum(sqrt_sqr_err, axis=-1)
-        mean_sum_sqrt_sqr_err = tf.reduce_mean(sum_sqrt_sqr_err)
-        return mean_sum_sqrt_sqr_err
-
-    # Split data
-    # ========================================
-    j = 3
-    # input
-    loc_in = x_input[...,:j]
-    vel_in = x_input[...,j:]
-    # truth
-    loc_truth = x_truth[...,:j]
-    vel_truth = x_truth[...,j:]
-    # pred
-    loc_pred = x_pred[...,:j]
-    vel_pred = x_pred[...,j:]
-
-    # Scalars
-    # ========================================
-    loc_scalar = rmse(loc_in, loc_truth)
-
-    # Prediction error
-    # ========================================
-    loc_error = rmse(loc_pred, loc_truth)
-    error = (loc_error / loc_scalar)# + (vel_error / vel_scalar)
-    return error
-
-
-
-
 
 
 #------------------------------------------------------------------------------
