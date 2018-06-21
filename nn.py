@@ -1019,6 +1019,9 @@ def pbc_loss_scaled(x_input, x_pred, x_truth):
     loc_input, vel_input = tf.split(x_input, split_div, axis=-1)
     loc_truth, vel_truth = tf.split(x_truth, split_div, axis=-1)
     loc_pred,  vel_pred  = tf.split(x_pred,  split_div, axis=-1)
+    #loc_input, vel_input = x_input[...,:3], x_input[...,3:]
+    #loc_truth, vel_truth = x_truth[...,:3], x_truth[...,3:]
+    #loc_pred,  vel_pred  = x_pred[...,:3], x_pred[...,3:]
 
     # Scalars
     # ========================================
@@ -1030,7 +1033,7 @@ def pbc_loss_scaled(x_input, x_pred, x_truth):
     loc_error = mse(loc_pred, loc_truth)
     vel_error = mse(vel_pred, vel_truth, vel=True)
 
-    error = (loc_error / loc_scalar) + (vel_error / vel_scalar)
+    error = (loc_error / loc_scalar) + 1.3*(vel_error / vel_scalar)
     return error
 
 

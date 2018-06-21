@@ -143,11 +143,17 @@ def get_scoped_coeff_multi(idx):
     return tf.get_variable(MCOEFFTAG.format(idx))
 
 def init_coeff_multi2(num_rs, restore=False, vinit=0.002):
+    num_coeff = 2
     for i in range(num_rs):
-        tag0 = MCOEFFTAG2.format(i,0)
-        tf.get_variable(tag0, dtype=tf.float32, initializer=tf.constant([vinit]))
-        tag1 = MCOEFFTAG2.format(i,1)
-        tf.get_variable(tag1, dtype=tf.float32, initializer=tf.constant([vinit]))
+        for j in range(num_coeff):
+            tag = MCOEFFTAG2.format(i, j)
+            args = (tag,)
+            if restore:
+                init = None
+                args = args + ((1,))
+            else:
+                init = tf.constant([vinit])
+            tf.get_variable(*args, dtype=tf.float32, initializer=init)
 
 def get_scoped_coeff_multi2(idx):
     t0 = tf.get_variable(MCOEFFTAG2.format(idx,0))

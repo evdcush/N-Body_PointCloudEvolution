@@ -117,7 +117,7 @@ COO_seg_val = tf.placeholder(tf.int32, shape=(3, N*M,))
 if use_coeff:
     with tf.variable_scope(vscope):
         #utils.init_coeff_multi(num_rs_layers)
-        utils.init_coeff_multi2(num_rs_layers)
+        utils.init_coeff_multi2(num_rs_layers, restore=restore)
 
 
 #=============================================================================
@@ -130,7 +130,6 @@ def get_list_csr(h_in):
 # Model static func args
 # ----------------
 train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M],)
-val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=[1,N,M], )
 
 # Model outputs
 # ----------------
@@ -140,10 +139,6 @@ val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=[1,N,M], )
 X_pred_single0 = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args, coeff_idx=0)
 X_pred_single1 = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args, coeff_idx=1)
 X_pred_multi = nn.ShiftInv_multi_model_func(X_input, COO_seg_multi,  redshifts, train_args, use_coeff=use_coeff)
-
-# Validation
-X_pred_val = nn.ShiftInv_single_model_func(X_input, COO_seg_val, RS_in, val_args)
-
 
 # Loss
 # ----------------
@@ -163,8 +158,9 @@ s_train1 = opt.minimize(s_error1)
 m_train  = opt.minimize(m_error)
 
 # Validation error
-val_error   = nn.pbc_loss(X_pred_val, X_truth, vel=False)
-inputs_diff = nn.pbc_loss(X_input,    X_truth, vel=False)
+X_pred_val = tf.placeholder(tf.float32, shape=(None, N, 6))
+val_error = nn.pbc_loss(X_pred_val, X_truth, vel=False)
+inputs_diff = nn.pbc_loss(X_input, X_truth, vel=False)
 
 
 #=============================================================================
@@ -178,17 +174,20 @@ sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 
 # initialize variables
 sess.run(tf.global_variables_initializer())
+def get_var(tag):
+    with tf.variable_scope(vscope, reuse=True):
+        return tf.get_variable(tag).eval()
+
 if restore:
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     utils.load_graph(sess, model_path)
 
-#theta = utils.get_vcoeff(vscope).eval()
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 # Session saver
 # ----------------
 saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
-checkpoint = 500
+checkpoint = 100
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
 
 
@@ -239,10 +238,14 @@ for step in range(num_iters):
             #loc_err = sess.run(s_error1, feed_dict=fdict)
     # Save
     if save_checkpoint(step):
-        #tr_error = sess.run(s_error, feed_dict=fdict)
-        #print('checkpoint {:>5}: {}'.format(step, tr_error))
+        tr_error = sess.run(s_error1, feed_dict=fdict)
+        print('checkpoint {:>5}: {}'.format(step+1, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
+# Save trained variables and session
+saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
+
+'''
 # MULTI-STEP
 # ----------------
 # Helper
@@ -299,6 +302,7 @@ print('elapsed time: {}'.format(time.time() - start_time))
 
 # Save trained variables and session
 saver.save(sess, model_path + model_name, global_step=2*num_iters, write_meta_graph=True)
+'''
 X_train = None # reduce memory overhead
 
 
@@ -307,12 +311,17 @@ X_train = None # reduce memory overhead
 #=============================================================================
 # Eval data containers
 # ----------------
+num_val_batches = NUM_VAL_SAMPLES // batch_size
 test_predictions  = np.zeros((num_rs_layers,) + X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
-test_loss   = np.zeros((NUM_VAL_SAMPLES, num_rs_layers)).astype(np.float32)
+test_loss = np.zeros((num_val_batches, num_rs_layers)).astype(np.float32)
+test_loss_loc = np.zeros((num_val_batches, num_rs_layers)).astype(np.float32)
+#inputs_loss = np.zeros((num_val_batches, num_rs_layers)).astype(np.float32)
+#test_loss   = np.zeros((NUM_VAL_SAMPLES, num_rs_layers)).astype(np.float32)
 #inputs_loss = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
 
 print('\nEvaluation:\n{}'.format('='*78))
-for j in range(X_test.shape[1]):
+#for j in range(X_test.shape[1]):
+for j in range(num_val_batches):
     # Validation cubes
     # ----------------
     #x_in    = X_test[ 0, j:j+1] # (1, n_P, 6)
@@ -321,8 +330,9 @@ for j in range(X_test.shape[1]):
     for z in range(num_rs_layers):
         # Validation cubes
         # ----------------
-        x_in = X_test[z, j:j+1] if z == 0 else x_pred
-        x_truth = X_test[z+1, j:j+1]
+        p, q = batch_size*j, batch_size*(j+1)
+        x_in    = X_test[z,   p:q] if z == 0 else x_pred
+        x_truth = X_test[z+1, p:q]
         rs_in = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
 
         # Graph data
@@ -342,25 +352,33 @@ for j in range(X_test.shape[1]):
 
         # Gross hardcoded variables because TF
         # ----------------
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         if z == 0:
-            x_pred, val_error = sess.run([X_pred_single0, s_error0], feed_dict=fdict)
+            x_pred, v_error = sess.run([X_pred_single0, s_error0], feed_dict=fdict)
         elif z == 1: # final
-            x_pred, val_error = sess.run([X_pred_single1, s_error1], feed_dict=fdict)
-        test_predictions[z, j] = x_pred
-        test_loss[j, z] = val_error
+            x_pred, v_error = sess.run([X_pred_single1, s_error1], feed_dict=fdict)
+
+        # Assign results
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        test_predictions[z, p:q] = x_pred
+        test_loss[j, z] = v_error
+        v_error_loc = sess.run(val_error, feed_dict={X_pred_val: x_pred, X_truth: x_truth})
+        test_loss_loc[j, z] = v_error_loc
     #print('{:>3d}: {:.6f}'.format(j, v_error))
 
 # END Validation
 # ========================================
 # median error
-test_median = np.median(test_loss[:,-1])
+#test_median = np.median(test_loss[:,-1])
 #inputs_median = np.median(inputs_loss)
-print('{:<18} median: {:.9f}'.format(model_name, test_median))
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+print('{:<18} median scaled: {:.9f}'.format(model_name, np.median(test_loss[:,-1])))
+print('{:<18} median    loc: {:.9f}'.format(model_name, np.median(test_loss_loc[:,-1])))
 #print('{:<30} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
