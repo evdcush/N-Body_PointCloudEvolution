@@ -152,8 +152,8 @@ opt = tf.train.AdamOptimizer(learning_rate)
 
 # Training error
 #s_error = nn.pbc_loss_scaled(X_input, X_pred_single, X_truth)
-s_error = nn.pbc_loss_scaled(X_input, X_pred_single0, X_truth)
-s_error = nn.pbc_loss_scaled(X_input, X_pred_single1, X_truth)
+s_error0 = nn.pbc_loss_scaled(X_input, X_pred_single0, X_truth)
+s_error1 = nn.pbc_loss_scaled(X_input, X_pred_single1, X_truth)
 m_error = nn.pbc_loss_scaled(X_input, X_pred_multi,  X_truth)
 
 # Backprop on loss
@@ -301,61 +301,66 @@ print('elapsed time: {}'.format(time.time() - start_time))
 saver.save(sess, model_path + model_name, global_step=2*num_iters, write_meta_graph=True)
 X_train = None # reduce memory overhead
 
-'''
+
 #=============================================================================
 # EVALUATION
 #=============================================================================
 # Eval data containers
 # ----------------
-test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
-test_loss   = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
-inputs_loss = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
+test_predictions  = np.zeros((num_rs_layers,) + X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
+test_loss   = np.zeros((NUM_VAL_SAMPLES, num_rs_layers)).astype(np.float32)
+#inputs_loss = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
 
 print('\nEvaluation:\n{}'.format('='*78))
 for j in range(X_test.shape[1]):
     # Validation cubes
     # ----------------
-    x_in    = X_test[0, j:j+1] # (1, n_P, 6)
-    x_truth = X_test[1, j:j+1]
+    #x_in    = X_test[ 0, j:j+1] # (1, n_P, 6)
+    #x_truth = X_test[-1, j:j+1]
 
-    # Graph data
-    # ----------------
-    csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
+    for z in range(num_rs_layers):
+        # Validation cubes
+        # ----------------
+        x_in = X_test[z, j:j+1] if z == 0 else x_pred
+        x_truth = X_test[z+1, j:j+1]
+        rs_in = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
 
-    # get edges (relative dists) and nodes (velocities)
-    x_in_edges = nn.get_input_edge_features_batch(x_in, csr_list, M) # (b*N*M, 3)
-    x_in_nodes = nn.get_input_node_features(x_in) # (b*N, 3)
+        # Graph data
+        # ----------------
+        csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
 
-    # get coo features
-    COO_feats = nn.to_coo_batch(csr_list)
+        # get coo features
+        coo_segs = nn.to_coo_batch(csr_list)
 
-    # Feed data to tensors
-    # ----------------
-    fdict = {X_input: x_in,
-             X_truth: x_truth,
-             X_input_edges: x_in_edges,
-             X_input_nodes: x_in_nodes,
-             COO_features_val: COO_feats,}
+        # Feed data to tensors
+        # ----------------
+        fdict = {X_input: x_in,
+                 X_truth: x_truth,
+                 COO_seg_single: coo_segs,
+                 RS_in: rs_in,
+                 }
 
-    # Validation output
-    # ----------------
-    x_pred, v_error, ins_diff = sess.run([X_pred_val, val_error, inputs_diff], feed_dict=fdict)
-    test_predictions[j] = x_pred[0]
-    test_loss[j]   = v_error
-    inputs_loss[j] = ins_diff
+        # Gross hardcoded variables because TF
+        # ----------------
+        if z == 0:
+            x_pred, val_error = sess.run([X_pred_single0, s_error0], feed_dict=fdict)
+        elif z == 1: # final
+            x_pred, val_error = sess.run([X_pred_single1, s_error1], feed_dict=fdict)
+        test_predictions[z, j] = x_pred
+        test_loss[j, z] = val_error
     #print('{:>3d}: {:.6f}'.format(j, v_error))
 
 # END Validation
 # ========================================
 # median error
-test_median = np.median(test_loss)
-inputs_median = np.median(inputs_loss)
-#print('{:<18} median: {:.9f}'.format(model_name, test_median))
-print('{:<30} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
+test_median = np.median(test_loss[:,-1])
+#inputs_median = np.median(inputs_loss)
+print('{:<18} median: {:.9f}'.format(model_name, test_median))
+#print('{:<30} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-'''
+
