@@ -152,6 +152,8 @@ opt = tf.train.AdamOptimizer(learning_rate)
 
 # Training error
 #s_error = nn.pbc_loss_scaled(X_input, X_pred_single, X_truth)
+s_error = nn.pbc_loss_scaled(X_input, X_pred_single0, X_truth)
+s_error = nn.pbc_loss_scaled(X_input, X_pred_single1, X_truth)
 m_error = nn.pbc_loss_scaled(X_input, X_pred_multi,  X_truth)
 
 # Backprop on loss
