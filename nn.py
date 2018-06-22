@@ -1033,7 +1033,7 @@ def pbc_loss_scaled(x_input, x_pred, x_truth):
     loc_error = mse(loc_pred, loc_truth)
     vel_error = mse(vel_pred, vel_truth, vel=True)
 
-    error = (loc_error / loc_scalar) + 1.3*(vel_error / vel_scalar)
+    error = (loc_error / loc_scalar) + (vel_error / vel_scalar)
     return error
 
 
