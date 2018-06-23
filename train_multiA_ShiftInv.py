@@ -244,8 +244,8 @@ for step in range(num_iters):
 
 # Save trained variables and session
 saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
-
 '''
+
 # MULTI-STEP
 # ----------------
 # Helper
@@ -291,8 +291,8 @@ for step in range(num_iters):
 
     # Save
     if save_checkpoint(step):
-        #tr_error = sess.run(m_error, feed_dict=fdict)
-        #print('checkpoint {:>5}: {}'.format(step, tr_error))
+        tr_error = sess.run(m_error, feed_dict=fdict)
+        print('checkpoint {:>5}: {}'.format(step, tr_error))
         saver.save(sess, model_path + model_name, global_step=step+num_iters, write_meta_graph=True)
 
 
@@ -380,5 +380,5 @@ print('{:<18} median    loc: {:.9f}'.format(model_name, np.median(test_loss_loc[
 utils.save_loss(loss_path + model_name, test_loss, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
-code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
