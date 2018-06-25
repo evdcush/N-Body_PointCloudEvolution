@@ -244,65 +244,10 @@ for step in range(num_iters):
 
 # Save trained variables and session
 saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
-'''
-
-# MULTI-STEP
-# ----------------
-# Helper
-def get_multi_coo(x):
-    multi_coo = np.zeros((m_coo_shape)).astype(np.int32)
-    for i in range(num_rs_layers):
-        multi_coo[i] = nn.to_coo_batch(get_list_csr(x[i]))
-    return multi_coo
-
-print('\nTraining Multi-step:\n{}'.format('='*78))
-#np.random.seed(utils.DATASET_SEED)
-for step in range(num_iters):
-    # Data batching
-    # ----------------
-    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (3, b, N, 6)
-
-    # split data
-    x_in    = _x_batch[0]  # (b, N, 6)
-    x_truth = _x_batch[-1] # (b, N, 6)
-
-    # Graph data
-    # ----------------
-    coo_segs = get_multi_coo(_x_batch[:-1]) # (num_rs_layers, 3, c)
-
-    # Feed data to tensors
-    # ----------------
-    fdict = {X_input: x_in,
-             X_truth: x_truth,
-             COO_seg_multi: coo_segs,
-             }
-
-    # training pass
-    m_train.run(feed_dict=fdict)
-
-    # Checkpoint
-    # ----------------
-    # Track error
-    """
-    if (step + 1) % 5 == 0:
-        e = sess.run(m_error, feed_dict=fdict)
-        print('{:>5}: {}'.format(step+1, e))
-    """
-
-    # Save
-    if save_checkpoint(step):
-        tr_error = sess.run(m_error, feed_dict=fdict)
-        print('checkpoint {:>5}: {}'.format(step, tr_error))
-        saver.save(sess, model_path + model_name, global_step=step+num_iters, write_meta_graph=True)
-
-
 # END training
 # ========================================
 print('elapsed time: {}'.format(time.time() - start_time))
 
-# Save trained variables and session
-saver.save(sess, model_path + model_name, global_step=2*num_iters, write_meta_graph=True)
-'''
 X_train = None # reduce memory overhead
 
 
