@@ -138,6 +138,8 @@ train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M],)
 # disgusting hardcoded variables because tensorflow can't dispatch cleanly on coeff_idx
 X_pred_single0 = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args, coeff_idx=0)
 X_pred_single1 = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args, coeff_idx=1)
+#X_pred_single2 = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args, coeff_idx=2)
+#X_pred_single3 = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args, coeff_idx=3)
 X_pred_multi = nn.ShiftInv_multi_model_func(X_input, COO_seg_multi,  redshifts, train_args, use_coeff=use_coeff)
 
 # Loss
@@ -149,6 +151,8 @@ opt = tf.train.AdamOptimizer(learning_rate)
 #s_error = nn.pbc_loss_scaled(X_input, X_pred_single, X_truth)
 s_error0 = nn.pbc_loss_scaled(X_input, X_pred_single0, X_truth)
 s_error1 = nn.pbc_loss_scaled(X_input, X_pred_single1, X_truth)
+#s_error2 = nn.pbc_loss_scaled(X_input, X_pred_single2, X_truth)
+#s_error3 = nn.pbc_loss_scaled(X_input, X_pred_single3, X_truth)
 m_error = nn.pbc_loss_scaled(X_input, X_pred_multi,  X_truth)
 
 # Backprop on loss
