@@ -27,7 +27,7 @@ def load_cube(mname, true_data=False):
         return np.load(dpath.format(mname, 'prediction'))
 
 # model names
-pred_mname = 'NOSC_MULT_'
+pred_mname = 'SC_NOMU_'
 #pred_mname = 'MSingle_agg_ZG_3-19'  # aggregates hyperparameters from each individually trained model
 
 # redshift vars
@@ -102,7 +102,15 @@ def plot_3D_pointcloud_ax(ax, x_true, x_hat, rs_idx, sample_idx, pt_size=(.9,.9)
     #return fig
 
 def plot_quiver_axes(ax, coo, vel, **quiver_kwargs):
-    ax.quiver(*coo, *vel, **quiver_kwargs)
+    #ax.quiver(*coo, *vel, **quiver_kwargs)
+    xc = coo[:,:1]
+    yc = coo[:,1:2]
+    zc = coo[:,2:3]
+    xv = vel[:,:1]
+    yv = vel[:,1:2]
+    zv = vel[:,2:3]
+
+    ax.quiver(xc, yc, zc, xv, yv, zv, **quiver_kwargs)
 
 def get_mask(x, bound=0.1):
     xtmp = x[...,:3]
@@ -128,27 +136,35 @@ def plot_3D_quiver_ax(ax, x_true, x_hat, rs_idx, sample_idx, pt_size=(.9,.9), co
     xin = mask_data(xin, mask)
 
     # data vecs
-    xt_coo  = split_xyz(xt)
-    xh_coo  = split_xyz(xh)
-    xin_coo = split_xyz(xin)
+    #xt_coo  = split_xyz(xt)
+    #xh_coo  = split_xyz(xh)
+    #xin_coo = split_xyz(xin)
+    xt_coo  = xt[...,:3]
+    xh_coo  = xh[...,:3]
+    xin_coo = xin[...,:3]
+    xin_vel = xin[...,3:]
 
     # fig
     #fig = plt.figure(figsize=fsize)
     #ax = fig.add_subplot(111, projection='3d')
 
     # arrows
-    arrow_input = (xin_coo, split_xyz(xin, vel=True))
-    arrow_truth = (xt_coo, split_xyz(xt[...,:3] - xin[...,:3]))
-    arrow_pred  = (xh_coo, split_xyz(xh[...,:3] - xin[...,:3]))
+    #arrow_input = (xin_coo, split_xyz(xin, vel=True))
+    #arrow_truth = (xt_coo, split_xyz(xt[...,:3] - xin[...,:3]))
+    #arrow_pred  = (xh_coo, split_xyz(xh[...,:3] - xin[...,:3]))
+    arrow_input = (xin_coo, xin_vel)
+    arrow_truth = (xt_coo, xt_coo - xin_coo)
+    arrow_pred  = (xh_coo, xh_coo - xin_coo)
 
     # plot
     quiver_kwargs = {'pivot': 'middle', 'length': 1.0, 'normalize': False, 'alpha': 0.4, 'linewidths': 0.5}
     #arrow_true = (split_xyz(xin), spl)
     #coo = split_xyz(x)
     #vel = split_xyz(x, vel=True)
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     plot_quiver_axes(ax, *arrow_truth, **quiver_kwargs, colors='r')
     plot_quiver_axes(ax, *arrow_pred,  **quiver_kwargs, colors='b')
-    #plot_quiver_axes(ax, *arrow_input, **quiver_kwargs, colors='g')
+    plot_quiver_axes(ax, *arrow_input, **quiver_kwargs, colors='g')
 
     # label
     ax.set_xlabel('X', size=AX_LABEL_SIZE)
@@ -160,7 +176,7 @@ def plot_3D_quiver_ax(ax, x_true, x_hat, rs_idx, sample_idx, pt_size=(.9,.9), co
 # graph ops
 #=============================================================================
 
-k = 8
+k = 3
 fsize = (k*num_rs_layers,k) # (w, h)
 #fsize = (k*4,k*2)
 particle_size = (.8,.8)
@@ -211,7 +227,7 @@ for subplot, rs_idx in zip(subplots_arrow, rs_indices):
 #mu = np.mean(test_medians)
 
 mu = np.median(test_error[:,-1])
-fig.suptitle("Location-only error, Single-step & Multi-step training, 9K iters", size=24)
+fig.suptitle("Scaled Loss, Single-step only training, 9K iters", size=24)
 
 plt.tight_layout()
 #plt.subplots_adjust(left=0.125, right=0.9, bottom=0.1, top=0.9, wspace=0.2, hspace=0.2)
@@ -232,8 +248,9 @@ if rotate:
 #fig.savefig(spath + 'test', dpi=2400,bbox_inches='tight') # warning, this makes a huge image
 #fig.savefig(spath + 'IndividuallyTrained_arrows', dpi=1000, bbox_inches='tight') # warning, this makes a huge image
 
-fig.savefig(spath + 'LocOnly_mult', dpi=1000, bbox_inches='tight') # warning, this makes a huge image
+#fig.savefig(spath + 'Scaled_no_mult2', dpi=1000, bbox_inches='tight') # warning, this makes a huge image
 #fig.savefig(spath+ 'test')
 print('finished')
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-#plt.show()
+
+plt.show()
+code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
