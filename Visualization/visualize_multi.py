@@ -53,6 +53,7 @@ print('X_true.shape: {}\nX_pred.shape: {}'.format(X_true.shape, X_pred.shape))
 # plot fns
 #=============================================================================
 AX_LABEL_SIZE = 20
+BOUND = 0.1
 split_coo = lambda x: np.split(x[...,:3],3,axis=-1)
 split_vel = lambda x: np.split(x[...,3:],3,axis=-1)
 
@@ -85,6 +86,20 @@ def plot_3D_pointcloud(x_true, x_hat, rs_idx, sample_idx, pt_size=(.9,.9), color
     ax.set_zlabel('Z', size=20)
     return fig
 '''
+
+def normalize_velocity(x_vel):
+    vel_mean = np.mean(x_vel, axis=0)
+    vel_std = np.std(x_vel, axis=0)
+    x_vel_norm = (x_vel - vel_mean) / vel_std
+
+    #a,b = BOUND, 1 - BOUND
+    #vel_min = np.min(x_vel)
+    #vel_max = np.max(x_vel)
+    #x_vel_rescaled = (b-a) * (x_vel - vel_min) / (vel_max - vel_min) + a
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    return x_vel_norm
+
+
 def plot_3D_pointcloud_ax(ax, x_true, x_hat, rs_idx, sample_idx, pt_size=(.9,.9), colors=('r','b'), fsize=(18,18)):
     xt, xh = get_samples(x_true, x_hat, rs_idx, sample_idx)
     xt_xyz = split_xyz(xt)
@@ -112,7 +127,7 @@ def plot_quiver_axes(ax, coo, vel, **quiver_kwargs):
 
     ax.quiver(xc, yc, zc, xv, yv, zv, **quiver_kwargs)
 
-def get_mask(x, bound=0.1):
+def get_mask(x, bound=BOUND):
     xtmp = x[...,:3]
     lower, upper = bound, 1-bound
     mask1 = np.logical_and(xtmp[:,0] < upper, xtmp[:,0] > lower)
@@ -149,22 +164,19 @@ def plot_3D_quiver_ax(ax, x_true, x_hat, rs_idx, sample_idx, pt_size=(.9,.9), co
     #ax = fig.add_subplot(111, projection='3d')
 
     # arrows
-    #arrow_input = (xin_coo, split_xyz(xin, vel=True))
-    #arrow_truth = (xt_coo, split_xyz(xt[...,:3] - xin[...,:3]))
-    #arrow_pred  = (xh_coo, split_xyz(xh[...,:3] - xin[...,:3]))
     arrow_input = (xin_coo, xin_vel)
     arrow_truth = (xt_coo, xt_coo - xin_coo)
     arrow_pred  = (xh_coo, xh_coo - xin_coo)
 
     # plot
-    quiver_kwargs = {'pivot': 'middle', 'length': 1.0, 'normalize': False, 'alpha': 0.4, 'linewidths': 0.5}
+    quiver_kwargs = {'pivot': 'middle', 'length': 1.0, 'normalize': False, 'alpha': 0.4, 'linewidths': 0.5, 'scale':2.3}
     #arrow_true = (split_xyz(xin), spl)
     #coo = split_xyz(x)
     #vel = split_xyz(x, vel=True)
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    plot_quiver_axes(ax, *arrow_truth, **quiver_kwargs, colors='r')
-    plot_quiver_axes(ax, *arrow_pred,  **quiver_kwargs, colors='b')
-    plot_quiver_axes(ax, *arrow_input, **quiver_kwargs, colors='g')
+    plot_quiver_axes(ax, *arrow_truth, **quiver_kwargs, color='r',)
+    #plot_quiver_axes(ax, *arrow_pred,  **quiver_kwargs, color='b', scale=2.3)
+    #plot_quiver_axes(ax, *arrow_input, **quiver_kwargs, color='g', scale=np.max(xin_vel))
 
     # label
     ax.set_xlabel('X', size=AX_LABEL_SIZE)
