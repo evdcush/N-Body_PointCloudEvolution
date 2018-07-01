@@ -23,9 +23,6 @@ def volumize_ptc(data_in, opacity=.5, labels=None, color=(1,0,0),frame=True,
     xshadow, yshadow, zshadow = shadow
     if labels is None:
         pts = mlab.points3d(data[:,0], data[:,1], data[:,2], mode=mode, color=color, opacity=opacity, figure=figure, scale_factor=scale_factor)
-        #mlab.pipeline.volume(mlab.pipeline.gaussian_splatter(pts, figure=figure))
-        #pts = mlab.points3d(data[:,0], data[:,1], data[:,2], mode=mode, color=color, opacity=opacity, figure=figure, scale_mode='scalar', scale_factor=scale_factor)
-        #pts = mlab.points3d(data[:,0], data[:,1], data[:,2], color=color, opacity=opacity, figure=figure, scale_factor=scale_factor)
     else:
         for l in np.unique(labels):
             color = tuple(list(np.random.rand(3)))
@@ -105,14 +102,9 @@ data_dir = '../multi_9k/{}_X32_11-19_prediction.npy'
 
 #x_input = np.load('../X05.npy')
 x_truth = np.load('../multi_9k/X32_11-19_true.npy')
-x_input = x_truth[0]
-x_truth = x_truth[-1]
-x_pred  = np.load(data_dir.format(model_name))[-1]
-
-#data_dir = '../Models/'
-#x_input = np.load(data_dir + model_name + 'train_input.npy')
-#x_truth = np.load(data_dir + model_name + 'train_truth.npy')
-#x_pred  = np.load(data_dir + model_name + 'train_pred.npy')
+x_input = x_truth[0, j]
+x_truth = x_truth[-1, j]
+x_pred  = np.load(data_dir.format(model_name))[-1, j]
 
 
 xtmp = x_input[j,:,:3]
@@ -139,9 +131,9 @@ sfactor = .005
 #j = least
 #print('displacement: {} at {}'.format(displacement[j], j))
 
-arrow_true  = (x_input[j,mask_nz,:3], x_truth[j,mask_nz,:3] - x_input[j,mask_nz,:3])
-arrow_input = (x_input[j,mask_nz,:3], x_input[j,mask_nz,3:])
-arrow_pred  = (x_input[j,mask_nz,:3], x_pred[j, mask_nz,:3] - x_input[j,mask_nz,:3])
+arrow_true  = (x_input[mask_nz,:3], x_truth[mask_nz,:3] - x_input[mask_nz,:3])
+arrow_input = (x_input[mask_nz,:3], x_input[mask_nz,3:])
+arrow_pred  = (x_input[mask_nz,:3], x_pred[ mask_nz,:3] - x_input[mask_nz,:3])
 volumize_arrow(*arrow_true,  figure=fig, color=red,   opacity=opacity, mode=arrow_mode)
 volumize_arrow(*arrow_input, figure=fig, color=green, opacity=opacity, mode=arrow_mode)
 volumize_arrow(*arrow_pred,  figure=fig, color=blue,  opacity=opacity, mode=arrow_mode)

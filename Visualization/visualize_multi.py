@@ -57,14 +57,14 @@ def get_samples(x_true, x_hat, rs_idx, sample_idx):
     xh =  x_hat[rs-1, j]
     return xt, xh
 
-def plot_3D_pointcloud_ax(ax, x_true, x_hat, rs_idx, sample_idx, pt_size=.6):
+def plot_3D_pointcloud_ax(ax, x_true, x_hat, rs_idx, sample_idx, pt_size=.2):
     xt, xh = get_samples(x_true, x_hat, rs_idx, sample_idx)
     xt_xyz = split_xyz(xt[...,:3])
     xh_xyz = split_xyz(xh[...,:3])
 
     # plot
-    ax.scatter(*xt_xyz, s=pt_size, c='r', alpha=0.3)
-    ax.scatter(*xh_xyz, s=pt_size, c='b', alpha=0.3)
+    ax.scatter(*xt_xyz, s=pt_size, c='r', alpha=0.5)
+    ax.scatter(*xh_xyz, s=pt_size, c='b', alpha=0.6)
 
     # Axis labels
     ax.set_xlabel('X', size=AX_LABEL_SIZE)
@@ -176,11 +176,11 @@ def plot_3D(cube_idx, arrow=False, save_fig=False):
     fig.suptitle('{} {}'.format(mname, ftype), size=24)
     plt.tight_layout()
     if save_fig:
-        sname = '{}_{}-{}_{}'.format(mname, rs_idx[0], rs_idx[-1], ftype)
+        sname = '{}_{}-{}_{}'.format(mname, redshift_steps[0], redshift_steps[-1], ftype)
         fig.savefig(spath + sname, dpi=save_dpi, bbox_inches='tight') # warning, this makes a huge image
 
 
-plot_3D(sample_idx, arrow=False, save_fig=True)
+plot_3D(sample_idx, arrow=True, save_fig=True)
 print('finished')
 
 plt.show()
