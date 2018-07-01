@@ -28,7 +28,6 @@ def load_cube(mname, true_data=False):
 
 # model names
 pred_mname = 'SC_NOMU_'
-#pred_mname = 'MSingle_agg_ZG_3-19'  # aggregates hyperparameters from each individually trained model
 
 # redshift vars
 redshift_steps = [11, 15, 19] # reverse sorted indices into redshifts. redshifts[19] == redshifts[-1] == 0.0000
@@ -39,15 +38,7 @@ num_rs_layers = num_rs - 1
 # load
 X_true = load_cube('', True)
 X_pred = load_cube(pred_mname)
-#X_pred = np.zeros((num_rs_layers,) + X_true.shape[1:])
-#pred_mnames = ['M_ZG_3-7','M_ZG_7-11','M_ZG_11-15','M_ZG_15-19']
-'''
-rs_tups = [(3,7), (7, 11), (11, 15), (15, 19)]
-for idx, rs in enumerate(rs_tups):
-    mpath_ind = './Model/M_ZG_{0}-{1}/Cubes/X32_{0}-{1}_prediction.npy'.format(rs[0], rs[1])
-    X_pred[idx] = np.load(mpath_ind)
-print('X_true.shape: {}\nX_pred.shape: {}'.format(X_true.shape, X_pred.shape))
-'''
+
 
 #=============================================================================
 # plot fns
@@ -69,36 +60,6 @@ def get_samples(x_true, x_hat, rs_idx, sample_idx):
     xt = x_true[rs, j]
     xh =  x_hat[rs-1, j]
     return xt, xh
-'''
-def plot_3D_pointcloud(x_true, x_hat, rs_idx, sample_idx, pt_size=(.9,.9), colors=('r','b'), fsize=(18,18)):
-    xt, xh = get_samples(x_true, x_hat, rs_idx, sample_idx)
-    xt_xyz = split_xyz(xt)
-    xh_xyz = split_xyz(xh)
-    # fig
-    fig = plt.figure(figsize=fsize)
-    ax = fig.add_subplot(111, projection='3d')
-    # plot
-    ax.scatter(*xt_xyz, s=pt_size[0], c=colors[0])
-    ax.scatter(*xh_xyz, s=pt_size[1], c=colors[1])
-    # label
-    ax.set_xlabel('X', size=20)
-    ax.set_ylabel('Y', size=20)
-    ax.set_zlabel('Z', size=20)
-    return fig
-'''
-
-def normalize_velocity(x_vel):
-    vel_mean = np.mean(x_vel, axis=0)
-    vel_std = np.std(x_vel, axis=0)
-    x_vel_norm = (x_vel - vel_mean) / vel_std
-
-    #a,b = BOUND, 1 - BOUND
-    #vel_min = np.min(x_vel)
-    #vel_max = np.max(x_vel)
-    #x_vel_rescaled = (b-a) * (x_vel - vel_min) / (vel_max - vel_min) + a
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    return x_vel_norm
-
 
 def plot_3D_pointcloud_ax(ax, x_true, x_hat, rs_idx, sample_idx, pt_size=(.9,.9), colors=('r','b'), fsize=(18,18)):
     xt, xh = get_samples(x_true, x_hat, rs_idx, sample_idx)

@@ -95,8 +95,7 @@ def volumize_arrow(datain,# n x 3
         mlab.savefig(filename, size=(500,500), figure=figure, magnification='auto')
         if not show:
             mlab.clf()
-    if show:
-        mlab.show()
+    #if show: mlab.show()
 
 
 j = 39 # sample
@@ -143,10 +142,11 @@ sfactor = .005
 arrow_true  = (x_input[j,mask_nz,:3], x_truth[j,mask_nz,:3] - x_input[j,mask_nz,:3])
 arrow_input = (x_input[j,mask_nz,:3], x_input[j,mask_nz,3:])
 arrow_pred  = (x_input[j,mask_nz,:3], x_pred[j, mask_nz,:3] - x_input[j,mask_nz,:3])
-volumize_arrow(*arrow_true,  figure=fig, color=red,   opacity=.3, show=False, mode=arrow_mode)
-volumize_arrow(*arrow_input, figure=fig, color=green, opacity=.3, show=False, mode=arrow_mode)
-volumize_arrow(*arrow_pred,  figure=fig, color=blue,  opacity=.3, show=True,  mode=arrow_mode)
+volumize_arrow(*arrow_true,  figure=fig, color=red,   opacity=.3, mode=arrow_mode)
+volumize_arrow(*arrow_input, figure=fig, color=green, opacity=.3, mode=arrow_mode)
+volumize_arrow(*arrow_pred,  figure=fig, color=blue,  opacity=.3, mode=arrow_mode)
 #volumize_ptc(x_truth[j,mask_nz,:3], show=False,figure=fig, opacity=.5, color=red,  mode='sphere', scale_factor=sfactor)
 #volumize_ptc(x_input[j,mask_nz,:3], show=False,figure=fig, opacity=.9, color=green,mode='sphere', scale_factor=sfactor)
 #volumize_ptc( x_pred[j,mask_nz,:3], show=True, figure=fig, opacity=.5, color=blue, mode='sphere', scale_factor=sfactor)
 
+mlab.show()
