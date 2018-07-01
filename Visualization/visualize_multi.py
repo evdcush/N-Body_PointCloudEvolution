@@ -5,8 +5,6 @@ import os, code, sys, time
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from sklearn.neighbors import kneighbors_graph
-import tensorflow as tf
 
 #=============================================================================
 # data vars
@@ -59,14 +57,14 @@ def get_samples(x_true, x_hat, rs_idx, sample_idx):
     xh =  x_hat[rs-1, j]
     return xt, xh
 
-def plot_3D_pointcloud_ax(ax, x_true, x_hat, rs_idx, sample_idx, pt_size=.9):
+def plot_3D_pointcloud_ax(ax, x_true, x_hat, rs_idx, sample_idx, pt_size=.6):
     xt, xh = get_samples(x_true, x_hat, rs_idx, sample_idx)
     xt_xyz = split_xyz(xt[...,:3])
     xh_xyz = split_xyz(xh[...,:3])
 
     # plot
-    ax.scatter(*xt_xyz, s=pt_size, c='r', alpha=0.5)
-    ax.scatter(*xh_xyz, s=pt_size, c='b', alpha=0.5)
+    ax.scatter(*xt_xyz, s=pt_size, c='r', alpha=0.3)
+    ax.scatter(*xh_xyz, s=pt_size, c='b', alpha=0.3)
 
     # Axis labels
     ax.set_xlabel('X', size=AX_LABEL_SIZE)
@@ -77,7 +75,7 @@ def plot_3D_pointcloud_ax(ax, x_true, x_hat, rs_idx, sample_idx, pt_size=.9):
     labels = ['Truth', 'Pred']
     leg = ax.legend(labels, loc=(0.8,0.82))
     for line, text in zip(leg.get_lines(), leg.get_texts()):
-        line.set_linewidth(4)
+        line.set_linewidth(10)
         text.set_fontsize('large')
 
 
@@ -142,14 +140,13 @@ def plot_3D_quiver_ax(ax, x_true, x_hat, rs_idx, sample_idx):
 # Figure/plot properties
 k = 10
 fsize = (k*num_rs_layers,k) # (w, h)
-particle_size = (.8,.8)
+save_dpi = 1000
 
 xt = np.copy(X_true)
 xh = np.copy(X_pred)
 
-sample_idx = 39 #185
-#rs_idx = 4
-#idx_tup = (rs_idx, sample_idx)
+sample_idx = 39
+#sample_idx = 185
 """
 Pyplot subplot numbers:
     - 111: 1x1 grid, first subplot
@@ -163,36 +160,27 @@ subplots_idx = [int('1{}{}'.format(num_cols, i)) for i in range(1, num_rs)]
 rs_idx = [i for i in range(1, num_rs)]
 
 
-
-def plot_particles(cube_idx):
+def plot_3D(cube_idx, arrow=False, save_fig=False):
     for subplot, zi in zip(subplots_idx, rs_idx):
         print('ARROW redshifts[{}] = {}'.format(zi, redshifts[zi]))
         median_error = np.median(test_error[:,zi-1])
         ax_title = 'Redshift {:.4f}\nMedian error: {:.5f}'.format(redshifts[zi], median_error)
         ax = fig.add_subplot(subplot, projection='3d')
         ax.set_title(ax_title, pad=0.3)
-        plot_3D_pointcloud_ax(ax, xt, xh, zi, cube_idx)
-    ftitle = '{} Point Cloud'.format(mname)
-    fig.suptitle(ftitle, size=24)
+        if arrow:
+            plot_3D_quiver_ax(ax, xt, xh, zi, cube_idx)
+            ftype = 'Displacement'
+        else:
+            plot_3D_pointcloud_ax(ax, xt, xh, zi, cube_idx)
+            ftype = 'PointCloud'
+    fig.suptitle('{} {}'.format(mname, ftype), size=24)
+    plt.tight_layout()
+    if save_fig:
+        sname = '{}_{}-{}_{}'.format(mname, rs_idx[0], rs_idx[-1], ftype)
+        fig.savefig(spath + sname, dpi=save_dpi, bbox_inches='tight') # warning, this makes a huge image
 
 
-
-def plot_arrows(cube_idx):
-    for subplot, zi in zip(subplots_idx, rs_idx):
-        print('ARROW redshifts[{}] = {}'.format(zi, redshifts[zi]))
-        median_error = np.median(test_error[:,zi-1])
-        ax_title = 'Redshift {:.4f}\nMedian error: {:.5f}'.format(redshifts[zi], median_error)
-        ax = fig.add_subplot(subplot, projection='3d')
-        ax.set_title(ax_title, pad=0.3)
-        plot_3D_quiver_ax(ax, xt, xh, zi, cube_idx)
-    ftitle = '{} Displacement'.format(mname)
-    fig.suptitle(ftitle, size=24)
-
-plot_arrows(sample_idx)
-
-plt.tight_layout()
-#fig.savefig(spath + 'Scaled_no_mult2', dpi=1000, bbox_inches='tight') # warning, this makes a huge image
-#fig.savefig(spath+ 'test')
+plot_3D(sample_idx, arrow=False, save_fig=True)
 print('finished')
 
 plt.show()
