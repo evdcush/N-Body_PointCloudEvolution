@@ -71,8 +71,8 @@ def volumize_arrow(datain,# n x 3
         data /= np.max(data, keepdims=True)
     data[:,0] += np.float(col)
     data[:,1] += np.float(row)
-    xproj,yproj,zproj = proj
-    xshadow,yshadow,zshadow=shadow
+    #xproj,yproj,zproj = proj
+    #xshadow,yshadow,zshadow=shadow
     if labels is None:
         #pts = mlab.points3d(data[:,0], data[:,1], data[:,2], mode=mode, color=color, opacity=opacity, figure=figure, scale_factor=scale_factor)
         #mlab.pipeline.volume(mlab.pipeline.gaussian_splatter(pts, figure=figure))
@@ -100,8 +100,7 @@ def volumize_arrow(datain,# n x 3
 
 j = 39 # sample
 
-#model_name = 'SC_NOMU'
-model_name = 'SC_MULT'
+model_name = 'SC_NOMU'
 data_dir = '../multi_9k/{}_X32_11-19_prediction.npy'
 
 #x_input = np.load('../X05.npy')
@@ -130,6 +129,7 @@ red   = (1,0,0)
 green = (0,1,0)
 blue  = (0,0,1)
 arrow_mode = 'arrow'
+opacity = .8
 sfactor = .005
 
 #displacement = np.mean((x_truth[:,mask_nz,:3] - x_input[:,mask_nz,:3]),axis=(1,2))
@@ -142,11 +142,12 @@ sfactor = .005
 arrow_true  = (x_input[j,mask_nz,:3], x_truth[j,mask_nz,:3] - x_input[j,mask_nz,:3])
 arrow_input = (x_input[j,mask_nz,:3], x_input[j,mask_nz,3:])
 arrow_pred  = (x_input[j,mask_nz,:3], x_pred[j, mask_nz,:3] - x_input[j,mask_nz,:3])
-volumize_arrow(*arrow_true,  figure=fig, color=red,   opacity=.3, mode=arrow_mode)
-volumize_arrow(*arrow_input, figure=fig, color=green, opacity=.3, mode=arrow_mode)
-volumize_arrow(*arrow_pred,  figure=fig, color=blue,  opacity=.3, mode=arrow_mode)
+volumize_arrow(*arrow_true,  figure=fig, color=red,   opacity=opacity, mode=arrow_mode)
+volumize_arrow(*arrow_input, figure=fig, color=green, opacity=opacity, mode=arrow_mode)
+volumize_arrow(*arrow_pred,  figure=fig, color=blue,  opacity=opacity, mode=arrow_mode)
 #volumize_ptc(x_truth[j,mask_nz,:3], show=False,figure=fig, opacity=.5, color=red,  mode='sphere', scale_factor=sfactor)
 #volumize_ptc(x_input[j,mask_nz,:3], show=False,figure=fig, opacity=.9, color=green,mode='sphere', scale_factor=sfactor)
 #volumize_ptc( x_pred[j,mask_nz,:3], show=True, figure=fig, opacity=.5, color=blue, mode='sphere', scale_factor=sfactor)
+#mlab.savefig('test3.png', size=(3000,3000), figure=fig)
 
 mlab.show()

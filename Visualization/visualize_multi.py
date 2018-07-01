@@ -9,14 +9,13 @@ from sklearn.neighbors import kneighbors_graph
 import tensorflow as tf
 
 import utils
-import nn
 from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS
 
 #=============================================================================
 # data vars
 #=============================================================================
 # paths
-dpath = './multi_9k/{}X32_11-19_{}.npy'
+dpath = '../multi_9k/{}X32_11-19_{}.npy'
 spath = './Imgs/'
 
 # load fn
@@ -160,7 +159,7 @@ colors = (truth_color, pred_color)
 xt = np.copy(X_true)
 xh = np.copy(X_pred)
 
-sample_idx = 185
+sample_idx = 39 #185
 #rs_idx = 4
 #idx_tup = (rs_idx, sample_idx)
 
