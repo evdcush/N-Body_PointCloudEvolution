@@ -59,21 +59,27 @@ def get_samples(x_true, x_hat, rs_idx, sample_idx):
     xh =  x_hat[rs-1, j]
     return xt, xh
 
-def plot_3D_pointcloud_ax(ax, x_true, x_hat, rs_idx, sample_idx, pt_size=(.9,.9), colors=('r','b'), fsize=(18,18)):
+def plot_3D_pointcloud_ax(ax, x_true, x_hat, rs_idx, sample_idx, pt_size=.9):
     xt, xh = get_samples(x_true, x_hat, rs_idx, sample_idx)
     xt_xyz = split_xyz(xt[...,:3])
     xh_xyz = split_xyz(xh[...,:3])
-    # fig
-    #fig = plt.figure(figsize=fsize)
-    #ax = fig.add_subplot(111, projection='3d')
+
     # plot
-    ax.scatter(*xt_xyz, s=pt_size[0], c=colors[0], alpha=0.5)
-    ax.scatter(*xh_xyz, s=pt_size[1], c=colors[1], alpha=0.5)
-    # label
+    ax.scatter(*xt_xyz, s=pt_size, c='r', alpha=0.5)
+    ax.scatter(*xh_xyz, s=pt_size, c='b', alpha=0.5)
+
+    # Axis labels
     ax.set_xlabel('X', size=AX_LABEL_SIZE)
     ax.set_ylabel('Y', size=AX_LABEL_SIZE)
     ax.set_zlabel('Z', size=AX_LABEL_SIZE)
-    #return fig
+
+    # Legend labels
+    labels = ['Truth', 'Pred']
+    leg = ax.legend(labels, loc=(0.8,0.82))
+    for line, text in zip(leg.get_lines(), leg.get_texts()):
+        line.set_linewidth(4)
+        text.set_fontsize('large')
+
 
 def plot_quiver_axes(ax, coo, vel, **quiver_kwargs):
     ax.quiver(*coo, *vel, **quiver_kwargs)
@@ -157,16 +163,17 @@ subplots_idx = [int('1{}{}'.format(num_cols, i)) for i in range(1, num_rs)]
 rs_idx = [i for i in range(1, num_rs)]
 
 
-'''
-for subplot, rs_idx in zip(subplots_point, rs_indices):
-    print('POINT redshifts[{}] = {}'.format(rs_idx, redshifts[rs_idx]))
-    ax_title = 'Redshift: {:.4f}'.format(redshifts[rs_idx])
-    ax = fig.add_subplot(subplot, projection='3d')
-    ax.title.set_text(ax_title)
-    plot_3D_pointcloud_ax(ax, xt, xh, rs_idx, sample_idx, colors=colors, pt_size=particle_size, fsize=fsize)
-'''
 
 def plot_particles(cube_idx):
+    for subplot, zi in zip(subplots_idx, rs_idx):
+        print('ARROW redshifts[{}] = {}'.format(zi, redshifts[zi]))
+        median_error = np.median(test_error[:,zi-1])
+        ax_title = 'Redshift {:.4f}\nMedian error: {:.5f}'.format(redshifts[zi], median_error)
+        ax = fig.add_subplot(subplot, projection='3d')
+        ax.set_title(ax_title, pad=0.3)
+        plot_3D_pointcloud_ax(ax, xt, xh, zi, cube_idx)
+    ftitle = '{} Point Cloud'.format(mname)
+    fig.suptitle(ftitle, size=24)
 
 
 
@@ -174,7 +181,7 @@ def plot_arrows(cube_idx):
     for subplot, zi in zip(subplots_idx, rs_idx):
         print('ARROW redshifts[{}] = {}'.format(zi, redshifts[zi]))
         median_error = np.median(test_error[:,zi-1])
-        ax_title = 'Redshift {:.4f}\nmedian error: {:.5f}'.format(redshifts[zi], median_error)
+        ax_title = 'Redshift {:.4f}\nMedian error: {:.5f}'.format(redshifts[zi], median_error)
         ax = fig.add_subplot(subplot, projection='3d')
         ax.set_title(ax_title, pad=0.3)
         plot_3D_quiver_ax(ax, xt, xh, zi, cube_idx)
