@@ -97,14 +97,13 @@ def volumize_arrow(datain,# n x 3
 
 j = 39 # sample
 
-model_name = 'SC_NOMU'
-data_dir = '../multi_9k/{}_X32_11-19_prediction.npy'
+dpath = './X32_11-19_{}.npy'
 
 #x_input = np.load('../X05.npy')
-x_truth = np.load('../multi_9k/X32_11-19_true.npy')
+x_truth = np.load(dpath.format('true'))
 x_input = x_truth[0, j]
 x_truth = x_truth[-1, j]
-x_pred  = np.load(data_dir.format(model_name))[-1, j]
+x_pred  = np.load(dpath.format('prediction'))[-1, j]
 
 
 xtmp = x_input[j,:,:3]
