@@ -132,7 +132,7 @@ train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M],)
 # Model outputs
 # ----------------
 # Train
-pred_in = (X_input, COO_seg_single, RS_in, train_args)
+pred_in = (X_input, COO_seg, RS_in, train_args)
 X_preds = {i: nn.ShiftInv_single_model_func(*pred_in, coeff_idx=i) for i in range(num_rs_layers)}
 
 # Loss
@@ -197,6 +197,7 @@ for step in range(num_iters):
     # ----------------
     #np.random.shuffle(rs_tups)
     for rsi, tup in enumerate(rs_tups):
+        #print('Step {:>5}, rsi {}, tup {}'.format(step, rsi, tup))
         zx, zy = tup
         # redshift
         rs_in = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
@@ -279,6 +280,7 @@ for j in range(num_val_batches):
         # Get pred based on z index
         # ----------------
         #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        #print('V batch {:>5}, z {}'.format(j, z))
         x_pred, v_error = sess.run([X_preds[z], errors[z]], feed_dict=fdict)
 
         # Assign results
@@ -299,7 +301,7 @@ print('{:<18} median    loc: {:.9f}'.format(model_name, np.median(test_loss_loc[
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss, validation=True)
-utils.save_loss(loss_path + model_name + '_locMSE_', test_loss_loc, validation=True)
+utils.save_loss(loss_path + model_name + '_locMSE', test_loss_loc, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
