@@ -107,9 +107,7 @@ RS_in = tf.placeholder(tf.float32,   shape=(None, 1))
 # NEIGHBOR GRAPH DATA
 # ----------------
 # these shapes must be concrete for unsorted_segment_mean
-m_coo_shape = (num_rs_layers, 3, batch_size*N*M,)
-COO_seg_single = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
-COO_seg_multi  = tf.placeholder(tf.int32, shape=m_coo_shape)
+COO_seg = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
 COO_seg_val = tf.placeholder(tf.int32, shape=(3, N*M,))
 
 # COEFFS
@@ -134,13 +132,8 @@ train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M],)
 # Model outputs
 # ----------------
 # Train
-#X_pred_single = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args)
-# disgusting hardcoded variables because tensorflow can't dispatch cleanly on coeff_idx
-X_pred_single0 = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args, coeff_idx=0)
-X_pred_single1 = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args, coeff_idx=1)
-#X_pred_single2 = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args, coeff_idx=2)
-#X_pred_single3 = nn.ShiftInv_single_model_func(X_input, COO_seg_single, RS_in, train_args, coeff_idx=3)
-X_pred_multi = nn.ShiftInv_multi_model_func(X_input, COO_seg_multi,  redshifts, train_args, use_coeff=use_coeff)
+pred_in = (X_input, COO_seg_single, RS_in, train_args)
+X_preds = {i: nn.ShiftInv_single_model_func(*pred_in, coeff_idx=i) for i in range(num_rs_layers)}
 
 # Loss
 # ----------------
@@ -148,18 +141,10 @@ X_pred_multi = nn.ShiftInv_multi_model_func(X_input, COO_seg_multi,  redshifts, 
 opt = tf.train.AdamOptimizer(learning_rate)
 
 # Training error
-#s_error = nn.pbc_loss_scaled(X_input, X_pred_single, X_truth)
-s_error0 = nn.pbc_loss_scaled(X_input, X_pred_single0, X_truth)
-s_error1 = nn.pbc_loss_scaled(X_input, X_pred_single1, X_truth)
-#s_error2 = nn.pbc_loss_scaled(X_input, X_pred_single2, X_truth)
-#s_error3 = nn.pbc_loss_scaled(X_input, X_pred_single3, X_truth)
-m_error = nn.pbc_loss_scaled(X_input, X_pred_multi,  X_truth)
+errors = {i: nn.pbc_loss_scaled(X_input, X_pred, X_truth) for i, X_pred in X_preds.items()}
 
 # Backprop on loss
-#s_train = opt.minimize(s_error)
-s_train0 = opt.minimize(s_error0)
-s_train1 = opt.minimize(s_error1)
-m_train  = opt.minimize(m_error)
+trains = {i: opt.minimize(error) for i, error in errors.items()}
 
 # Validation error
 X_pred_val = tf.placeholder(tf.float32, shape=(None, N, 6))
@@ -229,21 +214,16 @@ for step in range(num_iters):
         # ----------------
         fdict = {X_input: x_in,
                  X_truth: x_truth,
-                 COO_seg_single: coo_segs,
+                 COO_seg: coo_segs,
                  RS_in: rs_in,
                  }
+        # Train
+        trains[rsi].run(feed_dict=fdict)
 
-        # training pass
-        if rsi == 0:
-            s_train0.run(feed_dict=fdict)
-            #loc_err = sess.run(s_error0, feed_dict=fdict)
-        elif rsi == 1:
-            s_train1.run(feed_dict=fdict)
-            #loc_err = sess.run(s_error1, feed_dict=fdict)
     # Save
     if save_checkpoint(step):
-        tr_error = sess.run(s_error1, feed_dict=fdict)
-        print('checkpoint {:>5}: {}'.format(step+1, tr_error))
+        checkpoint_error = sess.run(errors[rsi], feed_dict=fdict)
+        print('checkpoint {:>5}, redshift {}->{}: {}'.format(step+1, zx, zy, checkpoint_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
 # Save trained variables and session
@@ -264,9 +244,6 @@ num_val_batches = NUM_VAL_SAMPLES // batch_size
 test_predictions  = np.zeros((num_rs_layers,) + X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
 test_loss = np.zeros((num_val_batches, num_rs_layers)).astype(np.float32)
 test_loss_loc = np.zeros((num_val_batches, num_rs_layers)).astype(np.float32)
-#inputs_loss = np.zeros((num_val_batches, num_rs_layers)).astype(np.float32)
-#test_loss   = np.zeros((NUM_VAL_SAMPLES, num_rs_layers)).astype(np.float32)
-#inputs_loss = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
 
 print('\nEvaluation:\n{}'.format('='*78))
 #for j in range(X_test.shape[1]):
@@ -295,20 +272,16 @@ for j in range(num_val_batches):
         # ----------------
         fdict = {X_input: x_in,
                  X_truth: x_truth,
-                 COO_seg_single: coo_segs,
+                 COO_seg: coo_segs,
                  RS_in: rs_in,
                  }
 
-        # Gross hardcoded variables because TF
+        # Get pred based on z index
         # ----------------
         #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        if z == 0:
-            x_pred, v_error = sess.run([X_pred_single0, s_error0], feed_dict=fdict)
-        elif z == 1: # final
-            x_pred, v_error = sess.run([X_pred_single1, s_error1], feed_dict=fdict)
+        x_pred, v_error = sess.run([X_preds[z], errors[z]], feed_dict=fdict)
 
         # Assign results
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         test_predictions[z, p:q] = x_pred
         test_loss[j, z] = v_error
         v_error_loc = sess.run(val_error, feed_dict={X_pred_val: x_pred, X_truth: x_truth})
@@ -320,13 +293,13 @@ for j in range(num_val_batches):
 # median error
 #test_median = np.median(test_loss[:,-1])
 #inputs_median = np.median(inputs_loss)
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 print('{:<18} median scaled: {:.9f}'.format(model_name, np.median(test_loss[:,-1])))
 print('{:<18} median    loc: {:.9f}'.format(model_name, np.median(test_loss_loc[:,-1])))
 #print('{:<30} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss, validation=True)
+utils.save_loss(loss_path + model_name + '_locMSE_', test_loss_loc, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
