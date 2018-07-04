@@ -318,6 +318,40 @@ def ShiftInv_single_model_func(X_in, COO_feats, redshift, model_specs, coeff_idx
     #return H_out
     return get_readout(X_in + H_out)
 
+# ==== single fn
+def vel_single_model_func(X_in, COO_feats, redshift, model_specs, coeff_idx=None):
+    """
+    Args:
+        X_in (tensor): (b, N, 6)
+        COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
+        redshift (tensor): (b*N*M, 1) redshift broadcasted
+    """
+    # Get relevant model specs
+    # ========================================
+    var_scope  = model_specs.var_scope
+    num_layers = model_specs.num_layers
+    #use_vcoeff = model_specs.vcoeff
+    activation = model_specs.activation_func # default tf.nn.relu
+    dims = model_specs.dims
+
+    # Get graph inputs
+    # ========================================
+    edges, nodes = get_input_features_TF(X_in, COO_feats, dims)
+
+    # Network forward
+    # ========================================
+    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
+        H_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
+        # skip connections
+        if coeff_idx is not None:
+            #theta = utils.get_scoped_coeff_multi(coeff_idx)
+            t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx)
+            h_coo = H_out[...,:3] * t0
+            h_vel = H_out[...,3:] * t1
+            H_out = tf.concat([h_coo, h_vel], axis=-1)
+    #return H_out
+    return get_readout(X_in + H_out)
+
 # ==== Multi-A Model fn
 def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, use_coeff=False):
     """

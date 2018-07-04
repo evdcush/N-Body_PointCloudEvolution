@@ -1,7 +1,7 @@
 import mayavi
 from mayavi import mlab
 import numpy as np
-
+import code
 """
 Note: this script is in it's own directory because it uses a different
       virtualenv to manage mayavi/vtk dependencies
@@ -97,16 +97,16 @@ def volumize_arrow(datain,# n x 3
 
 j = 39 # sample
 
-dpath = './X32_11-19_{}.npy'
+dpath = '../new_multi9k/X32_3-19_{}.npy'
 
 #x_input = np.load('../X05.npy')
 x_truth = np.load(dpath.format('true'))
-x_input = x_truth[0, j]
+x_input = x_truth[-2, j]
 x_truth = x_truth[-1, j]
 x_pred  = np.load(dpath.format('prediction'))[-1, j]
 
 
-xtmp = x_input[j,:,:3]
+xtmp = x_input[:,:3]
 bound = 0.1
 lower, upper = bound, 1-bound
 mask1 = np.logical_and(xtmp[:,0] < upper, xtmp[:,0] > lower)

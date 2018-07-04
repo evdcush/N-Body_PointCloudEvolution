@@ -5,6 +5,14 @@ import os, code, sys, time
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import argparse
+
+parser = argparse.ArgumentParser()
+# argparse not handle bools well so 0,1 used instead
+parser.add_argument('--steps', '-s',   default=4, type=int,  help='')
+parser.add_argument('--arrow', '-a',   default=0, type=int,  help='')
+pargs = vars(parser.parse_args())
+start_time = time.time()
 
 #=============================================================================
 # data vars
@@ -14,31 +22,37 @@ REDSHIFTS_ZUNI = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
                  0.2983, 0.2280, 0.1639, 0.1049, 0.0505, 0.0000]
 
 # paths
-dpath = './X32_11-19_{}.npy'
+dpath = '../new_multi9k/X32_{}-19_{}.npy'
 spath = './Imgs/'
 if not os.path.exists(spath): os.makedirs(spath)
 
 
 # load fn
+'''
 def load_cube(mname, true_data=False):
     if true_data:
         return np.load(dpath.format(mname,'true')) # dont need redshift vec
     else:
         return np.load(dpath.format(mname, 'prediction'))
+'''
 
-# model names
-mname = 'ScaledLoss_ShiftInvariant'
 
 # redshift vars
-redshift_steps = [11, 15, 19] # reverse sorted indices into redshifts. redshifts[19] == redshifts[-1] == 0.0000
+full_redshift_steps = [3, 7, 11, 15, 19] # reverse sorted indices into redshifts. redshifts[19] == redshifts[-1] == 0.0000
+start = 4 - pargs['steps']
+redshift_steps = full_redshift_steps[start:]
 redshifts = [REDSHIFTS_ZUNI[i] for i in redshift_steps] # actual redshift values
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 
+# model names
+mname = 'ScaledLoss_ShiftInvariant {}-step Model'.format(num_rs_layers)
+
 # load
-X_true = np.load(dpath.format('true'))
-X_pred = np.load(dpath.format('prediction'))
-test_error = np.load(dpath.format('loss_validation'))
+cur_z = redshift_steps[0]
+X_true = np.load(dpath.format(3, 'true'))[start:]
+X_pred = np.load(dpath.format(cur_z, 'prediction'))
+test_error = np.load(dpath.format(cur_z, 'loss_validation'))
 
 
 #=============================================================================
@@ -138,15 +152,15 @@ def plot_3D_quiver_ax(ax, x_true, x_hat, rs_idx, sample_idx):
 # graph ops
 #=============================================================================
 # Figure/plot properties
-k = 10
+k = 7
 fsize = (k*num_rs_layers,k) # (w, h)
 save_dpi = 1000
 
-xt = np.copy(X_true)
-xh = np.copy(X_pred)
+xtrue = np.copy(X_true)
+xhat = np.copy(X_pred)
 
-sample_idx = 39
-#sample_idx = 185
+#sample_idx = 39
+sample_idx = 185
 """
 Pyplot subplot numbers:
     - 111: 1x1 grid, first subplot
@@ -164,24 +178,24 @@ def plot_3D(cube_idx, arrow=False, save_fig=False):
     for subplot, zi in zip(subplots_idx, rs_idx):
         print('ARROW redshifts[{}] = {}'.format(zi, redshifts[zi]))
         median_error = np.median(test_error[:,zi-1])
-        ax_title = 'Redshift {:.4f}\nMedian error: {:.5f}'.format(redshifts[zi], median_error)
+        ax_title = 'Redshift {:.4f} -> {:.4f}\nMedian error: {:.5f}'.format(redshifts[zi-1], redshifts[zi], median_error)
         ax = fig.add_subplot(subplot, projection='3d')
         ax.set_title(ax_title, pad=0.3)
         if arrow:
-            plot_3D_quiver_ax(ax, xt, xh, zi, cube_idx)
+            plot_3D_quiver_ax(ax, xtrue, xhat, zi, cube_idx)
             ftype = 'Displacement'
         else:
-            plot_3D_pointcloud_ax(ax, xt, xh, zi, cube_idx)
+            plot_3D_pointcloud_ax(ax, xtrue, xhat, zi, cube_idx)
             ftype = 'PointCloud'
-    fig.suptitle('{} {}'.format(mname, ftype), size=24)
+    fig.suptitle('{} {}'.format(mname, ftype), size=16)
     plt.tight_layout()
     if save_fig:
-        sname = '{}_{}-{}_{}'.format(mname, redshift_steps[0], redshift_steps[-1], ftype)
+        sname = 'Multi{}_{}-{}_{}'.format(num_rs_layers, redshift_steps[0], redshift_steps[-1], ftype)
         fig.savefig(spath + sname, dpi=save_dpi, bbox_inches='tight') # warning, this makes a huge image
 
 
-plot_3D(sample_idx, arrow=True, save_fig=True)
+plot_3D(sample_idx, arrow= (pargs['arrow'] == 1), save_fig=True)
 print('finished')
 
-plt.show()
+#plt.show()
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
