@@ -296,10 +296,22 @@ for j in range(num_val_batches):
 # END Validation
 # ========================================
 # median error
-#test_median = np.median(test_loss[:,-1])
+loss_median     = np.median(test_loss, axis=0)
+loss_loc_median = np.median(test_loss_loc, axis=0)
 #inputs_median = np.median(inputs_loss)
-print('{:<18} median scaled: {:.9f}'.format(model_name, np.median(test_loss[:,-1])))
-print('{:<18} median    loc: {:.9f}'.format(model_name, np.median(test_loss_loc[:,-1])))
+#print('{:<18} median scaled: {:.9f}'.format(model_name, np.median(test_loss[:,-1])))
+#print('{:<18} median    loc: {:.9f}'.format(model_name, np.median(test_loss_loc[:,-1])))
+rs_steps_tup = [(redshift_steps[i], redshift_steps[i+1]) for i in range(num_rs_layers)]
+print('\nEvaluation Median Error Statistics, {:<18}:\n{}'.format(model_name, '='*78))
+print('# SCALED LOSS:')
+for i, tup in enumerate(rs_steps_tup):
+    zx, zy = tup
+    print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, loss_median[i]))
+print('# LOCATION LOSS:')
+for i, tup in enumerate(rs_steps_tup):
+    zx, zy = tup
+    print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, loss_loc_median[i]))
+print('\nEND EVALUATION, SAVING CUBES AND LOSS\n{}'.format('='*78))
 #print('{:<30} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
 
 # save loss and predictions
