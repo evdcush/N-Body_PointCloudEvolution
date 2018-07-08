@@ -322,7 +322,7 @@ def ShiftInv_single_model_func(X_in, COO_feats, redshift, model_specs, coeff_idx
     return get_readout(X_in + H_out)
 
 # ==== single fn
-def ShiftInv_single_model_func(X_in, COO_feats, redshift, model_specs, coeff_idx=None):
+def ShiftInv_single_model_func_v1(X_in, COO_feats, model_specs, redshift=None, coeff_idx=None):
     """
     Args:
         X_in (tensor): (b, N, 6)
@@ -341,36 +341,54 @@ def ShiftInv_single_model_func(X_in, COO_feats, redshift, model_specs, coeff_idx
     # ========================================
     edges, nodes = get_input_features_TF(X_in, COO_feats, dims)
 
-
     # Network forward V1.
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         H_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
-        # skip connections
-        if coeff_idx is not None:
-            #theta = utils.get_scoped_coeff_multi(coeff_idx)
-            t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx) # (1,)
-            #h_coo = H_out_coo +  theta * X_in_vel
-            h_coo = H_out[...,:3] * t0
-            #h_vel = H_out[...,3:] * t1
-            timestep = X_in[...,3:]  * t1
-            h_out_coo = h_coo + timestep
-            H_out = tf.concat([h_out_coo, H_out[...,3:]], axis=-1)
-    #return H_out
-    return get_readout(X_in + H_out)
+        num_feats = H_out.get_shape().as_list()[-1]
+        timestep = utils.get_scoped_coeff_multi(coeff_idx) if coeff_idx is not None else utils.get_scoped_vcoeff()
+        if num_feats <= 3: # then only predicting location
+            #t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx) # (1,)
+            H_out += X_in[...,:3] + X_in[...,3:] * timestep
+        else: # predicting velocity
+            #timestep = utils.get_scoped_coeff_multi(coeff_idx)
+            #t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx) # (1,)
+            h_coo = H_out[...,:3] + X_in[...,:3] + X_in[...,3:] * timestep
+            h_vel = H_out[...,3:]
+            H_out = tf.concat([h_coo, h_vel], axis=-1)
+
+        return get_readout(H_out)
+
+def ShiftInv_single_model_func_v2(X_in, COO_feats, model_specs, redshift=None, coeff_idx=None):
+    """
+    Args:
+        X_in (tensor): (b, N, 6)
+        COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
+        redshift (tensor): (b*N*M, 1) redshift broadcasted
+    """
+    # Get relevant model specs
+    # ========================================
+    var_scope  = model_specs.var_scope
+    num_layers = model_specs.num_layers
+    #use_vcoeff = model_specs.vcoeff
+    activation = model_specs.activation_func # default tf.nn.relu
+    dims = model_specs.dims
+
+    # Get graph inputs
+    # ========================================
+    edges, nodes = get_input_features_TF(X_in, COO_feats, dims)
 
     # Network forward V2. (second order model)
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         H_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
-      # H_out: B x N x 3
-        # skip connections
-        if coeff_idx is not None:
-            t0 = utils.get_scoped_coeff_multi(coeff_idx)
-            V_out = X_in[...,3:] + ((t0**2)/2.)* H_out
-        L_out = X_in[...,:3] + (t0 * X_in[...,:3]) + ((t0**2)/2.)* H_out
-            H_out = tf.concat([L_out, V_out], axis=-1)
-    return get_readout(H_out)
+        #num_feats = H_out.get_shape().as_list()[-1]
+        timestep = utils.get_scoped_coeff_multi(coeff_idx) if coeff_idx is not None else utils.get_scoped_vcoeff()
+        tstep_sqr = ((timestep**2)/2.) * H_out
+        V_out = X_in[...,3:] + tstep_sqr
+        L_out = X_in[...,:3] + tstep_sqr + (timestep * X_in[...,:3])
+        X_out = tf.concat([V_out, L_out], axis=-1)
+    return get_readout(X_out)
 
 
 # ==== single fn
@@ -384,10 +402,6 @@ def vel_single_model_func(X_in, model_specs, coeff_idx):
     # Get relevant model specs
     # ========================================
     var_scope  = model_specs.var_scope
-    #num_layers = model_specs.num_layers
-    #use_vcoeff = model_specs.vcoeff
-    #activation = model_specs.activation_func # default tf.nn.relu
-    #dims = model_specs.dims
 
     # Network forward
     # ========================================
