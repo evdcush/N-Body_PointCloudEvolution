@@ -116,13 +116,6 @@ def get_list_csr(h_in):
     return nn.get_kneighbor_list(h_in, M, inc_self=False, )#pbc=True)
 
 
-
-# Model outputs
-# ----------------
-# Train
-pred_in = (X_input, train_args)
-
-
 # Model static func args
 # ----------------
 model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
@@ -246,7 +239,8 @@ test_loss = np.zeros((num_val_batches,)).astype(np.float32)
 #inputs_loss = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
 
 print('\nEvaluation:\n{}'.format('='*78))
-for j in range(X_test.shape[1]):
+#for j in range(X_test.shape[1]):
+for j in range(num_val_batches):
     # Validation cubes
     # ----------------
     p, q = batch_size*j, batch_size*(j+1)
@@ -256,6 +250,7 @@ for j in range(X_test.shape[1]):
     # Graph data
     # ----------------
     csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     coo_feats = nn.to_coo_batch(csr_list)
 
     # Feed data to tensors
@@ -268,9 +263,9 @@ for j in range(X_test.shape[1]):
     # Validation output
     # ----------------
     x_pred_val, v_error = sess.run([X_pred, error], feed_dict=fdict)
-    test_predictions[p:q] = x_pred
+    test_predictions[p:q] = x_pred_val
     test_loss[j] = v_error
-    #print('{:>3d}: {:.6f}'.format(j, v_error))
+    print('{:>3d}: {:.6f}'.format(j, v_error))
 
 # END Validation
 # ========================================

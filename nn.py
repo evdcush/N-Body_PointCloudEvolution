@@ -751,7 +751,7 @@ def get_kneighbor_list(X_in, M, offset_idx=False, inc_self=False):
     b, N, D = X_in.shape
     lst_csrs = []
     for i in range(b):
-        kgraph = kneighbors_graph(X_in[i,:,:3], M, include_self=inc_self)
+        kgraph = kneighbors_graph(X_in[i,:,:3], M, include_self=inc_self).astype(np.float32)
         if offset_idx:
             kgraph.indices = kgraph.indices + (N * i)
         lst_csrs.append(kgraph)
