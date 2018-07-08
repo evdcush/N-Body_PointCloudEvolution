@@ -337,11 +337,16 @@ def vel_single_model_func(X_in, model_specs, coeff_idx):
     # Network forward
     # ========================================
     with tf.variable_scope(var_scope, reuse=True):
-        t1 = utils.get_scoped_coeff_multi(coeff_idx)
-        #t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx)
-        x_vel = X_in[...,3:] * t1
-        x_loc = X_in[...,:3] + x_vel
-        X_out = tf.concat([x_loc, x_vel], axis=-1)
+        #t1 = utils.get_scoped_coeff_multi(coeff_idx)
+        t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx)
+        x_in_loc = X_in[...,:3]
+        x_in_vel = X_in[...,3:]
+
+        x_out_loc = x_in_loc + x_in_vel * t1
+        x_out_vel = x_in_vel * t0
+        #x_vel = X_in[...,3:] * t1
+        #x_loc = X_in[...,:3]
+        X_out = tf.concat([x_out_loc, x_out_vel], axis=-1)
         #X_out = x_loc * t0
     return get_readout(X_out)
 

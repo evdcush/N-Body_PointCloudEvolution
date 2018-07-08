@@ -96,7 +96,7 @@ print('Not saving truth test cube')
 # ----------------
 vscope = utils.VAR_SCOPE.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_ShiftInv_params(channels, vscope, restore=restore, vcoeff=use_coeff)
+#utils.init_ShiftInv_params(channels, vscope, restore=restore, vcoeff=use_coeff)
 
 # CUBE DATA
 # ----------------
@@ -114,8 +114,8 @@ X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
 # ----------------
 if use_coeff:
     with tf.variable_scope(vscope):
-        utils.init_coeff_multi(num_rs_layers)
-        #utils.init_coeff_multi2(num_rs_layers, restore=restore)
+        #utils.init_coeff_multi(num_rs_layers)
+        utils.init_coeff_multi2(num_rs_layers, restore=restore)
 
 
 #=============================================================================
@@ -143,6 +143,7 @@ opt = tf.train.AdamOptimizer(learning_rate)
 
 # Training error
 errors = {i: nn.pbc_loss_scaled(X_input, X_pred, X_truth) for i, X_pred in X_preds.items()}
+#errors = {i: nn.pbc_loss(X_pred, X_truth, vel=False) for i, X_pred in X_preds.items()}
 
 # Backprop on loss
 trains = {i: opt.minimize(error) for i, error in errors.items()}
