@@ -319,7 +319,9 @@ def ShiftInv_single_model_func(X_in, COO_feats, redshift, model_specs, coeff_idx
     return get_readout(X_in + H_out)
 
 # ==== single fn
-def vel_single_model_func(X_in, redshift, model_specs, coeff_idx):
+#def vel_network_func(X_in, activation):
+
+def vel_single_model_func(X_in, model_specs, coeff_idx):
     """
     Args:
         X_in (tensor): (b, N, 6)
@@ -327,15 +329,15 @@ def vel_single_model_func(X_in, redshift, model_specs, coeff_idx):
     # Get relevant model specs
     # ========================================
     var_scope  = model_specs.var_scope
-    num_layers = model_specs.num_layers
+    #num_layers = model_specs.num_layers
     #use_vcoeff = model_specs.vcoeff
-    activation = model_specs.activation_func # default tf.nn.relu
-    dims = model_specs.dims
+    #activation = model_specs.activation_func # default tf.nn.relu
+    #dims = model_specs.dims
 
     # Network forward
     # ========================================
     with tf.variable_scope(var_scope, reuse=True):
-        theta = utils.get_scoped_coeff_multi(coeff_idx)
+        t1 = utils.get_scoped_coeff_multi(coeff_idx)
         #t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx)
         x_vel = X_in[...,3:] * t1
         x_loc = X_in[...,:3] + x_vel
