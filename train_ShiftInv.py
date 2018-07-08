@@ -100,14 +100,12 @@ utils.init_ShiftInv_params(channels, vscope, restore=restore, vcoeff=use_coeff)
 # ----------------
 X_input = tf.placeholder(tf.float32, shape=(None, N, 6))
 X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
-X_input_edges = tf.placeholder(tf.float32, shape=(None, 3))
-X_input_nodes = tf.placeholder(tf.float32, shape=(None, 3))
 
 # NEIGHBOR GRAPH DATA
 # ----------------
 # these shapes must be concrete for unsorted_segment_mean
-COO_features     = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
-COO_features_val = tf.placeholder(tf.int32, shape=(3,            N*M,))
+COO_feats     = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
+#COO_feats_val = tf.placeholder(tf.int32, shape=(3,            N*M,))
 
 
 #=============================================================================
@@ -117,24 +115,31 @@ COO_features_val = tf.placeholder(tf.int32, shape=(3,            N*M,))
 def get_list_csr(h_in):
     return nn.get_kneighbor_list(h_in, M, inc_self=False, )#pbc=True)
 
-# Model static func args
-# ----------------
-train_args = nn.ModelFuncArgs(num_layers, vscope, dims=(batch_size,N), vcoeff=use_coeff)
-val_args   = nn.ModelFuncArgs(num_layers, vscope, dims=(1,N), vcoeff=use_coeff)
 
 
 # Model outputs
 # ----------------
 # Train
-H_out = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features, train_args) # (b, N, k_out)
-X_pred = nn.get_readout(X_input[...,:3] + H_out)
+pred_in = (X_input, train_args)
+
+
+# Model static func args
+# ----------------
+model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
+
+# Model outputs
+# ----------------
+# Train
+#H_out = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features, train_args) # (b, N, k_out)
+#X_pred = nn.get_readout(X_input[...,:3] + H_out)
 #X_pred = nn.get_readout(X_input + H_out)
 #X_pred = nn.get_readout(X_input[...,:3] + theta*H_out)
-#X_pred = nn.get_readout(X_input[...,:3] + theta*X_input[...,3:] + (1/2)*H_out*tf.square(theta))
+#X_pred = nn.get_readout(X_input[...,:3] + theta*X_input[...,3:] + (1/2)*H_out*tf.square(theta)
+X_pred = nn.ShiftInv_single_model_func_v1(X_input, COO_feats, model_specs, coeff_idx=None)
 
 # Validation
-H_out_val = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features_val, val_args) # (1, N, k_out)
-X_pred_val = nn.get_readout(X_input[...,:3] + H_out_val)
+#H_out_val = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features_val, val_args) # (1, N, k_out)
+#X_pred_val = nn.get_readout(X_input[...,:3] + H_out_val)
 #X_pred_val = nn.get_readout(X_input + H_out_val)
 #X_pred_val = nn.get_readout(X_input[...,:3] + theta*H_out_val)
 #X_pred_val = nn.get_readout(X_input[...,:3] + theta*X_input[...,3:] + (1/2)*H_out_val*tf.square(theta))
@@ -147,8 +152,8 @@ error = nn.pbc_loss(X_pred, X_truth, vel=False)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 
 # Validation error
-val_error   = nn.pbc_loss(X_pred_val, X_truth, vel=False)
-inputs_diff = nn.pbc_loss(X_input,    X_truth, vel=False)
+#val_error   = nn.pbc_loss(X_pred_val, X_truth, vel=False)
+#inputs_diff = nn.pbc_loss(X_input,    X_truth, vel=False)
 
 
 #=============================================================================
@@ -172,7 +177,7 @@ if restore:
 # ----------------
 saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
-checkpoint = 500
+checkpoint = 100
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
 
 
@@ -193,23 +198,16 @@ for step in range(num_iters):
     # Graph data
     # ----------------
     csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
-
-    # get edges (relative dists) and nodes (velocities)
-    x_in_edges = nn.get_input_edge_features_batch(x_in, csr_list, M) # (b*N*M, 3)
-    x_in_nodes = nn.get_input_node_features(x_in) # (b*N, 3)
-
-    # get coo features
-    COO_feats = nn.to_coo_batch(csr_list)
+    coo_feats = nn.to_coo_batch(csr_list)
 
     # Feed data to tensors
     # ----------------
     fdict = {X_input: x_in,
              X_truth: x_truth,
-             X_input_edges: x_in_edges,
-             X_input_nodes: x_in_nodes,
-             COO_features: COO_feats,}
+             COO_feats: coo_feats,
+             }
 
-    # training pass
+    # Train
     train.run(feed_dict=fdict)
 
     # Checkpoint
@@ -242,51 +240,60 @@ X_train = None # reduce memory overhead
 #=============================================================================
 # Eval data containers
 # ----------------
+num_val_batches = NUM_VAL_SAMPLES // batch_size
 test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
-test_loss   = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
-inputs_loss = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
+test_loss = np.zeros((num_val_batches,)).astype(np.float32)
+#inputs_loss = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
 
 print('\nEvaluation:\n{}'.format('='*78))
 for j in range(X_test.shape[1]):
     # Validation cubes
     # ----------------
-    x_in    = X_test[0, j:j+1] # (1, n_P, 6)
-    x_truth = X_test[1, j:j+1]
+    p, q = batch_size*j, batch_size*(j+1)
+    x_in    = X_test[0, p:q]
+    x_truth = X_test[1, p:q]
 
     # Graph data
     # ----------------
     csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
-
-    # get edges (relative dists) and nodes (velocities)
-    x_in_edges = nn.get_input_edge_features_batch(x_in, csr_list, M) # (b*N*M, 3)
-    x_in_nodes = nn.get_input_node_features(x_in) # (b*N, 3)
-
-    # get coo features
-    COO_feats = nn.to_coo_batch(csr_list)
+    coo_feats = nn.to_coo_batch(csr_list)
 
     # Feed data to tensors
     # ----------------
     fdict = {X_input: x_in,
              X_truth: x_truth,
-             X_input_edges: x_in_edges,
-             X_input_nodes: x_in_nodes,
-             COO_features_val: COO_feats,}
+             COO_feats: coo_feats,
+             }
 
     # Validation output
     # ----------------
-    x_pred, v_error, ins_diff = sess.run([X_pred_val, val_error, inputs_diff], feed_dict=fdict)
-    test_predictions[j] = x_pred[0]
-    test_loss[j]   = v_error
-    inputs_loss[j] = ins_diff
+    x_pred_val, v_error = sess.run([X_pred, error], feed_dict=fdict)
+    test_predictions[p:q] = x_pred
+    test_loss[j] = v_error
     #print('{:>3d}: {:.6f}'.format(j, v_error))
 
 # END Validation
 # ========================================
 # median error
 test_median = np.median(test_loss)
-inputs_median = np.median(inputs_loss)
+#inputs_median = np.median(inputs_loss)
 #print('{:<18} median: {:.9f}'.format(model_name, test_median))
-print('{:<30} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
+#print('{:<30} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
+
+
+print('\nEvaluation Median Error Statistics, {:<18}:\n{}'.format(model_name, '='*78))
+'''
+print('# SCALED LOSS:')
+for i, tup in enumerate(rs_steps_tup):
+    zx, zy = tup
+    print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, loss_median[i]))
+'''
+zx, zy = redshift_steps
+print('# LOCATION LOSS:')
+print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, test_median))
+#print('\nEND EVALUATION, SAVING CUBES AND LOSS\n{}'.format('='*78))
+#print('{:<30} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
+
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss, validation=True)
