@@ -96,6 +96,12 @@ vscope = utils.VAR_SCOPE.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
 utils.init_ShiftInv_params(channels, vscope, restore=restore, vcoeff=use_coeff)
 
+if use_coeff:
+    with tf.variable_scope(vscope):
+        #utils.init_coeff_multi(num_rs_layers)
+        utils.init_coeff_multi2(num_rs_layers, restore=restore)
+
+
 # CUBE DATA
 # ----------------
 X_input = tf.placeholder(tf.float32, shape=(None, N, 6))
@@ -128,7 +134,7 @@ model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
 #X_pred = nn.get_readout(X_input + H_out)
 #X_pred = nn.get_readout(X_input[...,:3] + theta*H_out)
 #X_pred = nn.get_readout(X_input[...,:3] + theta*X_input[...,3:] + (1/2)*H_out*tf.square(theta)
-X_pred = nn.ShiftInv_single_model_func_v1(X_input, COO_feats, model_specs, coeff_idx=None)
+X_pred = nn.ShiftInv_single_model_func_v1(X_input, COO_feats, model_specs, coeff_idx=0)
 
 # Validation
 #H_out_val = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features_val, val_args) # (1, N, k_out)
@@ -215,7 +221,7 @@ for step in range(num_iters):
     # Save
     if save_checkpoint(step):
         tr_error = sess.run(error, feed_dict=fdict)
-        print('checkpoint {:>5}: {}'.format(step, tr_error))
+        print('checkpoint {:>5}: {}'.format(step+1, tr_error))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
 

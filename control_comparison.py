@@ -11,28 +11,15 @@ REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
 Note: this script is in it's own directory because it uses a different
       virtualenv to manage mayavi/vtk dependencies
 """
+trained_redshifts = [(15, 19), (16, 19), (17, 19), (18, 19), (12, 19), (10, 19)]
 
-zx, zy = 15, 19
+#zx, zy = 15, 19
+z = -1
+zx, zy = trained_redshifts[z]
 rsx, rsy = REDSHIFTS[zx], REDSHIFTS[zy]
-
-mname = 'ShiftInv_corrected_nOrder_3K_ZG_{}-{}'.format(zx, zy)
+mname = 'ShiftInv_single_2coeff_7K_ZG_{}-{}'.format(zx, zy)
 dpath = './Model/' + mname + '/Cubes/X32_{}-{}_{}.npy'
-T = 4
-
-
-def get_mask(x, bound=0.1):
-    xtmp = x[...,:3]
-    #lower, upper = bound, 1-bound
-    lower = bound
-    upper = 1-bound
-    mask1 = np.logical_and(xtmp[:,0] < upper, xtmp[:,0] > lower)
-    mask2 = np.logical_and(xtmp[:,1] < upper, xtmp[:,1] > lower)
-    mask3 = np.logical_and(xtmp[:,2] < upper, xtmp[:,2] > lower)
-    mask = mask1 * mask2 * mask3
-    mask_nz = np.nonzero(mask)[0]
-    return mask_nz
-
-
+#T = 4
 
 '''
 #x_preds  = np.load(dpath.format('prediction'))[:, j, ...]
@@ -242,7 +229,7 @@ sfactor = .005
 #####################
 import pylab as plt
 plt.style.use('ggplot')
-plt.ion()
+#plt.ion()
 
 
 x_truth_cube = np.load(dpath.format(zx, zy, 'true'))
@@ -251,27 +238,51 @@ x_truth_full = x_truth_cube[1]
 x_pred_full  = np.load(dpath.format(zx, zy, 'prediction'))
 
 def angle(v1, v2):
-# v1 is your firsr vector
-# v2 is your second vector
+    # v1 is your firsr vector
+    # v2 is your second vector
     angle = np.degrees(np.arccos(np.sum(v1 * v2, axis=1) / (np.linalg.norm(v1, axis=1) * np.linalg.norm(v2, axis=1))))
+    #angle = np.degrees(np.arccos(np.sum(v1 * v2, axis=1) / (np.linalg.norm(v1, axis=1) * np.linalg.norm(v2, axis=1))))
     return angle
 
+def get_mask(x, bound=0.1):
+    xtmp = x[...,:3]
+    #lower, upper = bound, 1-bound
+    lower = bound
+    upper = 1-bound
+    mask1 = np.logical_and(xtmp[...,0] < upper, xtmp[...,0] > lower)
+    mask2 = np.logical_and(xtmp[...,1] < upper, xtmp[...,1] > lower)
+    mask3 = np.logical_and(xtmp[...,2] < upper, xtmp[...,2] > lower)
+    mask = mask1 * mask2 * mask3
+    mask_nz = np.nonzero(mask)[0]
+    return mask_nz
 
-j = 39 # sample
-x_input = x_input_full[j]
-x_truth = x_truth_full[j]
-x_pred  =  x_pred_full[j]
 
-mask_nz = get_mask(x_input)
+#j = 132 # sample
+#x_input = x_input_full[j]
+#x_truth = x_truth_full[j]
+#x_pred  =  x_pred_full[j]
+x_input = x_input_full.reshape([-1, 6])
+x_truth = x_truth_full.reshape([-1, 6])
+x_pred  =  x_pred_full.reshape([-1, 3])
+
+
+mask_nz = get_mask(x_input) # flattened
 #i = 1
 #v_truth = x_truths[i, mask_nz, :3] - x_truths[0, mask_nz, :3]
 #v_pred = x_preds[i, mask_nz, :3] - x_preds[0, mask_nz, :3]
 #v_vel = x_truths[0, mask_nz, 3:]
+
 loc_truth = np.copy(x_truth[mask_nz,  :3])
 loc_pred  = np.copy(x_pred[ mask_nz,  :3])
 loc_input = np.copy(x_input[mask_nz,  :3])
 vel_input = np.copy(x_input[mask_nz, 3:])
 
+# Velocity model "prediction"
+
+true_diff = loc_truth - loc_input
+timestep = np.linalg.lstsq(vel_input.ravel()[:,None], true_diff.ravel())[0]
+displacement = vel_input * timestep
+vel_model_loc = loc_input + displacement
 alpha = .5
 label1 = 'using velocity'
 label2 = 'deep model'
@@ -279,46 +290,74 @@ c1 = 'r'
 c2 = 'b'
 plt.clf()
 
+#fig, axes = plt.subplots(1,2)
+#ax1, ax2 = axes
+
 '''
-bins = np.linspace(0,90,200)
-plt.hist(angle( v_vel, v_truth), bins= bins, label='using velocity', alpha=alpha)
-plt.hist(angle(v_pred, v_truth), bins= bins, label='deep model',     alpha=alpha)
-plt.xlabel('angle (degrees)')
+bins1 = np.linspace(0,90,200)
+#ax2.hist(angle( v_vel, v_truth), bins= bins1, label=label1,color=c1, alpha=alpha)
+#ax2.hist(angle(v_pred, v_truth), bins= bins1, label=label2,color=c2, alpha=alpha)
+#angle_vel  = angle(vel_model_loc, loc_truth)
+#angle_pred = angle(     loc_pred, loc_truth)
+#angle = np.degrees(np.arccos(np.sum(v1 * v2, axis=1) / (np.linalg.norm(v1, axis=1) * np.linalg.norm(v2, axis=1))))
+#vel_top = np.sum(vel_model_loc * loc_truth, axis=1)
+vel_top = np
+vel_bot = np.linalg.norm(vel_model_loc, axis=1) * np.linalg.norm(loc_truth, axis=1)
+#vel_bot = np.linalg.norm(vel_model_loc.ravel()) * np.linalg.norm(loc_truth.ravel())
+vel_div = vel_top / vel_bot
+vel_acos = np.arccos(vel_div)
+vel_deg  = np.degrees(vel_acos)
+'''
+#pred_top = np.sum(loc_pred * loc_truth, axis=1)
+#pred_bot = np.linalg.norm(loc_pred, axis=1) * np.linalg.norm(loc_truth, axis=1)
+#pred_div = pred_top / pred_bot
+#pred_acos = np.arccos(pred_div)
+#pred_deg  = np.degrees(pred_acos)
+
+#ax2.hist(angle_vel,  bins= bins1, label=label1, color=c1, alpha=alpha)
+#ax2.hist(angle_pred, bins= bins1, label=label2, color=c2, alpha=alpha)
+#ax2.xlabel('angle (degrees)')
 #plt.title('error after {0:2d} steps'.format(i))
-plt.title('Error, single-step: {:.4f} --> {:.4f}'.format(rsx, rsy))
-plt.legend()
-plt.show()
-'''
+#ax2.title('Error, single-step: {:.4f} --> {:.4f}'.format(rsx, rsy))
+#ax2.title('Error, single-step {:>2}-{:>2}: {:.4f} --> {:.4f}'.format(zx, zy, rsx, rsy))
+#ax2.legend()
+#ax2.show()
+
 #plt.figure()
-#v_vel0 = x_truths[0, mask_nz, 3:]
-#t = np.linalg.lstsq(v_vel0.ravel()[:,None], v_truth.ravel())[0]
-#t = np.linalg.lstsq(v_vel.ravel()[:,None], v_truth.ravel())[0]
-#t = np.linalg.lstsq(vel_input.ravel()[:,None], loc_truth.ravel())[0]
-true_diff = loc_truth - loc_input
-timestep = np.linalg.lstsq(vel_input.ravel()[:,None], true_diff.ravel())[0]
-#v_vel = v_vel0 * t
-#vel_input_t = vel_input * t
-displacement = vel_input * timestep
-bins = np.linspace(-.01,.05,200)
-#bins = None
-#l2_dist_vel  = np.linalg.norm(v_truth - v_vel_t, axis=-1)
-#l2_dist_pred = np.linalg.norm(v_truth - v_pred, axis=-1)
-#l2_dist_vel  = np.linalg.norm(loc_truth - displacement, axis=-1)
-vel_model_loc = loc_input + displacement
+
+def get_bins(d1, d2):
+    dmin = np.minimum(np.min(d1), np.min(d2))
+    dmax = np.maximum(np.max(d1), np.max(d2))
+    mu   = np.mean(d1)
+    std  = np.std(d1)
+    print('min {:.7f}, max {:.7f}, mu {:.7f}, std {:.7f}'.format(dmin, dmax, mu, std))
+    bins = np.linspace(mu - 2*std, mu + 2*std, 500) # right tailed
+    return bins
+
+
+
+#bins2 = np.linspace(-.01,.05,200)
 l2_dist_vel  = np.linalg.norm(loc_truth - vel_model_loc, axis=-1)
 l2_dist_pred = np.linalg.norm(loc_truth - loc_pred,    axis=-1)
 
-plt.hist(l2_dist_vel,  bins= bins, label=label1, color=c1,alpha=alpha)
-plt.hist(l2_dist_pred, bins= bins, label=label2, color=c2,alpha=alpha)
+bins2 = get_bins(l2_dist_vel, l2_dist_pred)
+
+plt.hist(l2_dist_vel,  bins= bins2, label=label1, color=c1,alpha=alpha)
+plt.hist(l2_dist_pred, bins= bins2, label=label2, color=c2,alpha=alpha)
+print('\nRedshift {:.4f} --> {:.4f}, statistics:\n{}'.format(rsx, rsy, '='*78))
+print('Timestep: {:.8f}'.format(timestep[0]))
+print('# L2 Distance median over all cubes:')
+med_vel  = np.median(l2_dist_vel)
+med_pred = np.median(l2_dist_pred)
+print('{:>9} model: {:.9f}'.format('Velocity', med_vel))
+print('{:>9} model: {:.9f}'.format('Deep',     med_pred))
 
 #plt.title('error after {0:2d} steps'.format(i))
-plt.title('Error, single-step {:>2}, {:>2}: {:.4f} --> {:.4f}'.format(zx, zy, rsx, rsy))
+plt.title('Error, single-step {:>2}-{:>2}: {:.4f} --> {:.4f}'.format(zx, zy, rsx, rsy))
 plt.xlabel('distance (L2)')
 plt.legend()
 plt.tight_layout()
-#plt.show()
-
-
+plt.show()
 
 #######################
 #volumize_ptc(x_truth[j,mask_nz,:3], show=False,figure=fig, opacity=.5, color=red,  mode='sphere', scale_factor=sfactor)
