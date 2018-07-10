@@ -357,10 +357,9 @@ def ShiftInv_single_model_func_v1(X_in, COO_feats, model_specs, redshift=None, c
         else: # predicting velocity
             #timestep = utils.get_scoped_coeff_multi(coeff_idx)
             #t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx) # (1,)
-            h_coo = H_out[...,:3] + X_in[...,:3] + X_in[...,3:] * timestep
-            h_vel = H_out[...,3:]
+            h_coo = H_out[...,:3]*t0 + X_in[...,:3] + X_in[...,3:] * t1
+            h_vel = H_out[...,3:] + X_in[...,3:]
             H_out = tf.concat([h_coo, h_vel], axis=-1)
-
         return get_readout(H_out)
 
 def ShiftInv_single_model_func_v2(X_in, COO_feats, model_specs, redshift=None, coeff_idx=None):

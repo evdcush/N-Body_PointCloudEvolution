@@ -11,7 +11,7 @@ REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
 Note: this script is in it's own directory because it uses a different
       virtualenv to manage mayavi/vtk dependencies
 """
-trained_redshifts = [(15, 19), (16, 19), (17, 19), (18, 19), (12, 19), (10, 19)]
+trained_redshifts = [(15, 19), (16, 19), (17, 19), (18, 19), (12, 19), (10, 19), (7, 19), (3, 19)]
 
 #zx, zy = 15, 19
 z = -1

@@ -169,6 +169,10 @@ sess.run(tf.global_variables_initializer())
 if restore:
     utils.load_graph(sess, model_path)
 
+def get_var(tag):
+    with tf.variable_scope(vscope, reuse=True):
+        return tf.get_variable(tag).eval()
+
 #theta = utils.get_vcoeff(vscope).eval()
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
@@ -299,5 +303,8 @@ print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, test_median))
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
+t1 = get_var('coeff_{}_{}'.format(0,1))
+print('TIMESTEP, final value: ')
+print(t1)
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use

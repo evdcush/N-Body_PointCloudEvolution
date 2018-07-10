@@ -132,8 +132,8 @@ train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M],)
 # Model outputs
 # ----------------
 # Train
-pred_in = (X_input, COO_seg, RS_in, train_args)
-X_preds = {i: nn.ShiftInv_single_model_func(*pred_in, coeff_idx=i) for i in range(num_rs_layers)}
+pred_in = (X_input, COO_seg, train_args, RS_in)
+X_preds = {i: nn.ShiftInv_single_model_func_v1(*pred_in, coeff_idx=i) for i in range(num_rs_layers)}
 
 # Loss
 # ----------------
@@ -295,14 +295,33 @@ for j in range(num_val_batches):
 # median error
 #test_median = np.median(test_loss[:,-1])
 #inputs_median = np.median(inputs_loss)
-print('{:<18} median scaled: {:.9f}'.format(model_name, np.median(test_loss[:,-1])))
-print('{:<18} median    loc: {:.9f}'.format(model_name, np.median(test_loss_loc[:,-1])))
-#print('{:<30} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
+loss_median     = np.median(test_loss, axis=0)
+loss_loc_median = np.median(test_loss_loc, axis=0)
+#inputs_median = np.median(inputs_loss)
+#print('{:<18} median scaled: {:.9f}'.format(model_name, np.median(test_loss[:,-1])))
+#print('{:<18} median    loc: {:.9f}'.format(model_name, np.median(test_loss_loc[:,-1])))
+rs_steps_tup = [(redshift_steps[i], redshift_steps[i+1]) for i in range(num_rs_layers)]
+print('\nEvaluation Median Error Statistics, {:<18}:\n{}'.format(model_name, '='*78))
+print('# SCALED LOSS:')
+for i, tup in enumerate(rs_steps_tup):
+    zx, zy = tup
+    print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, loss_median[i]))
+print('# LOCATION LOSS:')
+for i, tup in enumerate(rs_steps_tup):
+    zx, zy = tup
+    print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, loss_loc_median[i]))
+print('\nEND EVALUATION, SAVING CUBES AND LOSS\n{}'.format('='*78))
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss, validation=True)
 utils.save_loss(loss_path + model_name + '_locMSE', test_loss_loc, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
+print('Timestep coefficients, final values: ')
+for i in range(num_rs_layers):
+    timestep_tag = 'coeff_{}_{}'.format(i, 1)
+    timestep_value = get_var(timestep_tag)
+    rsa, rsb = redshifts[i], redshifts[i+1]
+    print('  {:.4f} --> {:.4f} : {:.6f}'.format(rsa,rsb,timestep_value))
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
