@@ -320,7 +320,7 @@ utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 print('Timestep coefficients, final values: ')
 for i in range(num_rs_layers):
     timestep_tag = 'coeff_{}_{}'.format(i, 1)
-    timestep_value = get_var(timestep_tag)
+    timestep_value = get_var(timestep_tag)[0]
     rsa, rsb = redshifts[i], redshifts[i+1]
     print('  {:.4f} --> {:.4f} : {:.6f}'.format(rsa,rsb,timestep_value))
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use

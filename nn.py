@@ -441,7 +441,7 @@ def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, use_coeff
         coo = COO_feats[rs_idx]
         rs = tf.fill([b*N*M, 1], redshifts[rs_idx])
         cidx = rs_idx if use_coeff else None
-        return ShiftInv_single_model_func(h_in, coo, rs, model_specs, cidx)
+        return ShiftInv_single_model_func_v1(h_in, coo, model_specs, rs, cidx)
 
     # Network forward
     # ======================================== # don't think you need to do var scope here

@@ -152,8 +152,8 @@ X_pred = nn.ShiftInv_single_model_func_v2(X_input, COO_feats, model_specs)
 # Training error and Optimizer
 sc_error = nn.pbc_loss_scaled(X_input, X_pred, X_truth)
 error = nn.pbc_loss(X_pred, X_truth, vel=False)
-#train = tf.train.AdamOptimizer(learning_rate).minimize(error)
-train = tf.train.AdamOptimizer(learning_rate).minimize(sc_error)
+train = tf.train.AdamOptimizer(learning_rate).minimize(error)
+#train = tf.train.AdamOptimizer(learning_rate).minimize(sc_error)
 
 # Validation error
 #val_error   = nn.pbc_loss(X_pred_val, X_truth, vel=False)
