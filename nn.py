@@ -385,12 +385,13 @@ def ShiftInv_single_model_func_v2(X_in, COO_feats, model_specs, redshift=None, c
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         H_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
+        #utils.get_scoped_coeff_multi2(coeff_idx)
         #num_feats = H_out.get_shape().as_list()[-1]
         timestep = utils.get_scoped_coeff_multi(coeff_idx) if coeff_idx is not None else utils.get_scoped_vcoeff()
         tstep_sqr = ((timestep**2)/2.) * H_out
         V_out = X_in[...,3:] + tstep_sqr
         L_out = X_in[...,:3] + tstep_sqr + (timestep * X_in[...,:3])
-        X_out = tf.concat([V_out, L_out], axis=-1)
+        X_out = tf.concat([L_out, V_out], axis=-1)
     return get_readout(X_out)
 
 
