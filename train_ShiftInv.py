@@ -96,12 +96,11 @@ utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
 vscope = utils.VAR_SCOPE.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
 utils.init_ShiftInv_params(channels, vscope, restore=restore, vcoeff=use_coeff)
-'''
 if use_coeff:
     with tf.variable_scope(vscope):
-        utils.init_coeff_multi(num_rs_layers)
-        #utils.init_coeff_multi2(num_rs_layers, restore=restore)
-'''
+        #utils.init_coeff_multi(num_rs_layers)
+        utils.init_coeff_multi2(num_rs_layers, restore=restore)
+
 
 
 # CUBE DATA
@@ -251,8 +250,8 @@ X_train = None # reduce memory overhead
 # Eval data containers
 # ----------------
 num_val_batches = NUM_VAL_SAMPLES // batch_size
-#test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
-test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
+test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
+#test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss = np.zeros((num_val_batches,)).astype(np.float32)
 test_loss_sc = np.zeros((num_val_batches,)).astype(np.float32)
 #inputs_loss = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
@@ -319,12 +318,11 @@ print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, test_sc_median))
 utils.save_loss(loss_path + model_name, test_loss, validation=True)
 utils.save_loss(loss_path + model_name + 'SC', test_loss_sc, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
-#t1 = get_var('coeff_{}_{}'.format(0,1))
 #MCOEFFTAG = 'coeff_{}'
 #VEL_COEFF_TAG = 'V'
-#t1 = get_var('coeff_{}_{}'.format(0,1))
-t1 = get_var('V')
-print('TIMESTEP, final value:')
-print(t1)
+t1 = get_var('coeff_{}_{}'.format(0,1))[0]
+#t1 = get_var('V')
+print('TIMESTEP, final value: {:.6f}'.format(t1))
+#print(t1)
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
