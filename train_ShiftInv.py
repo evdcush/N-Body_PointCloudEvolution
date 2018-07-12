@@ -136,8 +136,8 @@ model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
 #X_pred = nn.get_readout(X_input + H_out)
 #X_pred = nn.get_readout(X_input[...,:3] + theta*H_out)
 #X_pred = nn.get_readout(X_input[...,:3] + theta*X_input[...,3:] + (1/2)*H_out*tf.square(theta)
-#X_pred = nn.ShiftInv_single_model_func_v1(X_input, COO_feats, model_specs, coeff_idx=0)
-X_pred = nn.ShiftInv_single_model_func_v2(X_input, COO_feats, model_specs)
+X_pred = nn.ShiftInv_single_model_func_v1(X_input, COO_feats, model_specs, coeff_idx=0)
+#X_pred = nn.ShiftInv_single_model_func_v2(X_input, COO_feats, model_specs)
 
 # Validation
 #H_out_val = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features_val, val_args) # (1, N, k_out)
@@ -232,7 +232,7 @@ for step in range(num_iters):
         #tr_error = sess.run(error, feed_dict=fdict)
         #print('checkpoint {:>5}: {}'.format(step+1, tr_error))
         err, sc_err = sess.run([error, sc_error], feed_dict=fdict)
-        print('Checkpoint {:>5}:\n    Location: {:.6f}\n      Scaled: {:.6f}'.format(step+1, err, sc_err))
+        print('Checkpoint {:>5}: LOC: {:.6f}, SCA: {:.6f}'.format(step+1, err, sc_err))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
 
