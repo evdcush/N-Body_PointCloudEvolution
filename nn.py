@@ -345,13 +345,13 @@ def ShiftInv_single_model_func_v1(X_in, COO_feats, model_specs, redshift=None, c
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx)
-        H_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift) * t0
+        H_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
         num_feats = H_out.get_shape().as_list()[-1]
 
         #timestep = utils.get_scoped_coeff_multi(coeff_idx) if coeff_idx is not None else utils.get_scoped_vcoeff()
         if num_feats <= 3: # then only predicting location
             #t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx) # (1,)
-            H_out += X_in[...,:3] + X_in[...,3:] * t1#timestep
+            H_out = H_out*t0 + X_in[...,:3] + X_in[...,3:] * t1#timestep
             #fixed_timestep = 0.00556744
             #H_out += X_in[...,:3] + X_in[...,3:] * fixed_timestep
         else: # predicting velocity

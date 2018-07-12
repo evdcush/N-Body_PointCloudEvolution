@@ -86,6 +86,7 @@ restore = pargs['restore'] == 1
 
 # save test data
 utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
+utils.save_pyfiles(model_path)
 
 
 #=============================================================================
@@ -130,26 +131,14 @@ model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
 # Model outputs
 # ----------------
 # Train
-#H_out = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features, train_args) # (b, N, k_out)
-#X_pred = nn.get_readout(X_input[...,:3] + H_out)
-#X_pred = nn.get_readout(X_input + H_out)
-#X_pred = nn.get_readout(X_input[...,:3] + theta*H_out)
-#X_pred = nn.get_readout(X_input[...,:3] + theta*X_input[...,3:] + (1/2)*H_out*tf.square(theta)
 X_pred = nn.ShiftInv_single_model_func_v1(X_input, COO_feats, model_specs, coeff_idx=0)
 #X_pred = nn.ShiftInv_single_model_func_v2(X_input, COO_feats, model_specs)
-
-# Validation
-#H_out_val = nn.ShiftInv_model_func(X_input_edges, X_input_nodes, COO_features_val, val_args) # (1, N, k_out)
-#X_pred_val = nn.get_readout(X_input[...,:3] + H_out_val)
-#X_pred_val = nn.get_readout(X_input + H_out_val)
-#X_pred_val = nn.get_readout(X_input[...,:3] + theta*H_out_val)
-#X_pred_val = nn.get_readout(X_input[...,:3] + theta*X_input[...,3:] + (1/2)*H_out_val*tf.square(theta))
 
 
 # Loss
 # ----------------
 # Training error and Optimizer
-sc_error = nn.pbc_loss_scaled(X_input, X_pred, X_truth)
+#sc_error = nn.pbc_loss_scaled(X_input, X_pred, X_truth)
 error = nn.pbc_loss(X_pred, X_truth, vel=False)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 #train = tf.train.AdamOptimizer(learning_rate).minimize(sc_error)
@@ -228,10 +217,10 @@ for step in range(num_iters):
 
     # Save
     if save_checkpoint(step):
-        #tr_error = sess.run(error, feed_dict=fdict)
-        #print('checkpoint {:>5}: {}'.format(step+1, tr_error))
-        err, sc_err = sess.run([error, sc_error], feed_dict=fdict)
-        print('Checkpoint {:>5}: LOC: {:.6f}, SCA: {:.6f}'.format(step+1, err, sc_err))
+        tr_error = sess.run(error, feed_dict=fdict)
+        print('checkpoint {:>5}--> LOC: {:.6f}'.format(step+1, tr_error))
+        #err, sc_err = sess.run([error, sc_error], feed_dict=fdict)
+        #print('Checkpoint {:>5}--> LOC: {:.6f}, SCA: {:.6f}'.format(step+1, err, sc_err))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
 
@@ -253,7 +242,7 @@ num_val_batches = NUM_VAL_SAMPLES // batch_size
 test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
 #test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss = np.zeros((num_val_batches,)).astype(np.float32)
-test_loss_sc = np.zeros((num_val_batches,)).astype(np.float32)
+#test_loss_sc = np.zeros((num_val_batches,)).astype(np.float32)
 #inputs_loss = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
 
 print('\nEvaluation:\n{}'.format('='*78))
@@ -280,19 +269,19 @@ for j in range(num_val_batches):
 
     # Validation output
     # ----------------
-    #x_pred_val, v_error = sess.run([X_pred, error], feed_dict=fdict)
-    x_pred_val, v_error, v_sc_error = sess.run([X_pred, error, sc_error], feed_dict=fdict)
+    x_pred_val, v_error = sess.run([X_pred, error], feed_dict=fdict)
+    #x_pred_val, v_error, v_sc_error = sess.run([X_pred, error, sc_error], feed_dict=fdict)
     test_predictions[p:q] = x_pred_val
     test_loss[j] = v_error
-    test_loss_sc[j] = v_sc_error
-    #print('{:>3d}: {:.6f}'.format(j, v_error))
-    print('{:>3d} = LOC:{:.6f}, SCA:{:.6f}'.format(j, v_error, v_sc_error))
+    #test_loss_sc[j] = v_sc_error
+    print('{:>3d} = LOC: {:.6f}'.format(j, v_error))
+    #print('{:>3d} = LOC: {:.6f}, SCA: {:.6f}'.format(j, v_error, v_sc_error))
 
 # END Validation
 # ========================================
 # median error
 test_median = np.median(test_loss)
-test_sc_median = np.median(test_loss_sc)
+#test_sc_median = np.median(test_loss_sc)
 #inputs_median = np.median(inputs_loss)
 #print('{:<18} median: {:.9f}'.format(model_name, test_median))
 #print('{:<30} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
@@ -308,21 +297,25 @@ for i, tup in enumerate(rs_steps_tup):
 zx, zy = redshift_steps
 print('# LOCATION LOSS:')
 print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, test_median))
-print('# SCALED LOSS:')
-print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, test_sc_median))
+#print('# SCALED LOSS:')
+#print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, test_sc_median))
 #print('\nEND EVALUATION, SAVING CUBES AND LOSS\n{}'.format('='*78))
 #print('{:<30} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
+
+#MCOEFFTAG = 'coeff_{}'
+#VEL_COEFF_TAG = 'V'
+t0 = get_var('coeff_{}_{}'.format(0,0))[0]
+t1 = get_var('coeff_{}_{}'.format(0,1))[0]
+#t1 = get_var('V')
+print(' TIMESTEP, final value: {:.6f}'.format(t1))
+print('LOCSCALAR, final value: {:.6f}'.format(t0))
 
 
 # save loss and predictions
 utils.save_loss(loss_path + model_name, test_loss, validation=True)
-utils.save_loss(loss_path + model_name + 'SC', test_loss_sc, validation=True)
+#utils.save_loss(loss_path + model_name + 'SC', test_loss_sc, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
-#MCOEFFTAG = 'coeff_{}'
-#VEL_COEFF_TAG = 'V'
-t1 = get_var('coeff_{}_{}'.format(0,1))[0]
-#t1 = get_var('V')
-print('TIMESTEP, final value: {:.6f}'.format(t1))
+
 #print(t1)
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use

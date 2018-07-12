@@ -24,7 +24,7 @@ DATA_PATH_ZUNI_NPY = '/home/evan/Data/nbody_simulations/N_uniform/npy_data/X_{:.
 REDSHIFTS_ZUNI = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
                  1.1212, 0.9438, 0.7955, 0.6688, 0.5588, 0.4620, 0.3758,
                  0.2983, 0.2280, 0.1639, 0.1049, 0.0505, 0.0000]
-SAVE_FILE_NAMES = ['utils.py', 'nn.py', 'z_train.py', 'z_rad_train.py', 'train_ShiftInv.py', 'train_multiA_ShiftInv.py']
+SAVE_FILE_NAMES = ['utils.py', 'nn.py', 'train_ShiftInv.py', 'train_multi_ShiftInv.py']
 
 # rng seeds
 PARAMS_SEED  = 77743196 # for graph, set models do better with 98765
@@ -702,7 +702,7 @@ def save_pyfiles(model_dir):
     Args:
         save_path (str): path to save files
     """
-    save_path = model_dir + '.original_files/'
+    save_path = model_dir + 'original_files/'
     make_dirs([save_path])
     for fname in SAVE_FILE_NAMES:
         src = './{}'.format(fname)
