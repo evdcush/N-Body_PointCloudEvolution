@@ -69,6 +69,26 @@ def mask_data(x_in, x_truth, x_pred):
 
     return loc_truth, loc_pred, loc_input, vel_input
 
+def load_formatted_cubes(rs_pair):
+    zx, zy = rs_pair
+
+    # Load Truth
+    ground_truth = load_cube(zx, zy, truth=True)
+    X_input = ground_truth[0]
+    X_truth = ground_truth[1]
+    ground_truth = None
+
+    # Load Pred
+    X_pred = load_cube(zx, zy)
+    # Get masked, formatted data
+    loc_truth, loc_pred, loc_input, vel_input = mask_data(X_input, X_truth, X_pred)
+    # Generate moving-along-velocity linear "model prediction"
+    timestep = get_timestep(vel_input, loc_input, loc_truth)
+    displacement = vel_input * timestep
+    loc_Vlinear = loc_input + displacement
+
+    return loc_input, vel_input, loc_truth, loc_pred, loc_Vlinear, timestep
+
 # Alg/Plotting utils
 # ========================================
 def get_bins(dist):
@@ -237,7 +257,7 @@ def plot_multi(rs_pairs, splot_idx):
 
 rs1 = [(10, 19), (12, 19), (15, 19), (16, 19), (17, 19), (18, 19), ]#(7, 19), (3, 19), (3,7), (0,1), (11,15)]
 rs2 = [(3,7), (0,1), (11,15)]
-
+'''
 #cur_rs = rs1
 cur_rs = rs1 + rs2
 
@@ -261,5 +281,13 @@ plt.tight_layout()
 
 #plt.show()
 save_plot(0, 19)
+'''
 
-
+zx = 11
+zy = 15
+rs_pair = (zx, zy)
+rsx, rsy = REDSHIFTS[zx], REDSHIFTS[zy]
+#loc_input, vel_input, loc_truth, loc_pred, loc_Vlinear, timestep = load_formatted_cubes(rs_pair)
+cubes = load_formatted_cubes(rs_pair)
+timestep = cubes[-1][0]
+print('{:>2}, {:>2}: {:.4f} --> {:.4f}, TIMESTEP: {:.6f}'.format(zx, zy, rsx, rsy, timestep))
