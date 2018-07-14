@@ -218,9 +218,9 @@ for step in range(num_iters):
     # Save
     if save_checkpoint(step):
         #tr_error = sess.run(error, feed_dict=fdict)
-        #print('checkpoint {:>5}--> LOC: {:.6f}'.format(step+1, tr_error))
+        #print('checkpoint {:>5}--> LOC: {:.8f}'.format(step+1, tr_error))
         err, sc_err = sess.run([error, sc_error], feed_dict=fdict)
-        print('Checkpoint {:>5}--> LOC: {:.6f}, SCA: {:.6f}'.format(step+1, err, sc_err))
+        print('Checkpoint {:>5}--> LOC: {:.8f}, SCA: {:.6f}'.format(step+1, err, sc_err))
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
 
@@ -275,7 +275,7 @@ for j in range(num_val_batches):
     test_loss[j] = v_error
     #test_loss_sc[j] = v_sc_error
     #print('{:>3d} = LOC: {:.6f}'.format(j, v_error))
-    print('{:>3d} = LOC: {:.6f}, SCA: {:.6f}'.format(j, v_error, v_sc_error))
+    print('{:>3d} = LOC: {:.8f}, SCA: {:.6f}'.format(j, v_error, v_sc_error))
 
 # END Validation
 # ========================================
