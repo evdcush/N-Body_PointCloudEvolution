@@ -168,7 +168,6 @@ def get_var(tag):
 
 #theta = utils.get_vcoeff(vscope).eval()
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-
 # Session saver
 # ----------------
 saver = tf.train.Saver()
@@ -269,11 +268,11 @@ for j in range(num_val_batches):
 
     # Validation output
     # ----------------
-    x_pred_val, v_error = sess.run([X_pred, error], feed_dict=fdict)
-    #x_pred_val, v_error, v_sc_error = sess.run([X_pred, error, sc_error], feed_dict=fdict)
+    #x_pred_val, v_error = sess.run([X_pred, error], feed_dict=fdict)
+    x_pred_val, v_error, v_sc_error = sess.run([X_pred, error, sc_error], feed_dict=fdict)
     test_predictions[p:q] = x_pred_val
     test_loss[j] = v_error
-    #test_loss_sc[j] = v_sc_error
+    test_loss_sc[j] = v_sc_error
     #print('{:>3d} = LOC: {:.6f}'.format(j, v_error))
     print('{:>3d} = LOC: {:.8f}, SCA: {:.6f}'.format(j, v_error, v_sc_error))
 
