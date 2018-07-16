@@ -3,6 +3,18 @@ import numpy as np
 #import pylab as plt
 from matplotlib import pyplot as plt
 
+''' # Notes
+- are you sure you are calculating the timestep properly?
+  - currently, diff is just the simple diff between loc_tru and loc_in
+      - shouldn't it maybe be l2 dist?
+- Currently not looking at angles, since I was getting NaNs with the basic linalg func
+- need to calculate timesteps for all possible redshifts
+    - this might be better done in a separate script?
+        - load cubes, same random split idx for validation
+        - calculate timesteps for every possible redshift pair
+'''
+
+
 #plt.style.use('ggplot')
 #plt.style.use('bmh')
 #plt.ion()
@@ -13,6 +25,7 @@ SAVE_DIR = './HistPlots/'
 
 Model_path = './Model/'
 Cube_fname = '/Cubes/X32_{}-{}_{}.npy'
+timesteps_fname = Model_path + 'timesteps.npy'
 base_name = 'ShiftInv_single_2coeff_7K_ZG_{}-{}'
 
 REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
@@ -32,6 +45,24 @@ def load_cube(zx, zy, truth=False, model_name=None):
     m_name = model_name.format(zx, zy)
     path = Model_path + m_name + cube_name
     return np.load(path)
+
+def get_timesteps(redshifts):
+    #TODO
+    assert False
+    if not os.path.exists(timesteps_fname):
+        timesteps = {}
+    else:
+        timesteps = np.load(timesteps_fname).item()
+    for zx, zy in redshifts:
+        cube = load_cube(zx, zy, truth=True)
+        x_input = cube[0]
+        x_truth = cube[1]
+        cube = None
+        x_input_loc, x_input_vel = x_input[...,:3], x_input[...,3:]
+        x_truth_loc, x_truth_vel = x_truth[...,:3], x_truth[...,3:]
+        # LEFT OFF HERE!
+
+
 
 def save_plot(zx, zy, save_fname=None):
     if save_fname is None:
@@ -83,7 +114,7 @@ def load_formatted_cubes(rs_pair):
     # Get masked, formatted data
     loc_truth, loc_pred, loc_input, vel_input = mask_data(X_input, X_truth, X_pred)
     # Generate moving-along-velocity linear "model prediction"
-    timestep = get_timestep(vel_input, loc_input, loc_truth)
+    timestep = calculate_timestep(vel_input, loc_input, loc_truth)
     displacement = vel_input * timestep
     loc_Vlinear = loc_input + displacement
 
@@ -106,8 +137,14 @@ def angle(v1, v2):
     #angle = np.degrees(np.arccos(np.sum(v1 * v2, axis=1) / (np.linalg.norm(v1, axis=1) * np.linalg.norm(v2, axis=1))))
     return angle
 
-def get_timestep(vel_in, loc_in, loc_out):
-    diff = loc_out - loc_in
+def calculate_timestep(vel_in, loc_in, loc_out):
+    diff = loc_out - loc_in # err, shouldn't this be l2_dist? not simply diff
+    timestep = np.linalg.lstsq(vel_in.ravel()[:,None], diff.ravel())[0]
+    return timestep
+
+def calculate_timestep_l2(vel_in, loc_in, loc_out):
+    #diff = loc_out - loc_in
+    diff = l2_dist(loc_out, loc_in)
     timestep = np.linalg.lstsq(vel_in.ravel()[:,None], diff.ravel())[0]
     return timestep
 
@@ -155,7 +192,7 @@ vel_input = np.copy(x_input[mask_nz, 3: ])
 # Calculate distances for hist
 # ========================================
 # Generate moving-along-velocity linear "model prediction"
-timestep = get_timestep(vel_input, loc_input, loc_truth)
+timestep = calculate_timestep(vel_input, loc_input, loc_truth)
 displacement = vel_input * timestep
 loc_Vlinear = loc_input + displacement
 #
@@ -244,7 +281,7 @@ def plot_multi(rs_pairs, splot_idx):
         loc_truth, loc_pred, loc_input, vel_input = mask_data(X_input, X_truth, X_pred)
 
         # Generate moving-along-velocity linear "model prediction"
-        timestep = get_timestep(vel_input, loc_input, loc_truth)
+        timestep = calculate_timestep(vel_input, loc_input, loc_truth)
         displacement = vel_input * timestep
         loc_Vlinear = loc_input + displacement
 
