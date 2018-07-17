@@ -165,17 +165,6 @@ if noisy_inputs:
     # sample probabilities for inserting noise from random uniform distr
     noise = np.random.sample((num_iters, num_rs_layers-1)) <= noise_threshold
 
-    ''' # neither function necessary if we use noisy as global state var for noisy inputs
-    def insert_noise():
-        return noisy
-
-    def insert_noise2(step, z):
-        # unnecessary complicated:
-        # - don't need x_pred_step to be a tuple(int). Can just be a simple bool
-        # - Don't need to recheck noise[i, z-1], since insert_noise_next already does
-        return noisy_inputs and z > 0 and (i, z-1) == x_pred_step and noise[i, z-1]
-    '''
-
 def insert_noise_next(step, z):
     """ # determines if we need the model prediction (X_pred) to use
     as a noisy input for the next redshift, and updates the x_pred_step
@@ -233,6 +222,11 @@ save_checkpoint = lambda step: (step+1) % checkpoint == 0
 print('\nTraining Single-step:\n{}'.format('='*78))
 np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
+    checkpoint_reached = save_checkpoint(step)
+    if checkpoint_reached:
+        print('CHECKPOINT {:>4}:'.format(step+1))
+        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+
     # Data batching
     # ----------------
     _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (3, b, N, 6)
@@ -273,11 +267,11 @@ for step in range(num_iters):
         else:
             x_pred = None # not necessary, just extra safety
 
-    # Save
-    if save_checkpoint(step):
-        checkpoint_error = sess.run(errors[rsi], feed_dict=fdict)
-        print('checkpoint {:>5}, redshift {}->{}: {}'.format(step+1, zx, zy, checkpoint_error))
-        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+        # Save
+        if checkpoint_reached:
+            checkpoint_error = sess.run(errors[rsi], feed_dict=fdict)
+            print('  Error {} --> {} = {:.8f}'.format(zx, zy, checkpoint_error))
+            #saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
 # Save trained variables and session
 saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
