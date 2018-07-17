@@ -35,6 +35,7 @@ redshift_steps = pargs['redshifts']
 redshifts = [REDSHIFTS_ZUNI[i] for i in redshift_steps]
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
+rs_tups = [(i,i+1) for i in range(num_rs_layers)]
 print('redshifts: {}'.format(redshifts))
 
 # Load data
@@ -88,6 +89,7 @@ restore = pargs['restore'] == 1
 
 # save test data
 utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
+utils.save_pyfiles(model_path)
 
 
 #=============================================================================
@@ -157,7 +159,39 @@ inputs_diff = nn.pbc_loss(X_input, X_truth, vel=False)
 # Determines whether input will be ground truth or previous prediction
 noise_threshold = 0.1
 if noisy_inputs:
+    # sample probabilities for inserting noise from random uniform distr
     noise = np.random.sample((num_iters, num_rs_layers-1)) <= noise_threshold
+
+
+    ''' # convenient functions for insuring integrity of noisy inputs
+
+    # x_pred_step: state variable that represents the (step, redshift)
+                   the noisy_input was created
+    '''
+
+    def insert_noise(step, z):
+        #return False
+        return
+
+    def insert_noise_next(step, z):
+        """ # determines if we need the model prediction (X_pred) to use
+        as a noisy input for the next redshift, and updates the x_pred_step
+        state variable
+        NB: z is assumed as next redshift, due to noise dims offset
+
+        Args:
+            step (int): the current training step
+               z (int): the current redshift index
+        Outputs: (bool) based on whether the next model input will be prev model output
+          - mutates x_pred_step
+        """
+        last_redshift_index = num_rs_layers - 1
+        if
+
+    x_pred_step = (-1, -1)
+    insert_noise = lambda i, z: noisy_inputs and z > 0 and (i, z-1) == x_pred_step and noise[i, z-1]
+    noisy_next   = lambda i, z: (z < num_rs_layers - 1) and noise[i, z]
+
 
 #=============================================================================
 # Session setup
@@ -192,7 +226,6 @@ save_checkpoint = lambda step: (step+1) % checkpoint == 0
 #=============================================================================
 # SINGLE-STEP
 # ----------------
-rs_tups = [(i,i+1) for i in range(num_rs_layers)]
 print('\nTraining Single-step:\n{}'.format('='*78))
 np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
@@ -235,6 +268,7 @@ for step in range(num_iters):
         trains[rsi].run(feed_dict=fdict)
 
         if noisy_inputs:
+
             if tup != rs_tups[-1] and noise[step, rsi]:
                 x_pred = sess.run(X_preds[rsi], feed_dict=fdict)
 
