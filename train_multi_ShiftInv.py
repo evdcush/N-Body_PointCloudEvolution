@@ -18,7 +18,7 @@ parser.add_argument('--batch_size','-b', default=8,          type=int,  help='tr
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
 parser.add_argument('--vcoeff',    '-c', default=0,          type=int,  help='use timestep coefficient on velocity')
 parser.add_argument('--save_prefix','-n', default='',        type=str,  help='model name prefix')
-parser.add_argument('--variable',   '-q', default=0.1,  type=float, help='multi-purpose variable argument')
+parser.add_argument('--variable',   '-q', default=1,         type=int, help='multi-purpose variable argument')
 pargs = vars(parser.parse_args())
 start_time = time.time()
 
@@ -53,6 +53,7 @@ X = None # reduce memory overhead
 model_type = pargs['model_type'] # 0: set, 1: graph
 model_vars = utils.NBODY_MODELS[model_type]
 use_coeff  = pargs['vcoeff'] == 1
+noisy_inputs = pargs['variable'] == 1
 
 # Network depth and channel sizes
 # ----------------
@@ -151,6 +152,12 @@ X_pred_val = tf.placeholder(tf.float32, shape=(None, N, 6))
 val_error = nn.pbc_loss(X_pred_val, X_truth, vel=False)
 inputs_diff = nn.pbc_loss(X_input, X_truth, vel=False)
 
+# Noisy Inputs probabilities
+# ----------------
+# Determines whether input will be ground truth or previous prediction
+noise_threshold = 0.1
+if noisy_inputs:
+    noise = np.random.sample((num_iters, num_rs_layers-1)) <= noise_threshold
 
 #=============================================================================
 # Session setup
@@ -203,8 +210,14 @@ for step in range(num_iters):
         rs_in = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
 
         # split data
-        x_in    = _x_batch[zx] # (b, N, 6)
+        #x_in    = _x_batch[zx] # (b, N, 6)
         x_truth = _x_batch[zy] # (b, N, 6)
+
+        if noisy_inputs and rsi > 0 and noise[step, rsi-1]:
+            #print('NOISY INPUT {} {} {}'.format(step, zx, zy))
+            x_in = x_pred
+        else:
+            x_in = _x_batch[zx]
 
         # Graph data
         # ----------------
@@ -220,6 +233,10 @@ for step in range(num_iters):
                  }
         # Train
         trains[rsi].run(feed_dict=fdict)
+
+        if noisy_inputs:
+            if tup != rs_tups[-1] and noise[step, rsi]:
+                x_pred = sess.run(X_preds[rsi], feed_dict=fdict)
 
     # Save
     if save_checkpoint(step):
