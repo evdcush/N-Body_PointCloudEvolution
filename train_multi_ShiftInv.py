@@ -18,7 +18,7 @@ parser.add_argument('--batch_size','-b', default=8,          type=int,  help='tr
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
 parser.add_argument('--vcoeff',    '-c', default=0,          type=int,  help='use timestep coefficient on velocity')
 parser.add_argument('--save_prefix','-n', default='',        type=str,  help='model name prefix')
-parser.add_argument('--variable',   '-q', default=1,         type=int, help='multi-purpose variable argument')
+parser.add_argument('--variable',   '-q', default=0.0,       type=float, help='multi-purpose variable argument')
 pargs = vars(parser.parse_args())
 start_time = time.time()
 
@@ -54,7 +54,9 @@ X = None # reduce memory overhead
 model_type = pargs['model_type'] # 0: set, 1: graph
 model_vars = utils.NBODY_MODELS[model_type]
 use_coeff  = pargs['vcoeff'] == 1
-noisy_inputs = pargs['variable'] == 1
+p_variable = pargs['variable']
+print('noise: {}'.format(p_variable))
+noisy_inputs = p_variable != 0.0
 
 # Network depth and channel sizes
 # ----------------
@@ -157,7 +159,7 @@ inputs_diff = nn.pbc_loss(X_input, X_truth, vel=False)
 # Noisy Inputs probabilities
 # ----------------
 # Determines whether input will be ground truth or previous prediction
-noise_threshold = 0.1
+noise_threshold = p_variable
 NOISY = False # stays False if not noisy_inputs!
 if noisy_inputs:
     # sample probabilities for inserting noise from random uniform distr
@@ -193,7 +195,7 @@ def insert_noise_next(step, z):
     is_last_redshift_index = z == num_rs_layers - 1
     global NOISY # kind of not good to mutate state var like this??
     NOISY = False if is_last_redshift_index else noise[step, z]
-    return noisy
+    return NOISY
 
 
 #=============================================================================
@@ -228,6 +230,8 @@ save_checkpoint = lambda step: (step+1) % checkpoint == 0
 #=============================================================================
 # SINGLE-STEP
 # ----------------
+TEST_noisy_count_prev = 0
+TEST_noisy_count_cur  = 0
 print('\nTraining Single-step:\n{}'.format('='*78))
 np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
@@ -250,6 +254,7 @@ for step in range(num_iters):
             x_in = _x_batch[zx]
         else:
             print('    {:>4}: NOISY input at {}'.format(step, tup))
+            TEST_noisy_count_cur += 1
             x_in = x_pred
         #x_in = _x_batch[zx] if not NOISY else x_pred
         x_truth = _x_batch[zy] # (b, N, 6)
@@ -273,6 +278,7 @@ for step in range(num_iters):
 
         if insert_noise_next(step, rsi):
             print('{:>4}: noisy input for model at {}, from model x_pred on {}'.format(step, rs_tups[rsi+1], tup))
+            TEST_noisy_count_prev += 1
             x_pred = sess.run(X_preds[rsi], feed_dict=fdict)
         else:
             x_pred = None # not necessary, just extra safety
@@ -288,7 +294,7 @@ saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_grap
 # END training
 # ========================================
 print('elapsed time: {}'.format(time.time() - start_time))
-
+print('TEST:\nnoisy_count_prev: {}\n noisy_count_cur:{}'.format(TEST_noisy_count_prev, TEST_noisy_count_cur))
 X_train = None # reduce memory overhead
 
 
