@@ -158,39 +158,42 @@ inputs_diff = nn.pbc_loss(X_input, X_truth, vel=False)
 # ----------------
 # Determines whether input will be ground truth or previous prediction
 noise_threshold = 0.1
+NOISY = False # stays False if not noisy_inputs!
 if noisy_inputs:
     # sample probabilities for inserting noise from random uniform distr
     noise = np.random.sample((num_iters, num_rs_layers-1)) <= noise_threshold
 
+    ''' # neither function necessary if we use noisy as global state var for noisy inputs
+    def insert_noise():
+        return noisy
 
-    ''' # convenient functions for insuring integrity of noisy inputs
-
-    # x_pred_step: state variable that represents the (step, redshift)
-                   the noisy_input was created
+    def insert_noise2(step, z):
+        # unnecessary complicated:
+        # - don't need x_pred_step to be a tuple(int). Can just be a simple bool
+        # - Don't need to recheck noise[i, z-1], since insert_noise_next already does
+        return noisy_inputs and z > 0 and (i, z-1) == x_pred_step and noise[i, z-1]
     '''
 
-    def insert_noise(step, z):
-        #return False
-        return
-
-    def insert_noise_next(step, z):
-        """ # determines if we need the model prediction (X_pred) to use
-        as a noisy input for the next redshift, and updates the x_pred_step
-        state variable
-        NB: z is assumed as next redshift, due to noise dims offset
-
-        Args:
-            step (int): the current training step
-               z (int): the current redshift index
-        Outputs: (bool) based on whether the next model input will be prev model output
-          - mutates x_pred_step
-        """
-        last_redshift_index = num_rs_layers - 1
-        if
-
-    x_pred_step = (-1, -1)
-    insert_noise = lambda i, z: noisy_inputs and z > 0 and (i, z-1) == x_pred_step and noise[i, z-1]
-    noisy_next   = lambda i, z: (z < num_rs_layers - 1) and noise[i, z]
+def insert_noise_next(step, z):
+    """ # determines if we need the model prediction (X_pred) to use
+    as a noisy input for the next redshift, and updates the x_pred_step
+    state variable
+    NB: z is assumed as next redshift, due to noise dims offset
+    Args:
+        step (int): the current training step
+           z (int): the current redshift index
+    Outputs: (bool) based on whether the next model input will be prev model output
+      - mutates x_pred_step
+    """
+    # don't get model prediction if we aren't inserting noise at all
+    if not noisy_inputs:
+        return False
+    # don't get model prediction if on last redshift
+    #  since first (0th) rs layer always ground truth input (and step will be different)
+    is_last_redshift_index = z == num_rs_layers - 1
+    global NOISY # kind of not good to mutate state var like this??
+    NOISY = False if is_last_redshift_index else noise[step, z]
+    return noisy
 
 
 #=============================================================================
@@ -220,7 +223,6 @@ saver.save(sess, model_path + model_name)
 checkpoint = 100
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
 
-
 #=============================================================================
 # TRAINING
 #=============================================================================
@@ -244,13 +246,15 @@ for step in range(num_iters):
 
         # split data
         #x_in    = _x_batch[zx] # (b, N, 6)
+        if not NOISY:
+            x_in = _x_batch[zx]
+        else:
+            print('    {:>4}: NOISY input at {}'.format(step, tup))
+            x_in = x_pred
+        #x_in = _x_batch[zx] if not NOISY else x_pred
         x_truth = _x_batch[zy] # (b, N, 6)
 
-        if noisy_inputs and rsi > 0 and noise[step, rsi-1]:
-            #print('NOISY INPUT {} {} {}'.format(step, zx, zy))
-            x_in = x_pred
-        else:
-            x_in = _x_batch[zx]
+
 
         # Graph data
         # ----------------
@@ -267,10 +271,11 @@ for step in range(num_iters):
         # Train
         trains[rsi].run(feed_dict=fdict)
 
-        if noisy_inputs:
-
-            if tup != rs_tups[-1] and noise[step, rsi]:
-                x_pred = sess.run(X_preds[rsi], feed_dict=fdict)
+        if insert_noise_next(step, rsi):
+            print('{:>4}: noisy input for model at {}, from model x_pred on {}'.format(step, rs_tups[rsi+1], tup))
+            x_pred = sess.run(X_preds[rsi], feed_dict=fdict)
+        else:
+            x_pred = None # not necessary, just extra safety
 
     # Save
     if save_checkpoint(step):
