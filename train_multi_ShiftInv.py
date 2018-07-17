@@ -230,8 +230,6 @@ save_checkpoint = lambda step: (step+1) % checkpoint == 0
 #=============================================================================
 # SINGLE-STEP
 # ----------------
-TEST_noisy_count_prev = 0
-TEST_noisy_count_cur  = 0
 print('\nTraining Single-step:\n{}'.format('='*78))
 np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
@@ -250,13 +248,7 @@ for step in range(num_iters):
 
         # split data
         #x_in    = _x_batch[zx] # (b, N, 6)
-        if not NOISY:
-            x_in = _x_batch[zx]
-        else:
-            print('    {:>4}: NOISY input at {}'.format(step, tup))
-            TEST_noisy_count_cur += 1
-            x_in = x_pred
-        #x_in = _x_batch[zx] if not NOISY else x_pred
+        x_in = _x_batch[zx] if not NOISY else x_pred
         x_truth = _x_batch[zy] # (b, N, 6)
 
 
@@ -277,8 +269,6 @@ for step in range(num_iters):
         trains[rsi].run(feed_dict=fdict)
 
         if insert_noise_next(step, rsi):
-            print('{:>4}: noisy input for model at {}, from model x_pred on {}'.format(step, rs_tups[rsi+1], tup))
-            TEST_noisy_count_prev += 1
             x_pred = sess.run(X_preds[rsi], feed_dict=fdict)
         else:
             x_pred = None # not necessary, just extra safety
@@ -294,7 +284,6 @@ saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_grap
 # END training
 # ========================================
 print('elapsed time: {}'.format(time.time() - start_time))
-print('TEST:\nnoisy_count_prev: {}\n noisy_count_cur:{}'.format(TEST_noisy_count_prev, TEST_noisy_count_cur))
 X_train = None # reduce memory overhead
 
 
