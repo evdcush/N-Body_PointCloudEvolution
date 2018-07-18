@@ -164,6 +164,9 @@ NOISY = False # stays False if not noisy_inputs!
 if noisy_inputs:
     # sample probabilities for inserting noise from random uniform distr
     noise = np.random.sample((num_iters, num_rs_layers-1)) <= noise_threshold
+    #keys, values = np.unique(np.sum(noise, axis=1), return_counts)
+    #total_noise = 0
+    #noisy_inputs_ratio = (np.sum(noise) / noise.shape[1]) / num_iters
 
 def insert_noise_next(step, z):
     """ # determines if we need the model prediction (X_pred) to use
