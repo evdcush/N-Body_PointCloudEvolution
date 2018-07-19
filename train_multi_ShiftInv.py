@@ -100,7 +100,10 @@ utils.save_pyfiles(model_path)
 # Init model params
 # ----------------
 vscope = utils.VAR_SCOPE.format(zX, zY)
-tf.set_random_seed(utils.PARAMS_SEED)
+#tf.set_random_seed(utils.PARAMS_SEED)
+rng_seed = 312857
+tf.set_random_seed(rng_seed)
+print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(rng_seed))
 utils.init_ShiftInv_params(channels, vscope, restore=restore, vcoeff=use_coeff)
 
 # CUBE DATA
