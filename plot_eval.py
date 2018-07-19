@@ -26,7 +26,8 @@ SAVE_DIR = './HistPlots/'
 Model_path = './Model/'
 Cube_fname = '/Cubes/X32_{}-{}_{}.npy'
 timesteps_fname = Model_path + 'timesteps.npy'
-base_name = 'ShiftInv_single_2coeff_7K_ZG_{}-{}'
+#base_name = 'ShiftInv_single_2coeff_7K_ZG_{}-{}'
+base_name = 'Multi3_ShiftInv_7K{}_ZG_{}-{}'
 
 REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
              1.1212, 0.9438, 0.7955, 0.6688, 0.5588, 0.4620, 0.3758,
@@ -292,9 +293,40 @@ def plot_multi(rs_pairs, splot_idx):
         # Plot hist
         plot_hist_ax(l2_dist_Vlinear, l2_dist_pred, pair, cur_splot_idx)
 
-rs1 = [(10, 19), (12, 19), (15, 19), (16, 19), (17, 19), (18, 19), ]#(7, 19), (3, 19), (3,7), (0,1), (11,15)]
-rs2 = [(3,7), (0,1), (11,15)]
-'''
+def plot_multistep(rs_pairs, splot_idx):
+    for i, pair in enumerate(rs_pairs):
+        zx, zy = pair
+        cur_splot_idx = splot_idx[i]
+
+        # Load Truth
+        ground_truth = load_cube(zx, zy, truth=True)
+        X_input = ground_truth[0]
+        X_truth = ground_truth[1]
+        ground_truth = None
+
+        # Load Pred
+        X_pred = load_cube(zx, zy)
+
+        # Get masked, formatted data
+        loc_truth, loc_pred, loc_input, vel_input = mask_data(X_input, X_truth, X_pred)
+
+        # Generate moving-along-velocity linear "model prediction"
+        timestep = calculate_timestep(vel_input, loc_input, loc_truth)
+        displacement = vel_input * timestep
+        loc_Vlinear = loc_input + displacement
+
+        # Get l2 distance to truth
+        l2_dist_Vlinear = l2_dist(loc_truth, loc_Vlinear)
+        l2_dist_pred    = l2_dist(loc_truth, loc_pred)
+
+        # Plot hist
+        plot_hist_ax(l2_dist_Vlinear, l2_dist_pred, pair, cur_splot_idx)
+
+#rs1 = [(10, 19), (12, 19), (15, 19), (16, 19), (17, 19), (18, 19), ]#(7, 19), (3, 19), (3,7), (0,1), (11,15)]
+#rs2 = [(3,7), (0,1), (11,15)]
+rs_multi3 = [()]
+assert False # stopped here
+
 #cur_rs = rs1
 cur_rs = rs1 + rs2
 
@@ -318,13 +350,13 @@ plt.tight_layout()
 
 #plt.show()
 save_plot(0, 19)
-'''
 
-zx = 11
-zy = 15
-rs_pair = (zx, zy)
-rsx, rsy = REDSHIFTS[zx], REDSHIFTS[zy]
+
+#zx = 11
+#zy = 15
+#rs_pair = (zx, zy)
+#rsx, rsy = REDSHIFTS[zx], REDSHIFTS[zy]
 #loc_input, vel_input, loc_truth, loc_pred, loc_Vlinear, timestep = load_formatted_cubes(rs_pair)
-cubes = load_formatted_cubes(rs_pair)
-timestep = cubes[-1][0]
-print('{:>2}, {:>2}: {:.4f} --> {:.4f}, TIMESTEP: {:.6f}'.format(zx, zy, rsx, rsy, timestep))
+#cubes = load_formatted_cubes(rs_pair)
+#timestep = cubes[-1][0]
+#print('{:>2}, {:>2}: {:.4f} --> {:.4f}, TIMESTEP: {:.6f}'.format(zx, zy, rsx, rsy, timestep))

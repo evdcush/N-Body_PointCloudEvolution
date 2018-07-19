@@ -166,7 +166,8 @@ if noisy_inputs:
     noise = np.random.sample((num_iters, num_rs_layers-1)) <= noise_threshold
     #keys, values = np.unique(np.sum(noise, axis=1), return_counts)
     #total_noise = 0
-    #noisy_inputs_ratio = (np.sum(noise) / noise.shape[1]) / num_iters
+    noisy_inputs_ratio = (np.sum(noise) / noise.shape[1]) / num_iters
+    print('\nRatio of noisy input: {:3f}\n'.format(noisy_inputs_ratio))
 
 def insert_noise_next(step, z):
     """ # determines if we need the model prediction (X_pred) to use
