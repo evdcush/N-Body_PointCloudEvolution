@@ -47,6 +47,15 @@ def load_cube(zx, zy, truth=False, model_name=None):
     path = Model_path + m_name + cube_name
     return np.load(path)
 
+def load_multi_cube(zx, zy, truth=False, model_name=None, mtag=''):
+    if model_name is None:
+        model_name = base_name
+    ctag = 'true' if truth else 'prediction'
+    cube_name = Cube_fname.format(zx, zy, ctag)
+    m_name = model_name.format(mtag, zx, zy)
+    path = Model_path + m_name + cube_name
+    return np.load(path)
+
 def get_timesteps(redshifts):
     #TODO
     assert False
@@ -293,7 +302,11 @@ def plot_multi(rs_pairs, splot_idx):
         # Plot hist
         plot_hist_ax(l2_dist_Vlinear, l2_dist_pred, pair, cur_splot_idx)
 
-def plot_multistep(rs_pairs, splot_idx):
+def plot_multistep(rs_pairs, splot_idx, mtags):
+    origin, target = rs_pairs[0][0], rs_pairs[-1][1]
+    multi_ground_truth = load_multi_cube(origin, target, truth=True, mtag='')
+    for m_idx, mtag in enumerate(mtags):
+
     for i, pair in enumerate(rs_pairs):
         zx, zy = pair
         cur_splot_idx = splot_idx[i]
@@ -324,11 +337,9 @@ def plot_multistep(rs_pairs, splot_idx):
 
 #rs1 = [(10, 19), (12, 19), (15, 19), (16, 19), (17, 19), (18, 19), ]#(7, 19), (3, 19), (3,7), (0,1), (11,15)]
 #rs2 = [(3,7), (0,1), (11,15)]
-rs_multi3 = [()]
-assert False # stopped here
+rs_multi3 = [(1,7), (7,13), (13,19)]
 
-#cur_rs = rs1
-cur_rs = rs1 + rs2
+cur_rs = rs_multi3
 
 nr = 3#1
 nc = 3#len(cur_rs)
@@ -341,7 +352,8 @@ fsize = ((j+1)*nc, j*nr)
 fig = plt.figure(figsize=fsize)
 #plot_hist_ax(l2_dist_Vlinear, l2_dist_pred, (zx, zy), 111)
 
-plot_multi(cur_rs, splot_idx)
+plot_multistep(cur_rs, splot_idx)
+#plot_multi(cur_rs, splot_idx)
 #plt.suptitle('')
 #fig.suptitle('Comparison of deep model (blue) against moving-along-velocity')
 plt.tight_layout()
