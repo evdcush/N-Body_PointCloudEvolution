@@ -100,7 +100,8 @@ utils.init_ShiftInv_params(channels, vscope, restore=restore, vcoeff=use_coeff)
 if use_coeff:
     with tf.variable_scope(vscope):
         #utils.init_coeff_multi(num_rs_layers)
-        utils.init_coeff_multi2(num_rs_layers, restore=restore)
+        #utils.init_coeff_multi2(num_rs_layers, restore=restore)
+        utils.init_coeff_agg(num_rs_layers, restore=restore)
 
 
 
