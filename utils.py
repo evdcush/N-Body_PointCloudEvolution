@@ -133,6 +133,7 @@ def init_vel_coeff(restore=False, vinit=None):
 
 MCOEFFTAG = 'coeff_{}'
 MCOEFFTAG2 = 'coeff_{}_{}'
+MCOEFFTAG2_RS = 'coeff{}-{}_{}_{}'
 
 def init_coeff_multi(num_rs, restore=False, vinit=0.002):
     for i in range(num_rs):
@@ -156,6 +157,24 @@ def init_coeff_multi2(num_rs, restore=False, vinit=0.002):
             tf.get_variable(*args, dtype=tf.float32, initializer=init)
 
 def get_scoped_coeff_multi2(idx):
+    t0 = tf.get_variable(MCOEFFTAG2.format(idx,0))
+    t1 = tf.get_variable(MCOEFFTAG2.format(idx,1))
+    return t0, t1
+
+def init_coeff_agg(rs_steps, restore=False, vinit=0.002):
+    num_coeff = 2
+    for i, rs in enumerate(rs_steps):
+        for j in range(num_coeff):
+            tag = MCOEFFTAG2.format(i, j)
+            args = (tag,)
+            if restore:
+                init = None
+                args = args + ((1,))
+            else:
+                init = tf.constant([vinit])
+            tf.get_variable(*args, dtype=tf.float32, initializer=init)
+
+def get_scoped_coeff_agg(idx):
     t0 = tf.get_variable(MCOEFFTAG2.format(idx,0))
     t1 = tf.get_variable(MCOEFFTAG2.format(idx,1))
     return t0, t1

@@ -57,8 +57,8 @@ use_coeff  = pargs['vcoeff'] == 1
 #channels = model_vars['channels'] # OOM with sparse graph
 channels = [6, 32, 16, 8, 3]
 channels[0]  = 9
-channels[-1] = 3
-#channels[-1] = 6
+#channels[-1] = 3
+channels[-1] = 6
 num_layers = len(channels) - 1
 M = pargs['graph_var']
 
