@@ -148,7 +148,7 @@ def angle(v1, v2):
     return angle
 
 def calculate_timestep(vel_in, loc_in, loc_out):
-    diff = loc_out - loc_in # err, shouldn't this be l2_dist? not simply diff
+    diff = loc_out - loc_in
     timestep = np.linalg.lstsq(vel_in.ravel()[:,None], diff.ravel())[0]
     return timestep
 

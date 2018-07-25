@@ -292,6 +292,9 @@ def get_scoped_vcoeff():
     vcoeff = tf.get_variable(VEL_COEFF_TAG)
     return vcoeff
 
+def get_var(tag):
+    with tf.variable_scope(vscope, reuse=True):
+        return tf.get_variable(tag).eval()
 
 #=============================================================================
 # graph save and restore
@@ -814,3 +817,33 @@ def plot_3D_pointcloud(xt, xh, j, pt_size=(.9,.9), colors=('b','r'), fsize=(12,1
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
     return fig
+
+
+#=============================================================================
+# State and Misc Utils
+#=============================================================================
+
+def get_timestep(x_in, x_true):
+    """ # calculates timestep from input redshift to target redshift
+    """
+    diff = x_true[...,:3] - x_in[...,:3]
+    timestep = np.linalg.lstsq(x_in[...,3:].ravel()[:,None], diff.ravel())[0]
+    return timestep
+
+def print_checkpoint(step, err, sc_err=None):
+    text = 'Checkpoint {:>5}--> LOC: {:.8f}'.format(step+1, err)
+    if sc_err is not None:
+        text = text + ', SCA:: {:.6f}'.format(sc_err)
+    print(text)
+
+
+def print_median_validation_error(rs, err, sc_err=None):
+    zx, zy = rs
+    err_median = np.median(err)
+    print('\nEvaluation Median Error, {:<18}:\n{}'.format(model_name, '='*78))
+    print('# LOCATION ERROR:')
+    print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, err_median))
+    if sc_err is not None:
+        sc_err_median = np.median(sc_err)
+        print('# SCALED ERROR:')
+        print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, sc_err_median))

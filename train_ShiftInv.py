@@ -163,12 +163,8 @@ sess.run(tf.global_variables_initializer())
 if restore:
     utils.load_graph(sess, model_path)
 
-def get_var(tag):
-    with tf.variable_scope(vscope, reuse=True):
-        return tf.get_variable(tag).eval()
 
-#theta = utils.get_vcoeff(vscope).eval()
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+
 # Session saver
 # ----------------
 saver = tf.train.Saver()
@@ -218,9 +214,7 @@ for step in range(num_iters):
     # Save
     if save_checkpoint(step):
         err = sess.run(error, feed_dict=fdict)
-        print('checkpoint {:>5}--> LOC: {:.8f}'.format(step+1, err))
-        #err, sc_err = sess.run([error, sc_error], feed_dict=fdict)
-        #print('Checkpoint {:>5}--> LOC: {:.8f}, SCA: {:.6f}'.format(step+1, err, sc_err))
+        utils.print_checkpoint(step, err)
         saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
 
@@ -243,7 +237,6 @@ test_predictions  = np.zeros(X_test.shape[1:-1] + (channels[-1],)).astype(np.flo
 #test_predictions  = np.zeros(X_test.shape[1:-1] + (6,)).astype(np.float32)
 test_loss = np.zeros((num_val_batches,)).astype(np.float32)
 #test_loss_sc = np.zeros((num_val_batches,)).astype(np.float32)
-#inputs_loss = np.zeros((NUM_VAL_SAMPLES)).astype(np.float32)
 
 print('\nEvaluation:\n{}'.format('='*78))
 #for j in range(X_test.shape[1]):
@@ -257,7 +250,6 @@ for j in range(num_val_batches):
     # Graph data
     # ----------------
     csr_list = get_list_csr(x_in) # len b list of (N,N) csrs
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     coo_feats = nn.to_coo_batch(csr_list)
 
     # Feed data to tensors
@@ -277,38 +269,21 @@ for j in range(num_val_batches):
     print('{:>3d} = LOC: {:.6f}'.format(j, v_error))
     #print('{:>3d} = LOC: {:.8f}, SCA: {:.6f}'.format(j, v_error, v_sc_error))
 
+
 # END Validation
 # ========================================
-# median error
-test_median = np.median(test_loss)
-#test_sc_median = np.median(test_loss_sc)
-#inputs_median = np.median(inputs_loss)
-#print('{:<18} median: {:.9f}'.format(model_name, test_median))
-#print('{:<30} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
-
-
-print('\nEvaluation Median Error Statistics, {:<18}:\n{}'.format(model_name, '='*78))
-'''
-print('# SCALED LOSS:')
-for i, tup in enumerate(rs_steps_tup):
-    zx, zy = tup
-    print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, loss_median[i]))
-'''
+utils.print_median_validation_error(redshift_steps, test_loss)
 zx, zy = redshift_steps
 print('# LOCATION LOSS:')
 print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, test_median))
-#print('# SCALED LOSS:')
-#print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, test_sc_median))
-#print('\nEND EVALUATION, SAVING CUBES AND LOSS\n{}'.format('='*78))
-#print('{:<30} median: {:.9f}, {:.9f}'.format(model_name, test_median, inputs_median))
+
 
 #MCOEFFTAG = 'coeff_{}'
 #VEL_COEFF_TAG = 'V'
-t0 = get_var('coeff_{}_{}'.format(0,0))[0]
-t1 = get_var('coeff_{}_{}'.format(0,1))[0]
-#t1 = get_var('V')
-print(' TIMESTEP, final value: {:.6f}'.format(t1))
-print('LOCSCALAR, final value: {:.6f}'.format(t0))
+#t0 = utils.get_var('coeff_{}_{}'.format(0,0))[0]
+#t1 = utils.get_var('coeff_{}_{}'.format(0,1))[0]
+#print(' TIMESTEP, final value: {:.6f}'.format(t1))
+#print('LOCSCALAR, final value: {:.6f}'.format(t0))
 
 
 # save loss and predictions
