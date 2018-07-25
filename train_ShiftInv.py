@@ -40,6 +40,7 @@ num_rs_layers = num_rs - 1
 X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)[...,:-1]
 #X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)[...,:-1]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=NUM_VAL_SAMPLES)
+timestep = utils.get_timestep(X[0], X[1])
 X = None # reduce memory overhead
 
 
@@ -51,14 +52,15 @@ X = None # reduce memory overhead
 model_type = pargs['model_type'] # 0: set, 1: graph
 model_vars = utils.NBODY_MODELS[model_type]
 use_coeff  = pargs['vcoeff'] == 1
+var_timestep = False
 
 # Network depth and channel sizes
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
 channels = [6, 32, 16, 8, 3]
 channels[0]  = 9
-#channels[-1] = 3
-channels[-1] = 6
+channels[-1] = 3
+#channels[-1] = 6
 num_layers = len(channels) - 1
 M = pargs['graph_var']
 
@@ -96,12 +98,17 @@ utils.save_pyfiles(model_path)
 # ----------------
 vscope = utils.VAR_SCOPE.format(zX, zY)
 tf.set_random_seed(utils.PARAMS_SEED)
-utils.init_ShiftInv_params(channels, vscope, restore=restore, vcoeff=use_coeff)
+utils.init_ShiftInv_params(channels, vscope, restore=restore)
+
 if use_coeff:
-    with tf.variable_scope(vscope):
-        #utils.init_coeff_multi(num_rs_layers)
-        #utils.init_coeff_multi2(num_rs_layers, restore=restore)
-        utils.init_coeff_agg(num_rs_layers, restore=restore)
+    if not var_timestep:
+        print('only init location scalar')
+        scalar_tag = utils.init_coeff(vscope, redshift_steps, restore=restore)
+    else: # CLEAN THIS UP, SHOULDN'T SCOPE INIT HERE
+        with tf.variable_scope(vscope):
+            #utils.init_coeff_multi(num_rs_layers)
+            utils.init_coeff_multi2(num_rs_layers, restore=restore)
+            #utils.init_coeff_agg(num_rs_layers, restore=restore)
 
 
 
@@ -113,8 +120,7 @@ X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
 # NEIGHBOR GRAPH DATA
 # ----------------
 # these shapes must be concrete for unsorted_segment_mean
-COO_feats     = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
-#COO_feats_val = tf.placeholder(tf.int32, shape=(3,            N*M,))
+COO_feats = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
 
 
 #=============================================================================
@@ -132,16 +138,18 @@ model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
 # Model outputs
 # ----------------
 # Train
-X_pred = nn.ShiftInv_single_model_func_v1(X_input, COO_feats, model_specs, coeff_idx=0)
-#X_pred = nn.ShiftInv_single_model_func_v2(X_input, COO_feats, model_specs)
+#X_pred = nn.ShiftInv_single_model_func_v1(X_input, COO_feats, model_specs, coeff_idx=0)
+
+# Static timestep model:
+X_pred = nn.ShiftInv_model_func_timestep(X_input, COO_feats, model_specs, timestep, scalar_tag=scalar_tag):
 
 
 # Loss
 # ----------------
 # Training error and Optimizer
-#sc_error = nn.pbc_loss_scaled(X_input, X_pred, X_truth, vel=False)
 error = nn.pbc_loss(X_pred, X_truth, vel=False)
 train = tf.train.AdamOptimizer(learning_rate).minimize(error)
+#sc_error = nn.pbc_loss_scaled(X_input, X_pred, X_truth, vel=False)
 #train = tf.train.AdamOptimizer(learning_rate).minimize(sc_error)
 
 # Validation error

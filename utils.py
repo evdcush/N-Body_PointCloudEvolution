@@ -134,6 +134,25 @@ def init_vel_coeff(restore=False, vinit=None):
 MCOEFFTAG = 'coeff_{}'
 MCOEFFTAG2 = 'coeff_{}_{}'
 MCOEFFTAG2_RS = 'coeff{}-{}_{}_{}'
+MCOEFFTAG_RS = 'coeff{}-{}'
+
+
+def init_coeff(vscope, rs, restore=False, vinit=0.002):
+    zx, zy = rs
+    tag = MCOEFFTAG_RS.format(zx, zy)
+    args = (tag,)
+    with tf.variable_scope(vscope):
+        if restore:
+            init = None
+            args = args + ((1,)) # (1,) being dim/shape of coeff
+        else:
+            init = tf.constant([vinit])
+        tf.get_variable(*args, dtype=tf.float32, initializer=init)
+    return tag
+
+def get_scoped_coeff(tag):
+    return tf.get_variable(tag)
+
 
 def init_coeff_multi(num_rs, restore=False, vinit=0.002):
     for i in range(num_rs):
