@@ -847,7 +847,7 @@ def get_timestep(x_in, x_true):
     """
     diff = x_true[...,:3] - x_in[...,:3]
     timestep = np.linalg.lstsq(x_in[...,3:].ravel()[:,None], diff.ravel())[0]
-    return timestep
+    return timestep[0]
 
 def print_checkpoint(step, err, sc_err=None):
     text = 'Checkpoint {:>5}--> LOC: {:.8f}'.format(step+1, err)
@@ -859,7 +859,7 @@ def print_checkpoint(step, err, sc_err=None):
 def print_median_validation_error(rs, err, sc_err=None):
     zx, zy = rs
     err_median = np.median(err)
-    print('\nEvaluation Median Error, {:<18}:\n{}'.format(model_name, '='*78))
+    print('\nEvaluation Median Error:\n{}'.format('='*78))
     print('# LOCATION ERROR:')
     print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, err_median))
     if sc_err is not None:

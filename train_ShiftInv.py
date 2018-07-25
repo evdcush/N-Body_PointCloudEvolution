@@ -41,6 +41,7 @@ X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)[...,:-1]
 #X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)[...,:-1]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=NUM_VAL_SAMPLES)
 timestep = utils.get_timestep(X[0], X[1])
+print('timestep = {}'.format(timestep))
 X = None # reduce memory overhead
 
 
@@ -102,8 +103,8 @@ utils.init_ShiftInv_params(channels, vscope, restore=restore)
 
 if use_coeff:
     if not var_timestep:
-        print('only init location scalar')
         scalar_tag = utils.init_coeff(vscope, redshift_steps, restore=restore)
+        print('Scalar tag: {}'.format(scalar_tag))
     else: # CLEAN THIS UP, SHOULDN'T SCOPE INIT HERE
         with tf.variable_scope(vscope):
             #utils.init_coeff_multi(num_rs_layers)
@@ -141,7 +142,7 @@ model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
 #X_pred = nn.ShiftInv_single_model_func_v1(X_input, COO_feats, model_specs, coeff_idx=0)
 
 # Static timestep model:
-X_pred = nn.ShiftInv_model_func_timestep(X_input, COO_feats, model_specs, timestep, scalar_tag=scalar_tag):
+X_pred = nn.ShiftInv_model_func_timestep(X_input, COO_feats, model_specs, timestep, scalar_tag=scalar_tag)
 
 
 # Loss
@@ -177,7 +178,7 @@ if restore:
 # ----------------
 saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
-checkpoint = 100
+checkpoint = 500
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
 
 
@@ -274,16 +275,16 @@ for j in range(num_val_batches):
     test_predictions[p:q] = x_pred_val
     test_loss[j] = v_error
     #test_loss_sc[j] = v_sc_error
-    print('{:>3d} = LOC: {:.6f}'.format(j, v_error))
+    #print('{:>3d} = LOC: {:.6f}'.format(j, v_error))
     #print('{:>3d} = LOC: {:.8f}, SCA: {:.6f}'.format(j, v_error, v_sc_error))
 
 
 # END Validation
 # ========================================
 utils.print_median_validation_error(redshift_steps, test_loss)
-zx, zy = redshift_steps
-print('# LOCATION LOSS:')
-print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, test_median))
+#zx, zy = redshift_steps
+#print('# LOCATION LOSS:')
+#print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, test_median))
 
 
 #MCOEFFTAG = 'coeff_{}'
