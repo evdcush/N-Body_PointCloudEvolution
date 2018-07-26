@@ -857,16 +857,13 @@ def _mask_data(x_in, x_truth):
     masked_truth = x_truth[mask]
     return masked_input, masked_truth
 
-    # Mask data
-    #loc_truth = np.copy(x_truth_flat[mask_nz, :3])
-    #loc_pred  = np.copy(x_pred_flat[ mask_nz, :3])
-    #loc_input = np.copy(x_in_flat[   mask_nz, :3])
-    #vel_input = np.copy(x_in_flat[   mask_nz, 3: ])
-
 def get_timestep(x_in, x_true):
     """ # calculates timestep from input redshift to target redshift
     """
-    m_in, m_true = _mask_data(x_in, x_true)
+    x_in_flat   = x_in.reshape([-1, 6])
+    x_true_flat = x_true.reshape([-1, 6])
+
+    m_in, m_true = _mask_data(x_in_flat, x_true_flat)
     #diff = x_true[...,:3] - x_in[...,:3]
     diff = m_true[...,:3] - m_in[...,:3]
     timestep = np.linalg.lstsq(m_in[...,3:].ravel()[:,None], diff.ravel())[0]
