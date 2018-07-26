@@ -841,12 +841,35 @@ def plot_3D_pointcloud(xt, xh, j, pt_size=(.9,.9), colors=('b','r'), fsize=(12,1
 #=============================================================================
 # State and Misc Utils
 #=============================================================================
+def _get_mask(x, bound=0.1):
+    xtmp = x[...,:3]
+    lower, upper = bound, 1-bound
+    mask1 = np.logical_and(xtmp[...,0] < upper, xtmp[...,0] > lower)
+    mask2 = np.logical_and(xtmp[...,1] < upper, xtmp[...,1] > lower)
+    mask3 = np.logical_and(xtmp[...,2] < upper, xtmp[...,2] > lower)
+    mask = mask1 * mask2 * mask3
+    mask_nz = np.nonzero(mask)[0]
+    return mask_nz
+
+def _mask_data(x_in, x_truth):
+    mask = _get_mask(x_in)
+    masked_input = x_in[mask]
+    masked_truth = x_truth[mask]
+    return masked_input, masked_truth
+
+    # Mask data
+    #loc_truth = np.copy(x_truth_flat[mask_nz, :3])
+    #loc_pred  = np.copy(x_pred_flat[ mask_nz, :3])
+    #loc_input = np.copy(x_in_flat[   mask_nz, :3])
+    #vel_input = np.copy(x_in_flat[   mask_nz, 3: ])
 
 def get_timestep(x_in, x_true):
     """ # calculates timestep from input redshift to target redshift
     """
-    diff = x_true[...,:3] - x_in[...,:3]
-    timestep = np.linalg.lstsq(x_in[...,3:].ravel()[:,None], diff.ravel())[0]
+    m_in, m_true = _mask_data(x_in, x_true)
+    #diff = x_true[...,:3] - x_in[...,:3]
+    diff = m_true[...,:3] - m_in[...,:3]
+    timestep = np.linalg.lstsq(m_in[...,3:].ravel()[:,None], diff.ravel())[0]
     return timestep[0]
 
 def print_checkpoint(step, err, sc_err=None):
@@ -856,13 +879,13 @@ def print_checkpoint(step, err, sc_err=None):
     print(text)
 
 
-def print_median_validation_error(rs, err, sc_err=None):
+def print_median_validation_loss(rs, err, sc_err=None):
     zx, zy = rs
     err_median = np.median(err)
-    print('\nEvaluation Median Error:\n{}'.format('='*78))
-    print('# LOCATION ERROR:')
+    print('\nEvaluation Median Loss:\n{}'.format('='*78))
+    print('# LOCATION LOSS:')
     print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, err_median))
     if sc_err is not None:
         sc_err_median = np.median(sc_err)
-        print('# SCALED ERROR:')
+        print('# SCALED LOSS:')
         print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, sc_err_median))

@@ -281,7 +281,7 @@ for j in range(num_val_batches):
 
 # END Validation
 # ========================================
-utils.print_median_validation_error(redshift_steps, test_loss)
+utils.print_median_validation_loss(redshift_steps, test_loss)
 #zx, zy = redshift_steps
 #print('# LOCATION LOSS:')
 #print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, test_median))
