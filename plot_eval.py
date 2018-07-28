@@ -38,7 +38,7 @@ REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
 
 # Data IO Functions
 # ========================================
-def load_cube(zx, zy, truth=False, model_name=None):
+def load_cube2(zx, zy, truth=False, model_name=None):
     if model_name is None:
         model_name = base_name
     ctag = 'true' if truth else 'prediction'
@@ -47,31 +47,12 @@ def load_cube(zx, zy, truth=False, model_name=None):
     path = Model_path + m_name + cube_name
     return np.load(path)
 
-def load_multi_cube(zx, zy, truth=False, model_name=None, mtag=''):
-    if model_name is None:
-        model_name = base_name
+def load_cube(zx, zy, model_name, truth=False):
     ctag = 'true' if truth else 'prediction'
     cube_name = Cube_fname.format(zx, zy, ctag)
-    m_name = model_name.format(mtag, zx, zy)
+    m_name = model_name.format(zx, zy)
     path = Model_path + m_name + cube_name
     return np.load(path)
-
-def get_timesteps(redshifts):
-    #TODO
-    assert False
-    if not os.path.exists(timesteps_fname):
-        timesteps = {}
-    else:
-        timesteps = np.load(timesteps_fname).item()
-    for zx, zy in redshifts:
-        cube = load_cube(zx, zy, truth=True)
-        x_input = cube[0]
-        x_truth = cube[1]
-        cube = None
-        x_input_loc, x_input_vel = x_input[...,:3], x_input[...,3:]
-        x_truth_loc, x_truth_vel = x_truth[...,:3], x_truth[...,3:]
-        # LEFT OFF HERE!
-
 
 
 def save_plot(zx, zy, save_fname=None):
@@ -95,7 +76,7 @@ def get_mask(x, bound=0.1):
     mask_nz = np.nonzero(mask)[0]
     return mask_nz
 
-def mask_data(x_in, x_truth, x_pred):
+def mask_data2(x_in, x_truth, x_pred):
     # Reshape for masking entire cube
     x_in_flat    =    x_in.reshape([-1, 6])
     x_truth_flat = x_truth.reshape([-1, 6])
@@ -110,25 +91,13 @@ def mask_data(x_in, x_truth, x_pred):
 
     return loc_truth, loc_pred, loc_input, vel_input
 
-def load_formatted_cubes(rs_pair):
-    zx, zy = rs_pair
+def mask_data(x, mask):
+    n,m,d = x.shape
+    # Reshape for masking entire cube
+    x_flat = x.reshape([-1, d])
 
-    # Load Truth
-    ground_truth = load_cube(zx, zy, truth=True)
-    X_input = ground_truth[0]
-    X_truth = ground_truth[1]
-    ground_truth = None
+    return x_flat[mask,:]
 
-    # Load Pred
-    X_pred = load_cube(zx, zy)
-    # Get masked, formatted data
-    loc_truth, loc_pred, loc_input, vel_input = mask_data(X_input, X_truth, X_pred)
-    # Generate moving-along-velocity linear "model prediction"
-    timestep = calculate_timestep(vel_input, loc_input, loc_truth)
-    displacement = vel_input * timestep
-    loc_Vlinear = loc_input + displacement
-
-    return loc_input, vel_input, loc_truth, loc_pred, loc_Vlinear, timestep
 
 # Alg/Plotting utils
 # ========================================
@@ -152,11 +121,10 @@ def calculate_timestep(vel_in, loc_in, loc_out):
     timestep = np.linalg.lstsq(vel_in.ravel()[:,None], diff.ravel())[0]
     return timestep
 
-def calculate_timestep_l2(vel_in, loc_in, loc_out):
-    #diff = loc_out - loc_in
-    diff = l2_dist(loc_out, loc_in)
-    timestep = np.linalg.lstsq(vel_in.ravel()[:,None], diff.ravel())[0]
-    return timestep
+def get_velLinear_pred(x_in, timestep)
+    displacement = x_in[...,3:] * timestep
+    loc_Vlinear = x_in[...,:3] + displacement
+    return loc_Vlinear
 
 def l2_dist(loc_truth, loc_hat):
     return np.linalg.norm(loc_truth - loc_hat, axis=-1)
@@ -167,80 +135,11 @@ def l2_dist(loc_truth, loc_hat):
 alpha = .5
 Vlin_label = 'vel linear'
 pred_label = 'deep model'
+pred2_label = 'deep noisy model'
 Vlin_c = 'r'
 pred_c = 'b'
-'''
-# Load Data
-# ========================================
-# Data vars
-rs_tup_index = -2
-zx, zy = trained_redshifts[rs_tup_index]
+pred2_c = 'g'
 
-# Load Truth
-ground_truth = load_cube(zx, zy, truth=True)
-X_input = ground_truth[0]
-X_truth = ground_truth[1]
-ground_truth = None
-
-# Load Pred
-X_pred = load_cube(zx, zy)
-
-# Format/mask data for plots
-# ========================================
-# Reshape for masking entire cube
-x_input = X_input.reshape([-1, 6])
-x_truth = X_truth.reshape([-1, 6])
-x_pred  =  X_pred.reshape([-1, X_pred.shape[-1]]) # (-1, 3) or (-1, 6)
-mask_nz = get_mask(x_input) # flattened
-#
-# Mask data
-loc_truth = np.copy(x_truth[mask_nz,  :3])
-loc_pred  = np.copy(x_pred[ mask_nz,  :3])
-loc_input = np.copy(x_input[mask_nz,  :3])
-vel_input = np.copy(x_input[mask_nz, 3: ])
-#
-# Calculate distances for hist
-# ========================================
-# Generate moving-along-velocity linear "model prediction"
-timestep = calculate_timestep(vel_input, loc_input, loc_truth)
-displacement = vel_input * timestep
-loc_Vlinear = loc_input + displacement
-#
-# Get l2 distance to truth
-l2_dist_Vlinear = l2_dist(loc_truth, loc_Vlinear)
-l2_dist_pred    = l2_dist(loc_truth, loc_pred)
-#
-# Plot single hist
-# ========================================
-def plot_hist(dist_Vlin, dist_pred, rs_idx, subplot_idx=None):
-    # Get hist bins from statistics on l2 distance
-    bins = get_bins(dist_Vlin)
-
-    # Get medians
-    q50_Vlin = np.median(dist_Vlin)
-    q50_pred = np.median(dist_pred)
-
-    # format labels
-    label_Vlin = '{}: {:.6f}'.format(Vlin_label, q50_Vlin)
-    label_pred = '{}: {:.6f}'.format(pred_label, q50_pred)
-
-    # plot hist
-    plt.hist(dist_Vlin, bins= bins, label=label_Vlin, color=Vlin_c, alpha=alpha)
-    plt.hist(dist_pred, bins= bins, label=label_pred, color=pred_c, alpha=alpha)
-
-    # Add some graph details
-    zx, zy = rs_idx
-    rsx, rsy = REDSHIFTS[zx], REDSHIFTS[zy]
-    title = 'Error, single-step {:>2}-{:>2}: {:.4f} --> {:.4f}'.format(zx, zy, rsx, rsy)
-    plt.title(title)
-    plt.xlabel('Distance (L2)')
-    L = plt.legend()
-    plt.setp(L.texts, family='monospace')
-    plt.grid(True, alpha=0.5, ls='--')
-    plt.tight_layout()
-
-#plot_hist(l2_dist_Vlinear, l2_dist_pred, (zx, zy))
-'''
 # Plot multi-hist
 # ========================================
 def plot_hist_ax(dist_Vlin, dist_pred, rs_idx, subplot_idx):
@@ -288,12 +187,12 @@ def plot_multi(rs_pairs, splot_idx):
         X_pred = load_cube(zx, zy)
 
         # Get masked, formatted data
-        loc_truth, loc_pred, loc_input, vel_input = mask_data(X_input, X_truth, X_pred)
+        #loc_truth, loc_pred, loc_input, vel_input = mask_data(X_input, X_truth, X_pred)
+
 
         # Generate moving-along-velocity linear "model prediction"
-        timestep = calculate_timestep(vel_input, loc_input, loc_truth)
-        displacement = vel_input * timestep
-        loc_Vlinear = loc_input + displacement
+        timestep = calculate_timestep(x_in, x_truth[...,:3])
+        loc_velLinear = get_velLinear_pred(x_in, timestep)
 
         # Get l2 distance to truth
         l2_dist_Vlinear = l2_dist(loc_truth, loc_Vlinear)
@@ -302,11 +201,7 @@ def plot_multi(rs_pairs, splot_idx):
         # Plot hist
         plot_hist_ax(l2_dist_Vlinear, l2_dist_pred, pair, cur_splot_idx)
 
-def plot_multistep(rs_pairs, splot_idx, mtags):
-    origin, target = rs_pairs[0][0], rs_pairs[-1][1]
-    multi_ground_truth = load_multi_cube(origin, target, truth=True, mtag='')
-    for m_idx, mtag in enumerate(mtags):
-
+def plot_multi_comp(rs_pairs, splot_idx):
     for i, pair in enumerate(rs_pairs):
         zx, zy = pair
         cur_splot_idx = splot_idx[i]
@@ -321,12 +216,41 @@ def plot_multistep(rs_pairs, splot_idx, mtags):
         X_pred = load_cube(zx, zy)
 
         # Get masked, formatted data
-        loc_truth, loc_pred, loc_input, vel_input = mask_data(X_input, X_truth, X_pred)
+        #loc_truth, loc_pred, loc_input, vel_input = mask_data(X_input, X_truth, X_pred)
+
 
         # Generate moving-along-velocity linear "model prediction"
-        timestep = calculate_timestep(vel_input, loc_input, loc_truth)
-        displacement = vel_input * timestep
-        loc_Vlinear = loc_input + displacement
+        timestep = calculate_timestep(x_in, x_truth[...,:3])
+        loc_velLinear = get_velLinear_pred(x_in, timestep)
+
+        # Get l2 distance to truth
+        l2_dist_Vlinear = l2_dist(loc_truth, loc_Vlinear)
+        l2_dist_pred    = l2_dist(loc_truth, loc_pred)
+
+        # Plot hist
+        plot_hist_ax(l2_dist_Vlinear, l2_dist_pred, pair, cur_splot_idx)
+
+def plot_multiStep_comp(rs_pairs, splot_idx):
+    for i, pair in enumerate(rs_pairs):
+        zx, zy = pair
+        cur_splot_idx = splot_idx[i]
+
+        # Load Truth
+        ground_truth = load_cube(zx, zy, truth=True)
+        X_input = ground_truth[0]
+        X_truth = ground_truth[1]
+        ground_truth = None
+
+        # Load Pred
+        X_pred = load_cube(zx, zy)
+
+        # Get masked, formatted data
+        #loc_truth, loc_pred, loc_input, vel_input = mask_data(X_input, X_truth, X_pred)
+
+
+        # Generate moving-along-velocity linear "model prediction"
+        timestep = calculate_timestep(x_in, x_truth[...,:3])
+        loc_velLinear = get_velLinear_pred(x_in, timestep)
 
         # Get l2 distance to truth
         l2_dist_Vlinear = l2_dist(loc_truth, loc_Vlinear)
@@ -339,13 +263,17 @@ def plot_multistep(rs_pairs, splot_idx, mtags):
 #rs2 = [(3,7), (0,1), (11,15)]
 rs_multi3 = [(1,7), (7,13), (13,19)]
 
+# Load data
+# ========================================
+model_names = ['Multi3_ShiftInv_7K_ZG_{}-{}', 'Multi3_ShiftInv_7K_noisy018_{}-{}']
+X_pred = load_cube(1, 19, 'Multi3_ShiftInv_7K_ZG_{}-{}')
 cur_rs = rs_multi3
 
 nr = 3#1
 nc = 3#len(cur_rs)
 #splot_idx = [int('1{}{}'.format(num_cols, i)) for i in range(1, num_cols+1)]
 splot_idx = [int('{}{}{}'.format(nr, nc, i)) for i in range(1, len(cur_rs)+1)]
-
+'''
 j = 5
 #fsize = ((j+1)*len(cur_rs), j)
 fsize = ((j+1)*nc, j*nr)
@@ -362,7 +290,7 @@ plt.tight_layout()
 
 #plt.show()
 save_plot(0, 19)
-
+'''
 
 #zx = 11
 #zy = 15

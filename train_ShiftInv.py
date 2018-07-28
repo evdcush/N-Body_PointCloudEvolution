@@ -178,7 +178,7 @@ if restore:
 # ----------------
 saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
-checkpoint = 500
+checkpoint = 100
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
 
 
