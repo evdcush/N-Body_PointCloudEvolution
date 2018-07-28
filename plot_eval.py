@@ -111,7 +111,8 @@ LINEAR_VEL_LABEL = 'linear vel'
 #pred2_label = 'deep noisy model'
 linVel_c = 'r'
 
-plabels = ['deep vanilla', 'deep noisy']
+#plabels = ['deep vanilla', 'deep noisy']
+plabels = ['deep var timestep', 'deep static timestep']
 pcolors = ['b', 'g']
 #pred_c = 'b'
 #pred2_c = 'g'
@@ -123,6 +124,7 @@ def label_hist_ax(ax, rs_idx, xlabel='Distance (L2)'):
     zx, zy = rs_idx
     rsx, rsy = REDSHIFTS[zx], REDSHIFTS[zy]
     title = 'Error, single-step {:>2}-{:>2}: {:.4f} --> {:.4f}'.format(zx, zy, rsx, rsy)
+    #title = 'Error, multi-step {:>2}-{:>2}: {:.4f} --> {:.4f}'.format(zx, zy, rsx, rsy)
     ax.set_title(title, size='medium', style='italic')
     ax.set_xlabel('Distance (L2)')
     leg = ax.legend()
@@ -136,7 +138,7 @@ def get_label(dist, tag=None):
     median = np.median(dist)
     if tag is None:
         tag = LINEAR_VEL_LABEL
-    label = '{:>16}: {:.6f}'.format(tag, median)
+    label = '{:>20}: {:.6f}'.format(tag, median)
     return label
 
 def plot_hist_ax(dist_linVel, dist_preds, rs_idx, subplot_idx):
@@ -189,20 +191,21 @@ def plot_multi_single(X_truth, X_pred, rs_pairs, splot_idx):
 
 
 
-def plot_multiStep_comp(X_truth, X_preds, rs_pairs, splot_idx):
+def plot_multiStep_comp(X_truth, X_preds, rs_pairs, splot_idx, singles=False):
     for i, pair in enumerate(rs_pairs):
         # Current redshift pair
         zx, zy = pair
         cur_splot_idx = splot_idx[i]
 
         # Get "input" and "truth"
-        x_input = X_truth[i]
-        x_truth = X_truth[i+1]
+        x_input = X_truth[i]   if not singles else X_truth[i,0]
+        x_truth = X_truth[i+1] if not singles else X_truth[i,1]
 
         # Get model prediction
         #x_pred = X_preds[i]
 
         # Mask data
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         mask = get_mask(x_input)
         x_input_masked = mask_data(x_input, mask)
         x_truth_masked = mask_data(x_truth, mask)
@@ -240,13 +243,21 @@ cur_rs = rs_multi3
 #preds_label = ['deep vanilla', 'deep noisy']
 #preds_c = ['b', 'g']
 #preds_attr = [(label, color, fname) for label, color, fname in zip(preds_label, preds_c, model_names)]
-mname = 'sinv7K_ZG_{}-{}'
+#mname = 'sinv7K_ZG_{}-{}'
+model_names = ['sinv7K_ZG_{}-{}', 'sinv_static_ZG_{}-{}']
 
 
 #X_truth = load_cube(1, 19, base_name, truth=True) # (4, 200, 32**3, 6)
 #X_preds = [load_cube(1, 19, fname) for fname in model_names]
-X_truth = [load_cube(zx, zy, mname, truth=True) for zx,zy in  cur_rs]
-X_pred  = [load_cube(zx, zy, mname, truth=False) for zx,zy in cur_rs]
+X_truth = np.array([load_cube(zx, zy, 'sinv7K_ZG_{}-{}', truth=True)  for zx,zy in cur_rs])
+X_preds = []
+for fname in model_names:
+    x_pred = load_cube(*cur_rs[0], fname)[None,...]
+    for zx, zy in cur_rs[1:]:
+        xp = load_cube(zx, zy, fname)[None, ...]
+        x_pred = np.concatenate([x_pred, xp], axis=0)
+    X_preds.append(x_pred)
+#X_preds  = [load_cube(zx, zy, mname, truth=False) for mname,zx,zy in zip(model_names,cur_rs)]
 
 
 
@@ -262,10 +273,12 @@ f = 5
 fsize = ((f+1)*nc, f*nr)
 fig = plt.figure(figsize=fsize)
 
-plot_multi_single(X_truth, X_pred, cur_rs, splot_idx)
-#fig.suptitle('Comparison of deep model (blue) against moving-along-velocity')
+#plot_multi_single(X_truth, X_pred, cur_rs, splot_idx)
+plot_multiStep_comp(X_truth, X_preds, cur_rs, splot_idx, singles=True)
+#fig.suptitle('Comparison of deep multistep models against moving-along-velocity')
 plt.tight_layout()
-plt.show()
+#plt.show()
+save_plot(1, 19)
 
 
 
