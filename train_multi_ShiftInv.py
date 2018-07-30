@@ -62,7 +62,8 @@ noisy_inputs = p_variable != 0.0
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
 channels = [6, 32, 16, 8, 3]
-channels[0]  = 10
+#channels[0]  = 10
+channels[0]  = 11
 channels[-1] = 6
 num_layers = len(channels) - 1
 M = pargs['graph_var']
@@ -100,17 +101,18 @@ utils.save_pyfiles(model_path)
 # Init model params
 # ----------------
 vscope = utils.VAR_SCOPE.format(zX, zY)
-#tf.set_random_seed(utils.PARAMS_SEED)
-rng_seed = 312857
-tf.set_random_seed(rng_seed)
-print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(rng_seed))
+tf.set_random_seed(utils.PARAMS_SEED)
+#rng_seed = 312857
+#tf.set_random_seed(rng_seed)
+#print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(rng_seed))
 utils.init_ShiftInv_params(channels, vscope, restore=restore, vcoeff=use_coeff)
 
 # CUBE DATA
 # ----------------
 X_input = tf.placeholder(tf.float32, shape=(None, N, 6))
 X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
-RS_in = tf.placeholder(tf.float32,   shape=(None, 1))
+#RS_in = tf.placeholder(tf.float32,   shape=(None, 1))
+RS_in = tf.placeholder(tf.float32,   shape=(None, 2))
 
 # NEIGHBOR GRAPH DATA
 # ----------------
@@ -245,13 +247,14 @@ for step in range(num_iters):
         #print('Step {:>5}, rsi {}, tup {}'.format(step, rsi, tup))
         zx, zy = tup
         # redshift
-        rs_in = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
+        rs_Xin = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
+        rs_Yin = np.full([batch_size*N*M, 1], redshifts[zy], dtype=np.float32)
+        rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
 
         # split data
         #x_in    = _x_batch[zx] # (b, N, 6)
         x_in = _x_batch[zx] if not NOISY else x_pred
         x_truth = _x_batch[zy] # (b, N, 6)
-
 
 
         # Graph data
@@ -312,7 +315,10 @@ for j in range(num_val_batches):
         p, q = batch_size*j, batch_size*(j+1)
         x_in    = X_test[z,   p:q] if z == 0 else x_pred
         x_truth = X_test[z+1, p:q]
-        rs_in = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
+        #rs_in = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
+        rs_Xin = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
+        rs_Yin = np.full([batch_size*N*M, 1], redshifts[z+1], dtype=np.float32)
+        rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
 
         # Graph data
         # ----------------
