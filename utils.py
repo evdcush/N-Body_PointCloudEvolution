@@ -501,7 +501,7 @@ def load_zuni_datum(redshift):
     X = read_sim(glob_paths, n_P).astype(np.float32)
     return X
 
-def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
+def load_zuni_npy_data(redshifts=None, norm_coo=False):
     """ Loads new uniformly timestep data serialized as np array of np.float32
     Args:
         redshifts (list int): list of indices into redshifts in order
@@ -513,14 +513,17 @@ def load_zuni_npy_data(redshifts=None, norm_coo=False, norm_vel=False):
     num_rs = len(redshifts)
     S = 1000
     N = 32**3
-    D = 7
+    #D = 7
+    D = 6
     X = np.zeros((num_rs, S, N, D)).astype(np.float32)
     for idx, z_idx in enumerate(redshifts):
         z_rs   = REDSHIFTS_ZUNI[z_idx]
         z_path = DATA_PATH_ZUNI_NPY.format(z_rs)
         print('LD: {}'.format(z_path[-13:]))
-        X[idx,:,:,:-1] = np.load(z_path)
-        X[idx,:,:,-1] = z_rs
+        print('  X[{}] = ({},{:.4f})'.format(idx, z_idx, z_rs)) # sanity check
+        X[idx] = np.load(z_path)
+        #X[idx,:,:,:-1] = np.load(z_path)
+        #X[idx,:,:,-1] = z_rs
     if norm_coo:
         X[...,:3] = X[...,:3] / 32.0
         assert np.max(X[...,:3]) <= 1.0

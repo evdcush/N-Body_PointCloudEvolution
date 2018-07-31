@@ -40,11 +40,14 @@ print('redshifts: {}'.format(redshifts))
 
 # Load data
 # ----------------
-X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)[...,:-1]
+X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)
 #X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)[...,:-1]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=NUM_VAL_SAMPLES)
 timesteps = [utils.get_timestep(X[i], X[i+1]) for i in range(num_rs_layers)]
-print('timestep = {}'.format(timesteps))
+#print('timesteps = {}'.format(timesteps))
+for i, tstep in enumerate(timesteps):
+    print('timesteps[{}] = {:>2} --> {:>2} = {:.6f}'.format(i, redshift_steps[i], redshift_steps[i+1], tstep))
+
 X = None # reduce memory overhead
 
 
@@ -64,10 +67,11 @@ var_timestep = False
 # Network depth and channel sizes
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
-channels = [6, 32, 16, 8, 3]
-channels[0]  = 10
-#channels[0]  = 11
-channels[-1] = 6
+#channels = [6, 32, 16, 8, 3]
+channels = [6, 34, 18, 10, 6] ## FOR CCAT'd DOUBLE RS MODEL
+#channels[0]  = 10
+channels[0]  = 11
+#channels[-1] = 6
 num_layers = len(channels) - 1
 M = pargs['graph_var']
 
@@ -114,8 +118,8 @@ utils.init_ShiftInv_params(channels, vscope, restore=restore)
 # ----------------
 X_input = tf.placeholder(tf.float32, shape=(None, N, 6))
 X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
-RS_in = tf.placeholder(tf.float32,   shape=(None, 1))
-#RS_in = tf.placeholder(tf.float32,   shape=(None, 2))
+#RS_in = tf.placeholder(tf.float32,   shape=(None, 1))
+RS_in = tf.placeholder(tf.float32,   shape=(None, 2))
 
 # NEIGHBOR GRAPH DATA
 # ----------------
@@ -129,7 +133,7 @@ if use_coeff:
     if not var_timestep:
         scalar_tags = []
         for rs_pair in rs_tups:
-            scalar_tag = utils.init_coeff(vscope, redshift_steps, restore=restore)
+            scalar_tag = utils.init_coeff(vscope, rs_pair, restore=restore)
             scalar_tags.append(scalar_tag)
         print('Scalar tags: {}'.format(scalar_tags))
     else: # CLEAN THIS UP, SHOULDN'T SCOPE INIT HERE
