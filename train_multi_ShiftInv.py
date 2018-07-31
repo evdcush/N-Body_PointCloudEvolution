@@ -43,6 +43,8 @@ print('redshifts: {}'.format(redshifts))
 X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)[...,:-1]
 #X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)[...,:-1]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=NUM_VAL_SAMPLES)
+timesteps = [utils.get_timestep(X[i], X[i+1]) for i in range(num_rs_layers)]
+print('timestep = {}'.format(timesteps))
 X = None # reduce memory overhead
 
 
@@ -57,6 +59,7 @@ use_coeff  = pargs['vcoeff'] == 1
 p_variable = pargs['variable']
 print('noise: {}'.format(p_variable))
 noisy_inputs = p_variable != 0.0
+var_timestep = False
 
 # Network depth and channel sizes
 # ----------------
@@ -105,7 +108,7 @@ tf.set_random_seed(utils.PARAMS_SEED)
 #rng_seed = 312857
 #tf.set_random_seed(rng_seed)
 #print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(rng_seed))
-utils.init_ShiftInv_params(channels, vscope, restore=restore, vcoeff=use_coeff)
+utils.init_ShiftInv_params(channels, vscope, restore=restore)
 
 # CUBE DATA
 # ----------------
@@ -123,9 +126,17 @@ COO_seg_val = tf.placeholder(tf.int32, shape=(3, N*M,))
 # COEFFS
 # ----------------
 if use_coeff:
-    with tf.variable_scope(vscope):
-        #utils.init_coeff_multi(num_rs_layers)
-        utils.init_coeff_multi2(num_rs_layers, restore=restore)
+    if not var_timestep:
+        scalar_tags = []
+        for rs_pair in rs_tups:
+            scalar_tag = utils.init_coeff(vscope, redshift_steps, restore=restore)
+            scalar_tags.append(scalar_tag)
+        print('Scalar tags: {}'.format(scalar_tags))
+    else: # CLEAN THIS UP, SHOULDN'T SCOPE INIT HERE
+        with tf.variable_scope(vscope):
+            #utils.init_coeff_multi(num_rs_layers)
+            utils.init_coeff_multi2(num_rs_layers, restore=restore)
+            #utils.init_coeff_agg(num_rs_layers, restore=restore)
 
 
 #=============================================================================
@@ -143,7 +154,9 @@ train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M],)
 # ----------------
 # Train
 pred_in = (X_input, COO_seg, train_args, RS_in)
-X_preds = {i: nn.ShiftInv_single_model_func_v1(*pred_in, coeff_idx=i) for i in range(num_rs_layers)}
+#X_preds = {i: nn.ShiftInv_single_model_func_v1(*pred_in, coeff_idx=i) for i in range(num_rs_layers)}
+X_preds = {i: nn.ShiftInv_model_func_timestep_rs(*pred_in, timesteps[i], scalar_tags[i]) for i in range(num_rs_layers)}
+#X_pred = nn.ShiftInv_model_func_timestep(X_input, COO_feats, model_specs, timestep, scalar_tag=scalar_tag)
 
 # Loss
 # ----------------
