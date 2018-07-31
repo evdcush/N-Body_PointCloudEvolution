@@ -260,10 +260,10 @@ for step in range(num_iters):
         #print('Step {:>5}, rsi {}, tup {}'.format(step, rsi, tup))
         zx, zy = tup
         # redshift
-        rs_in = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
-        #rs_Xin = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
-        #rs_Yin = np.full([batch_size*N*M, 1], redshifts[zy], dtype=np.float32)
-        #rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
+        #rs_in = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
+        rs_Xin = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
+        rs_Yin = np.full([batch_size*N*M, 1], redshifts[zy], dtype=np.float32)
+        rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
 
         # split data
         #x_in    = _x_batch[zx] # (b, N, 6)
@@ -329,10 +329,10 @@ for j in range(num_val_batches):
         p, q = batch_size*j, batch_size*(j+1)
         x_in    = X_test[z,   p:q] if z == 0 else x_pred
         x_truth = X_test[z+1, p:q]
-        rs_in = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
-        #rs_Xin = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
-        #rs_Yin = np.full([batch_size*N*M, 1], redshifts[z+1], dtype=np.float32)
-        #rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
+        #rs_in = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
+        rs_Xin = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
+        rs_Yin = np.full([batch_size*N*M, 1], redshifts[z+1], dtype=np.float32)
+        rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
 
         # Graph data
         # ----------------
