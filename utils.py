@@ -217,8 +217,23 @@ def init_params(channels, var_scope=VAR_SCOPE, vcoeff=False, seed=None, restore=
         if vcoeff: # scalar weight for simulating timestep, only one
             init_vel_coeff(restore)
 
+# Weight offset helper for shiftInv params (multistep)
+def get_layer_dims(channels, rs_ccat=False):
+    if rs_ccat:
+        kdims = []
+        for i in range(len(channels) - 1):
+            if i == 0:
+                kdim = (channels[i], channels[i+1])
+            else:
+                kdim = (channels[i] + 2, channels[i+1]) # input dims for weights must be adjusted for RS
+            kdims.append(kdim)
+    else:
+        kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
+    return kdims
+
+
 # shift-inv params
-def init_ShiftInv_params(channels, var_scope, rescale=None, vcoeff=False, restore=False, seed=None):
+def init_ShiftInv_params(channels, var_scope, rescale=None, vcoeff=False, restore=False, seed=None, rs_ccat=False):
     """ Init parameters for 'new' perm-equivariant, shift-invariant model
     For every layer in this model, there are 4 weights and 1 bias
         W1: (k, q) no-pooling
@@ -229,7 +244,7 @@ def init_ShiftInv_params(channels, var_scope, rescale=None, vcoeff=False, restor
     """
     vinit = 0.002 # best vcoeff constant for 15-19 redshifts
     # get (k_in, k_out) tuples from channels
-    kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
+    kdims = get_layer_dims(channels, rs_ccat)
 
     with tf.variable_scope(var_scope):
         # initialize variables for each layer

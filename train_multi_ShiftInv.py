@@ -67,8 +67,8 @@ var_timestep = False
 # Network depth and channel sizes
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
-#channels = [6, 32, 16, 8, 3]
-channels = [6, 34, 18, 10, 6] ## FOR CCAT'd DOUBLE RS MODEL
+channels = [6, 32, 16, 8, 6]
+#channels = [6, 34, 18, 10, 6] ## FOR CCAT'd DOUBLE RS MODEL
 #channels[0]  = 10
 channels[0]  = 11
 #channels[-1] = 6
@@ -112,7 +112,8 @@ tf.set_random_seed(utils.PARAMS_SEED)
 #rng_seed = 312857
 #tf.set_random_seed(rng_seed)
 #print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(rng_seed))
-utils.init_ShiftInv_params(channels, vscope, restore=restore)
+print('\n\nOFFSETTING LAYER INPUT DIMS FOR CONCAT REDSHIFTS\n\n')
+utils.init_ShiftInv_params(channels, vscope, restore=restore, rs_ccat=True)
 
 # CUBE DATA
 # ----------------
@@ -393,11 +394,13 @@ utils.save_loss(loss_path + model_name, test_loss, validation=True)
 utils.save_loss(loss_path + model_name + '_locMSE', test_loss_loc, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
+'''
 print('Timestep coefficients, final values: ')
 for i in range(num_rs_layers):
     timestep_tag = 'coeff_{}_{}'.format(i, 1)
     timestep_value = get_var(timestep_tag)[0]
     rsa, rsb = redshifts[i], redshifts[i+1]
     print('  {:.4f} --> {:.4f} : {:.6f}'.format(rsa,rsb,timestep_value))
+'''
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
