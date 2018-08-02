@@ -9,6 +9,7 @@ from utils import REDSHIFTS_ZUNI, PARAMS_SEED, LEARNING_RATE, RS_TAGS, NUM_VAL_S
 parser = argparse.ArgumentParser()
 # argparse not handle bools well so 0,1 used instead
 parser.add_argument('--redshifts', '-z', default=[18,19], nargs='+', type=int, help='redshift tuple, predict z[1] from z[0]')
+parser.add_argument('--seed', '-s', default=PARAMS_SEED,     type=int, help='initial parameter seed')
 parser.add_argument('--particles', '-p', default=32,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
 parser.add_argument('--model_type','-m', default=1,          type=int,  help='model type')
 parser.add_argument('--graph_var', '-k', default=14,         type=int, help='search parameter for graph model')
@@ -69,8 +70,8 @@ var_timestep = False
 #channels = model_vars['channels'] # OOM with sparse graph
 channels = [6, 32, 16, 8, 6]
 #channels = [6, 34, 18, 10, 6] ## FOR CCAT'd DOUBLE RS MODEL
-#channels[0]  = 10
-channels[0]  = 11
+channels[0]  = 10
+#channels[0]  = 11
 #channels[-1] = 6
 num_layers = len(channels) - 1
 M = pargs['graph_var']
@@ -108,12 +109,13 @@ utils.save_pyfiles(model_path)
 # Init model params
 # ----------------
 vscope = utils.VAR_SCOPE.format(zX, zY)
-tf.set_random_seed(utils.PARAMS_SEED)
-#rng_seed = 312857
-#tf.set_random_seed(rng_seed)
+seed = pargs['seed']
+if seed != PARAMS_SEED:
+    print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(seed))
+tf.set_random_seed(seed)
 #print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(rng_seed))
-print('\n\nOFFSETTING LAYER INPUT DIMS FOR CONCAT REDSHIFTS\n\n')
-utils.init_ShiftInv_params(channels, vscope, restore=restore, rs_ccat=True)
+#print('\n\nOFFSETTING LAYER INPUT DIMS FOR CONCAT REDSHIFTS\n\n')
+utils.init_ShiftInv_params(channels, vscope, restore=restore, )#rs_ccat=True)
 
 # CUBE DATA
 # ----------------
