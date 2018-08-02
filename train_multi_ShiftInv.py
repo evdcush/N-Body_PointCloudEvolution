@@ -69,9 +69,8 @@ var_timestep = False
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
 channels = [6, 32, 16, 8, 6]
-#channels = [6, 34, 18, 10, 6] ## FOR CCAT'd DOUBLE RS MODEL
-channels[0]  = 10
-#channels[0]  = 11
+#channels[0]  = 10
+channels[0]  = 11
 #channels[-1] = 6
 num_layers = len(channels) - 1
 M = pargs['graph_var']
