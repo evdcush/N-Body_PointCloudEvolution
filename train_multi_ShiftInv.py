@@ -159,9 +159,10 @@ train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M],)
 # Model outputs
 # ----------------
 # Train
-pred_in = (X_input, COO_seg, train_args, RS_in)
-#X_preds = {i: nn.ShiftInv_single_model_func_v1(*pred_in, coeff_idx=i) for i in range(num_rs_layers)}
-X_preds = {i: nn.ShiftInv_model_func_timestep_rs(*pred_in, timesteps[i], scalar_tags[i]) for i in range(num_rs_layers)}
+#pred_in = (X_input, COO_seg, train_args, RS_in)
+pred_in = (X_input, COO_seg, train_args)
+X_preds = {i: nn.ShiftInv_single_model_func(*pred_in, timesteps[i], scalar_tags[i]) for i in range(num_rs_layers)}
+#X_preds = {i: nn.ShiftInv_model_func_timestep_rs(*pred_in, timesteps[i], scalar_tags[i]) for i in range(num_rs_layers)}
 #X_pred = nn.ShiftInv_model_func_timestep(X_input, COO_feats, model_specs, timestep, scalar_tag=scalar_tag)
 
 # Loss
@@ -267,9 +268,9 @@ for step in range(num_iters):
         zx, zy = tup
         # redshift
         #rs_in = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
-        rs_Xin = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
-        rs_Yin = np.full([batch_size*N*M, 1], redshifts[zy], dtype=np.float32)
-        rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
+        #rs_Xin = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
+        #rs_Yin = np.full([batch_size*N*M, 1], redshifts[zy], dtype=np.float32)
+        #rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
 
         # split data
         #x_in    = _x_batch[zx] # (b, N, 6)
@@ -287,7 +288,7 @@ for step in range(num_iters):
         fdict = {X_input: x_in,
                  X_truth: x_truth,
                  COO_seg: coo_segs,
-                 RS_in: rs_in,
+                 #RS_in: rs_in,
                  }
         # Train
         trains[rsi].run(feed_dict=fdict)
@@ -336,9 +337,9 @@ for j in range(num_val_batches):
         x_in    = X_test[z,   p:q] if z == 0 else x_pred
         x_truth = X_test[z+1, p:q]
         #rs_in = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
-        rs_Xin = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
-        rs_Yin = np.full([batch_size*N*M, 1], redshifts[z+1], dtype=np.float32)
-        rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
+        #rs_Xin = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
+        #rs_Yin = np.full([batch_size*N*M, 1], redshifts[z+1], dtype=np.float32)
+        #rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
 
         # Graph data
         # ----------------
@@ -352,7 +353,7 @@ for j in range(num_val_batches):
         fdict = {X_input: x_in,
                  X_truth: x_truth,
                  COO_seg: coo_segs,
-                 RS_in: rs_in,
+                 #RS_in: rs_in,
                  }
 
         # Get pred based on z index

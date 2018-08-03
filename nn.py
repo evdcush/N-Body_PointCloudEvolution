@@ -341,7 +341,7 @@ def ShiftInv_single_model_func(X_in, COO_feats, redshift, model_specs, coeff_idx
     return get_readout(X_in + H_out)
 
 # ==== single fn
-def ShiftInv_single_model_func_v1(X_in, COO_feats, model_specs, redshift=None, coeff_idx=None):
+def ShiftInv_single_model_func(X_in, COO_feats, model_specs, timestep, scalar_tag, redshift=None):
     """
     Args:
         X_in (tensor): (b, N, 6)
@@ -363,18 +363,20 @@ def ShiftInv_single_model_func_v1(X_in, COO_feats, model_specs, redshift=None, c
     # Network forward V1.
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx)
+        #t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx)
+        loc_scalar = utils.get_scoped_coeff(scalar_tag)
         H_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
         num_feats = H_out.get_shape().as_list()[-1]
 
         if num_feats <= 3: # then only predicting location
-            H_out = H_out*t0 + X_in[...,:3] + X_in[...,3:] * t1#timestep
+            H_out = H_out*loc_scalar + X_in[...,:3] + X_in[...,3:] * timestep
 
         else: # predicting velocity
-            h_coo = H_out[...,:3]*t0 + X_in[...,:3] + X_in[...,3:] * t1
+            h_coo = H_out[...,:3]*loc_scalar + X_in[...,:3] + X_in[...,3:] * timestep
             h_vel = H_out[...,3:] + X_in[...,3:]
             H_out = tf.concat([h_coo, h_vel], axis=-1)
         return get_readout(H_out)
+
 
 # ==== single fn
 def ShiftInv_model_func_timestep_rs(X_in, COO_feats, model_specs, redshift, timestep, scalar_tag):
