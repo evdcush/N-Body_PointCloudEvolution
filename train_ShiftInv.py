@@ -8,6 +8,7 @@ from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS, NUM_VAL_SAMPLE
 
 parser = argparse.ArgumentParser()
 # argparse not handle bools well so 0,1 used instead
+parser.add_argument('--seed', '-s', default=PARAMS_SEED,     type=int, help='initial parameter seed')
 parser.add_argument('--redshifts', '-z', default=[18,19], nargs='+', type=int, help='redshift tuple, predict z[1] from z[0]')
 parser.add_argument('--particles', '-p', default=32,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
 parser.add_argument('--model_type','-m', default=1,          type=int,  help='model type')
@@ -37,11 +38,11 @@ num_rs_layers = num_rs - 1
 
 # Load data
 # ----------------
-X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)[...,:-1]
+X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)
 #X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)[...,:-1]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=NUM_VAL_SAMPLES)
-timestep = utils.get_timestep(X[0], X[1])
-print('timestep = {}'.format(timestep))
+#timestep = utils.get_timestep(X[0], X[1])
+#print('timestep = {}'.format(timestep))
 X = None # reduce memory overhead
 
 
@@ -98,18 +99,16 @@ utils.save_pyfiles(model_path)
 # Init model params
 # ----------------
 vscope = utils.VAR_SCOPE.format(zX, zY)
-tf.set_random_seed(utils.PARAMS_SEED)
+seed = pargs['seed']
+if seed != PARAMS_SEED:
+    print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(seed))
+tf.set_random_seed(seed)
 utils.init_ShiftInv_params(channels, vscope, restore=restore)
 
-if use_coeff:
-    if not var_timestep:
-        scalar_tag = utils.init_coeff(vscope, redshift_steps, restore=restore)
-        print('Scalar tag: {}'.format(scalar_tag))
-    else: # CLEAN THIS UP, SHOULDN'T SCOPE INIT HERE
-        with tf.variable_scope(vscope):
-            #utils.init_coeff_multi(num_rs_layers)
-            utils.init_coeff_multi2(num_rs_layers, restore=restore)
-            #utils.init_coeff_agg(num_rs_layers, restore=restore)
+
+with tf.variable_scope(vscope):
+    utils.init_coeff_single(restore=restore)
+    #utils.init_coeff_agg(num_rs_layers, restore=restore)
 
 
 
@@ -142,7 +141,7 @@ model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
 #X_pred = nn.ShiftInv_single_model_func_v1(X_input, COO_feats, model_specs, coeff_idx=0)
 
 # Static timestep model:
-X_pred = nn.ShiftInv_model_func_timestep(X_input, COO_feats, model_specs, timestep, scalar_tag=scalar_tag)
+X_pred = nn.ShiftInv_model_func_timestep(X_input, COO_feats, model_specs)
 
 
 # Loss
