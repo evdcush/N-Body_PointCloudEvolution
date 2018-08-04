@@ -68,8 +68,8 @@ noisy_inputs = p_variable != 0.0
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
 channels = [9, 32, 16, 8, 6]
-#channels[0]  = 10
-channels[0]  = 11
+channels[0]  = 10
+#channels[0]  = 11
 #channels[-1] = 6
 num_layers = len(channels) - 1
 M = pargs['graph_var']
@@ -119,8 +119,8 @@ utils.init_ShiftInv_params(channels, vscope, restore=restore, )#rs_ccat=True)
 # ----------------
 X_input = tf.placeholder(tf.float32, shape=(None, N, 6))
 X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
-#RS_in = tf.placeholder(tf.float32,   shape=(None, 1))
-RS_in = tf.placeholder(tf.float32,   shape=(None, 2))
+RS_in = tf.placeholder(tf.float32,   shape=(None, 1))
+#RS_in = tf.placeholder(tf.float32,   shape=(None, 2))
 
 # NEIGHBOR GRAPH DATA
 # ----------------
@@ -262,10 +262,10 @@ for step in range(num_iters):
         #print('Step {:>5}, rsi {}, tup {}'.format(step, rsi, tup))
         zx, zy = tup
         # redshift
-        #rs_in = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
-        rs_Xin = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
-        rs_Yin = np.full([batch_size*N*M, 1], redshifts[zy], dtype=np.float32)
-        rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
+        rs_in = np.full([batch_size*N*M, 1], redshifts[zy], dtype=np.float32)
+        #rs_Xin = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
+        #rs_Yin = np.full([batch_size*N*M, 1], redshifts[zy], dtype=np.float32)
+        #rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
 
         # split data
         #x_in    = _x_batch[zx] # (b, N, 6)
@@ -401,7 +401,7 @@ scalar_value2 = get_var(scalar_tag2)[0]
 #rsa, rsb = redshifts[i], redshifts[i+1]
 print('LOC = {:.6f} VEL = {:.6f}'.format(scalar_value, scalar_value2))
 #'''
-code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 ''' # Previous, with scalars different for each RS
 Training Single-step:
