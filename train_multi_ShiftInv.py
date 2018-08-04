@@ -132,7 +132,8 @@ COO_seg_val = tf.placeholder(tf.int32, shape=(3, N*M,))
 # ----------------
 with tf.variable_scope(vscope):
     #utils.init_coeff_multi(num_rs_layers)
-    utils.init_coeff_multi2(num_rs_layers, restore=restore)
+    #utils.init_coeff_multi2(num_rs_layers, restore=restore)
+    utils.init_coeff_single(restore=restore)
     #utils.init_coeff_agg(num_rs_layers, restore=restore)
 
 
@@ -153,8 +154,9 @@ train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M],)
 #pred_in = (X_input, COO_seg, train_args, RS_in)
 pred_in = (X_input, COO_seg, train_args)
 #X_preds = {i: nn.ShiftInv_single_model_func(*pred_in, timesteps[i], scalar_tags[i]) for i in range(num_rs_layers)}
-X_preds = {i: nn.ShiftInv_model_func_timestep(*pred_in, i, RS_in) for i in range(num_rs_layers)}
+#X_preds = {i: nn.ShiftInv_model_func_timestep(*pred_in, i, RS_in) for i in range(num_rs_layers)}
 #X_pred = nn.ShiftInv_model_func_timestep(X_input, COO_feats, model_specs, timestep, scalar_tag=scalar_tag)
+X_pred = nn.ShiftInv_model_func_timestep(*pred_in, RS_in)
 
 # Loss
 # ----------------
@@ -162,10 +164,12 @@ X_preds = {i: nn.ShiftInv_model_func_timestep(*pred_in, i, RS_in) for i in range
 opt = tf.train.AdamOptimizer(learning_rate)
 
 # Training error
-errors = {i: nn.pbc_loss_scaled(X_input, X_pred, X_truth) for i, X_pred in X_preds.items()}
+#errors = {i: nn.pbc_loss_scaled(X_input, X_pred, X_truth) for i, X_pred in X_preds.items()}
+error = nn.pbc_loss_scaled(X_input, X_pred, X_truth)
 
 # Backprop on loss
-trains = {i: opt.minimize(error) for i, error in errors.items()}
+#trains = {i: opt.minimize(error) for i, error in errors.items()}
+train = opt.minimize(error)
 
 # Validation error
 X_pred_val = tf.placeholder(tf.float32, shape=(None, N, 6))
@@ -282,16 +286,17 @@ for step in range(num_iters):
                  RS_in: rs_in,
                  }
         # Train
-        trains[rsi].run(feed_dict=fdict)
+        #trains[rsi].run(feed_dict=fdict)
+        train.run(feed_dict=fdict)
 
         if insert_noise_next(step, rsi):
-            x_pred = sess.run(X_preds[rsi], feed_dict=fdict)
+            x_pred = sess.run(X_pred, feed_dict=fdict)
         else:
             x_pred = None # not necessary, just extra safety
 
         # Save
         if checkpoint_reached:
-            checkpoint_error = sess.run(errors[rsi], feed_dict=fdict)
+            checkpoint_error = sess.run(error, feed_dict=fdict)
             print('  Error {} --> {} = {:.8f}'.format(zx, zy, checkpoint_error))
             #saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
 
@@ -350,7 +355,7 @@ for j in range(num_val_batches):
         # ----------------
         #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         #print('V batch {:>5}, z {}'.format(j, z))
-        x_pred, v_error = sess.run([X_preds[z], errors[z]], feed_dict=fdict)
+        x_pred, v_error = sess.run([X_pred, error], feed_dict=fdict)
 
         # Assign results
         test_predictions[z, p:q] = x_pred
@@ -388,13 +393,41 @@ utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
 #'''
 print('Scalars, final values: ') #'coeff_{}_{}'
-for i in range(num_rs_layers):
-    scalar_tag = 'coeff_{}_{}'.format(i, 0)
-    scalar_tag2 = 'coeff_{}_{}'.format(i, 1)
-    scalar_value = get_var(scalar_tag)[0]
-    scalar_value2 = get_var(scalar_tag2)[0]
-    rsa, rsb = redshifts[i], redshifts[i+1]
-    print('  {:.4f} --> {:.4f} : LOC = {:.6f} VEL = {:.6f}'.format(rsa,rsb,scalar_value, scalar_value2))
+#for i in range(num_rs_layers):
+scalar_tag = 'coeff_{}'.format(0)
+scalar_tag2 = 'coeff_{}'.format(1)
+scalar_value = get_var(scalar_tag)[0]
+scalar_value2 = get_var(scalar_tag2)[0]
+#rsa, rsb = redshifts[i], redshifts[i+1]
+print('LOC = {:.6f} VEL = {:.6f}'.format(scalar_value, scalar_value2))
 #'''
 code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
+''' # Previous, with scalars different for each RS
+Training Single-step:
+==============================================================================
+CHECKPOINT  100:
+  Error 0 --> 1 = 1.15358412
+  Error 1 --> 2 = 1.76240587
+elapsed time: 255.04985117912292
+
+Evaluation:
+==============================================================================
+
+Evaluation Median Error Statistics, test_ZG_7-19      :
+==============================================================================
+# SCALED LOSS:
+   7 --> 13: 1.146232486
+  13 --> 19: 1.744175792
+# LOCATION LOSS:
+   7 --> 13: 0.000198614
+  13 --> 19: 0.000654184
+
+END EVALUATION, SAVING CUBES AND LOSS
+==============================================================================
+saved ./Model/test_ZG_7-19/Cubes/X32_7-19_prediction
+Scalars, final values:
+  1.1212 --> 0.3758 : LOC = -0.035935 VEL = 0.025082
+  0.3758 --> 0.0000 : LOC = -0.010543 VEL = 0.010450
+
+'''

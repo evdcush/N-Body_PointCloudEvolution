@@ -468,7 +468,7 @@ def ShiftInv_model_func_timestep_old(X_in, COO_feats, model_specs, scalar_tag, r
         return get_readout(H_out)
 
 # ==== single fn
-def ShiftInv_model_func_timestep(X_in, COO_feats, model_specs, scalar_tag, redshift=None):
+def ShiftInv_model_func_timestep(X_in, COO_feats, model_specs, redshift=None):
     """
     Args:
         X_in (tensor): (b, N, 6)
@@ -495,7 +495,7 @@ def ShiftInv_model_func_timestep(X_in, COO_feats, model_specs, scalar_tag, redsh
         # Scaling and skip connections
         #loc_scalar = utils.get_scoped_coeff(scalar_tag)
         #loc_scalar, vel_scalar = utils.get_scoped_scalars(scalar_tag)
-        loc_scalar, vel_scalar = utils.get_scoped_coeff_multi2(scalar_tag)
+        loc_scalar, vel_scalar = utils.get_scoped_coeff_single()
         num_feats = net_out.get_shape().as_list()[-1]
 
         H_out = net_out[...,:3]*loc_scalar + X_in[...,:3] + X_in[...,3:]*vel_scalar
@@ -519,7 +519,7 @@ def ShiftInv_model_func_timestep(X_in, COO_feats, model_specs, scalar_tag, redsh
         return get_readout(H_out)
 
 # ==== single fn
-def ShiftInv_model_func_timestep(X_in, COO_feats, model_specs, scalar_tag, redshift=None):
+def ShiftInv_model_func_timestep_ACCEL(X_in, COO_feats, model_specs, scalar_tag, redshift=None):
     """
     Args:
         X_in (tensor): (b, N, 6)
@@ -551,7 +551,7 @@ def ShiftInv_model_func_timestep(X_in, COO_feats, model_specs, scalar_tag, redsh
 
         #H_out = net_out[...,:3]*loc_scalar + X_in[...,:3] + X_in[...,3:]*vel_scalar
         #H_out = A
-        H_vel = X_in[...,3:] + A*
+        H_vel = X_in[...,3:] + A
 
         # Concat velocity predictions
         if net_out.get_shape().as_list()[-1] > 3:
