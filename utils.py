@@ -162,7 +162,7 @@ def init_coeff_multi(num_rs, restore=False, vinit=0.002):
 def get_scoped_coeff_multi(idx):
     return tf.get_variable(MCOEFFTAG.format(idx))
 
-def init_coeff_multi2(num_rs, restore=False, vinit=0.002):
+def init_coeff_multi2(num_rs, restore=False, vinit=0.01):
     num_coeff = 2
     for i in range(num_rs):
         for j in range(num_coeff):

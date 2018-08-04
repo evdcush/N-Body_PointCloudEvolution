@@ -44,10 +44,9 @@ print('redshifts: {}'.format(redshifts))
 X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)
 #X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)[...,:-1]
 X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=NUM_VAL_SAMPLES)
-timesteps = [utils.get_timestep(X[i], X[i+1]) for i in range(num_rs_layers)]
+#timesteps = [utils.get_timestep(X[i], X[i+1]) for i in range(num_rs_layers)]
 #print('timesteps = {}'.format(timesteps))
-for i, tstep in enumerate(timesteps):
-    print('timesteps[{}] = {:>2} --> {:>2} = {:.6f}'.format(i, redshift_steps[i], redshift_steps[i+1], tstep))
+#for i, tstep in enumerate(timesteps): print('timesteps[{}] = {:>2} --> {:>2} = {:.6f}'.format(i, redshift_steps[i], redshift_steps[i+1], tstep))
 
 X = None # reduce memory overhead
 
@@ -63,7 +62,7 @@ use_coeff  = pargs['vcoeff'] == 1
 p_variable = pargs['variable']
 print('noise: {}'.format(p_variable))
 noisy_inputs = p_variable != 0.0
-var_timestep = False
+#var_timestep = False
 
 # Network depth and channel sizes
 # ----------------
@@ -114,7 +113,7 @@ if seed != PARAMS_SEED:
 tf.set_random_seed(seed)
 #print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(rng_seed))
 #print('\n\nOFFSETTING LAYER INPUT DIMS FOR CONCAT REDSHIFTS\n\n')
-utils.init_ShiftInv_params(channels, vscope, restore=restore, rs_ccat=True)
+utils.init_ShiftInv_params(channels, vscope, restore=restore, )#rs_ccat=True)
 
 # CUBE DATA
 # ----------------
@@ -131,18 +130,10 @@ COO_seg_val = tf.placeholder(tf.int32, shape=(3, N*M,))
 
 # COEFFS
 # ----------------
-if use_coeff:
-    if not var_timestep:
-        scalar_tags = []
-        for rs_pair in rs_tups:
-            scalar_tag = utils.init_coeff(vscope, rs_pair, restore=restore)
-            scalar_tags.append(scalar_tag)
-        print('Scalar tags: {}'.format(scalar_tags))
-    else: # CLEAN THIS UP, SHOULDN'T SCOPE INIT HERE
-        with tf.variable_scope(vscope):
-            #utils.init_coeff_multi(num_rs_layers)
-            utils.init_coeff_multi2(num_rs_layers, restore=restore)
-            #utils.init_coeff_agg(num_rs_layers, restore=restore)
+with tf.variable_scope(vscope):
+    #utils.init_coeff_multi(num_rs_layers)
+    utils.init_coeff_multi2(num_rs_layers, restore=restore)
+    #utils.init_coeff_agg(num_rs_layers, restore=restore)
 
 
 #=============================================================================
@@ -162,7 +153,7 @@ train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M],)
 #pred_in = (X_input, COO_seg, train_args, RS_in)
 pred_in = (X_input, COO_seg, train_args)
 #X_preds = {i: nn.ShiftInv_single_model_func(*pred_in, timesteps[i], scalar_tags[i]) for i in range(num_rs_layers)}
-X_preds = {i: nn.ShiftInv_model_func_timestep_rs(*pred_in, timesteps[i], scalar_tags[i]) for i in range(num_rs_layers)}
+X_preds = {i: nn.ShiftInv_model_func_timestep(*pred_in, i, RS_in) for i in range(num_rs_layers)}
 #X_pred = nn.ShiftInv_model_func_timestep(X_input, COO_feats, model_specs, timestep, scalar_tag=scalar_tag)
 
 # Loss
@@ -321,7 +312,6 @@ num_val_batches = NUM_VAL_SAMPLES // batch_size
 test_predictions  = np.zeros((num_rs_layers,) + X_test.shape[1:-1] + (channels[-1],)).astype(np.float32)
 test_loss = np.zeros((num_val_batches, num_rs_layers)).astype(np.float32)
 test_loss_loc = np.zeros((num_val_batches, num_rs_layers)).astype(np.float32)
-
 print('\nEvaluation:\n{}'.format('='*78))
 #for j in range(X_test.shape[1]):
 for j in range(num_val_batches):
@@ -396,13 +386,15 @@ utils.save_loss(loss_path + model_name, test_loss, validation=True)
 utils.save_loss(loss_path + model_name + '_locMSE', test_loss_loc, validation=True)
 utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
 
-'''
-print('Timestep coefficients, final values: ')
+#'''
+print('Scalars, final values: ') #'coeff_{}_{}'
 for i in range(num_rs_layers):
-    timestep_tag = 'coeff_{}_{}'.format(i, 1)
-    timestep_value = get_var(timestep_tag)[0]
+    scalar_tag = 'coeff_{}_{}'.format(i, 0)
+    scalar_tag2 = 'coeff_{}_{}'.format(i, 1)
+    scalar_value = get_var(scalar_tag)[0]
+    scalar_value2 = get_var(scalar_tag2)[0]
     rsa, rsb = redshifts[i], redshifts[i+1]
-    print('  {:.4f} --> {:.4f} : {:.6f}'.format(rsa,rsb,timestep_value))
-'''
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    print('  {:.4f} --> {:.4f} : LOC = {:.6f} VEL = {:.6f}'.format(rsa,rsb,scalar_value, scalar_value2))
+#'''
+code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
