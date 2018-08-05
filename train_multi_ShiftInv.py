@@ -237,7 +237,6 @@ saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
 checkpoint = 100
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
-'''
 #=============================================================================
 # TRAINING
 #=============================================================================
@@ -305,7 +304,6 @@ saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_grap
 # END training
 # ========================================
 print('elapsed time: {}'.format(time.time() - start_time))
-'''
 X_train = None # reduce memory overhead
 
 
