@@ -237,7 +237,7 @@ saver = tf.train.Saver()
 saver.save(sess, model_path + model_name)
 checkpoint = 100
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
-
+'''
 #=============================================================================
 # TRAINING
 #=============================================================================
@@ -305,6 +305,7 @@ saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_grap
 # END training
 # ========================================
 print('elapsed time: {}'.format(time.time() - start_time))
+'''
 X_train = None # reduce memory overhead
 
 
@@ -331,10 +332,10 @@ for j in range(num_val_batches):
         p, q = batch_size*j, batch_size*(j+1)
         x_in    = X_test[z,   p:q] if z == 0 else x_pred
         x_truth = X_test[z+1, p:q]
-        #rs_in = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
-        rs_Xin = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
-        rs_Yin = np.full([batch_size*N*M, 1], redshifts[z+1], dtype=np.float32)
-        rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
+        rs_in = np.full([batch_size*N*M, 1], redshifts[z+1], dtype=np.float32)
+        #rs_Xin = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
+        #rs_Yin = np.full([batch_size*N*M, 1], redshifts[z+1], dtype=np.float32)
+        #rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
 
         # Graph data
         # ----------------
