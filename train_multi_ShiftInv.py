@@ -325,11 +325,11 @@ for j in range(num_val_batches):
     # ----------------
     #x_in    = X_test[ 0, j:j+1] # (1, n_P, 6)
     #x_truth = X_test[-1, j:j+1]
+    p, q = batch_size*j, batch_size*(j+1)
 
     for z in range(num_rs_layers):
         # Validation cubes
         # ----------------
-        p, q = batch_size*j, batch_size*(j+1)
         x_in    = X_test[z,   p:q] if z == 0 else x_pred
         x_truth = X_test[z+1, p:q]
         rs_in = np.full([batch_size*N*M, 1], redshifts[z+1], dtype=np.float32)
