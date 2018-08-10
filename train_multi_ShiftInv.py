@@ -143,8 +143,8 @@ with tf.variable_scope(vscope):
 #=============================================================================
 # helper for kneighbor search
 def get_list_csr(h_in):
-    #return nn.get_kneighbor_list(h_in, M, inc_self=False, )#pbc=True)
-    return nn.get_pbc_kneighbors_csr(h_in, M, boundary_threshold=0.03, include_self=False)
+    return nn.get_kneighbor_list(h_in, M, inc_self=False, )#pbc=True)
+    #return nn.get_pbc_kneighbors_csr(h_in, M, boundary_threshold=0.03, include_self=False)
 
 # Model static func args
 # ----------------
