@@ -69,7 +69,7 @@ SEGNAMES_3D = ['no-pooling', 'col-depth', 'row-depth', 'row-col', 'depth', 'col'
 #=============================================================================
 # tf.Variable inits, for model parameters
 #=============================================================================
-def init_weight(k_in, k_out, name, ShiftInv_rescale=None, seed=None, restore=False):
+def init_weight(k_in, k_out, name, restore=False, const_init=None):
     """ initialize weight Variable
     Args:
         k_in, k_out (int): kernel sizes
@@ -79,21 +79,14 @@ def init_weight(k_in, k_out, name, ShiftInv_rescale=None, seed=None, restore=Fal
     """
     #std = scale * np.sqrt(2. / k_in)
     #henorm = tf.random_normal((k_in, k_out), stddev=std, seed=seed)
-    var_args = (name,)
+    var_args = (name, k_in, k_out)
     if restore:
         init = None
-        var_args = var_args + ((k_in, k_out),)
     else:
-        if ShiftInv_rescale is not None:
-            #std = tf.sqrt(2. / (k_in+k_out))
-            std = 0.001
-            #init = tf.random_normal((k_in,k_out), stddev=std, seed=seed) / ShiftInv_rescale
-            init = tf.truncated_normal_initializer(stddev=std)
-            var_args = var_args + ((k_in, k_out),)
-            #init = np.random.rand(k_in, k_out).astype(np.float32) - 0.5
+        if const_init is not None:
+            init = tf.constant_initializer(const_init)
         else:
-            init = tf.glorot_normal_initializer(seed=seed)
-            var_args = var_args + ((k_in, k_out),)
+            init = tf.glorot_normal_initializer(None)
     tf.get_variable(*var_args, dtype=tf.float32, initializer=init)
 
 def init_bias(k_in, k_out, name, restore=False):
@@ -170,9 +163,6 @@ def get_scoped_coeff_single():
     vel_scalar = tf.get_variable(MCOEFFTAG_SINGLE.format(1))
     return loc_scalar, vel_scalar
 
-
-
-
 def get_scoped_coeff_multi(idx):
     return tf.get_variable(MCOEFFTAG.format(idx))
 
@@ -232,22 +222,20 @@ def init_params(channels, var_scope=VAR_SCOPE, vcoeff=False, seed=None, restore=
             init_vel_coeff(restore)
 
 # Weight offset helper for shiftInv params (multistep)
-def get_layer_dims(channels, rs_ccat=False):
-    if rs_ccat:
+def get_layer_dims(channels, rs_ccat=None):
+    ktups = [(channels[i], channels[i+1]) for i in range(len(channels)-1)]
+    if rs_ccat is not None:
         kdims = []
-        for i in range(len(channels) - 1):
-            if i == 0:
-                kdim = (channels[i], channels[i+1])
-            else:
-                kdim = (channels[i] + 2, channels[i+1]) # input dims for weights must be adjusted for RS
+        for i, ktup in enumerate(ktups):
+            kdim = ktup if i == 0 else (ktup[0] + rs_ccat, ktup[1])
             kdims.append(kdim)
     else:
-        kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
+        kdims = ktups
     return kdims
 
 
 # shift-inv params
-def init_ShiftInv_params(channels, var_scope, rescale=None, vcoeff=False, restore=False, seed=None, rs_ccat=False):
+def init_ShiftInv_params(channels, var_scope, const_init=None, vcoeff=False, restore=False, rs_ccat=None):
     """ Init parameters for 'new' perm-equivariant, shift-invariant model
     For every layer in this model, there are 4 weights and 1 bias
         W1: (k, q) no-pooling
@@ -256,7 +244,6 @@ def init_ShiftInv_params(channels, var_scope, rescale=None, vcoeff=False, restor
         W4: (k, q) pooling all
         B: (q,) bias
     """
-    vinit = 0.002 # best vcoeff constant for 15-19 redshifts
     # get (k_in, k_out) tuples from channels
     kdims = get_layer_dims(channels, rs_ccat)
 
@@ -265,9 +252,10 @@ def init_ShiftInv_params(channels, var_scope, rescale=None, vcoeff=False, restor
         for layer_idx, ktup in enumerate(kdims):
             init_bias(*ktup, BIAS_TAG.format(layer_idx), restore=restore) # B
             for w_idx in SHIFT_INV_W_IDX: # just [1,2,3,4]
-                init_weight(*ktup, MULTI_WEIGHT_TAG.format(layer_idx, w_idx),
-                            ShiftInv_rescale=rescale, restore=restore, seed=seed)
+                weight_tag = MULTI_WEIGHT_TAG.format(layer_idx, w_idx)
+                init_weight(*ktup, weight_tag, restore=restore, const_init=const_init)
         if vcoeff:
+            vinit = 0.002 # best vcoeff constant for 15-19 redshifts
             init_vel_coeff(restore, vinit)
 
 # Multi-step params for aggregate model
