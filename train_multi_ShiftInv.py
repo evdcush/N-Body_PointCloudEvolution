@@ -120,8 +120,8 @@ utils.init_ShiftInv_params(channels, vscope, restore=restore, )#rs_ccat=True)
 # ----------------
 X_input = tf.placeholder(tf.float32, shape=(None, N, 6))
 X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
-RS_in = tf.placeholder(tf.float32,   shape=(None, 1))
-#RS_in = tf.placeholder(tf.float32,   shape=(None, 2))
+#RS_in = tf.placeholder(tf.float32,   shape=(None, 1))
+RS_in = tf.placeholder(tf.float32,   shape=(None, 2))
 
 # NEIGHBOR GRAPH DATA
 # ----------------
@@ -143,7 +143,8 @@ with tf.variable_scope(vscope):
 #=============================================================================
 # helper for kneighbor search
 def get_list_csr(h_in):
-    return nn.get_kneighbor_list(h_in, M, inc_self=False, )#pbc=True)
+    #return nn.get_kneighbor_list(h_in, M, inc_self=False, )#pbc=True)
+    return nn.get_pbc_kneighbors_csr(h_in, M, boundary_threshold=0.03, include_self=False)
 
 # Model static func args
 # ----------------

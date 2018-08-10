@@ -1198,6 +1198,49 @@ def get_pbc_kneighbors(X, K, boundary_threshold):
         adjacency_list[b] = kgraph_idx
     return adjacency_list
 
+
+def get_pcube_csr(x, idx_map, N, K, include_self=False):
+    """ get kneighbor graph from padded cube
+    x is padded cube of shape (M, 3),
+    where M == (N + number of added boundary particles)
+    Args:
+        x (ndarray): padded cube, of shape (M, 3)
+        idx_map (ndarray): shape (M-N,) indices
+        N: number of particles in original cube
+        K: number of nearest neighbors
+    """
+    kgraph = kneighbors_graph(x, K, include_self=include_self)[:N]
+    kgraph_outer_idx = kgraph.indices >= N
+    for k_idx, is_outer in enumerate(kgraph_outer_idx):
+        if is_outer:
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+            outer_idx = kgraph.indices[k_idx]
+            kgraph.indices[k_idx] = idx_map[outer_idx - N]
+    return kgraph
+
+def get_pbc_kneighbors_csr(X, K, boundary_threshold, include_self=False):
+    """
+    """
+    # get boundary range
+    lower = boundary_threshold
+    upper = 1 - boundary_threshold
+    mb_size, N, D = X.shape
+
+    # graph init
+    #adjacency_list = np.zeros((mb_size, N, K), dtype=np.int32)
+    csr_list = []
+
+    for b in range(mb_size):
+        # get expanded cube
+        clone = np.copy(X[b,:,:3])
+        padded_cube, idx_map = pad_cube_boundaries(clone, boundary_threshold)
+
+        # get neighbors from padded_cube
+        kgraph = get_pcube_csr(padded_cube, idx_map, N, K, include_self)
+        csr_list.append(kgraph)
+    return csr_list
+
+
 #=============================================================================
 # periodic boundary conditions, loss
 #=============================================================================
