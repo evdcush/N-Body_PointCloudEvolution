@@ -37,7 +37,7 @@ redshifts = [REDSHIFTS_ZUNI[i] for i in redshift_steps]
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
 rs_tups = [(i,i+1) for i in range(num_rs_layers)]
-rs_tups.append((0, 2))
+#rs_tups.append((0, 2))
 print('redshifts: {}'.format(redshifts))
 
 # Load data
@@ -69,8 +69,8 @@ noisy_inputs = p_variable != 0.0
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
 channels = [9, 32, 16, 8, 6]
-#channels[0]  = 10
-channels[0]  = 11
+channels[0]  = 10
+#channels[0]  = 11
 #channels[-1] = 6
 num_layers = len(channels) - 1
 M = pargs['graph_var']
@@ -120,8 +120,8 @@ utils.init_ShiftInv_params(channels, vscope, restore=restore, )#rs_ccat=True)
 # ----------------
 X_input = tf.placeholder(tf.float32, shape=(None, N, 6))
 X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
-#RS_in = tf.placeholder(tf.float32,   shape=(None, 1))
-RS_in = tf.placeholder(tf.float32,   shape=(None, 2))
+RS_in = tf.placeholder(tf.float32,   shape=(None, 1))
+#RS_in = tf.placeholder(tf.float32,   shape=(None, 2))
 
 # NEIGHBOR GRAPH DATA
 # ----------------
@@ -263,10 +263,10 @@ for step in range(num_iters):
         #print('Step {:>5}, rsi {}, tup {}'.format(step, rsi, tup))
         zx, zy = tup
         # redshift
-        #rs_in = np.full([batch_size*N*M, 1], redshifts[zy], dtype=np.float32)
-        rs_Xin = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
-        rs_Yin = np.full([batch_size*N*M, 1], redshifts[zy], dtype=np.float32)
-        rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
+        rs_in = np.full([batch_size*N*M, 1], redshifts[zy], dtype=np.float32)
+        #rs_Xin = np.full([batch_size*N*M, 1], redshifts[zx], dtype=np.float32)
+        #rs_Yin = np.full([batch_size*N*M, 1], redshifts[zy], dtype=np.float32)
+        #rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
 
         # split data
         #x_in    = _x_batch[zx] # (b, N, 6)
@@ -290,7 +290,7 @@ for step in range(num_iters):
         #trains[rsi].run(feed_dict=fdict)
         train.run(feed_dict=fdict)
 
-        if rsi != (len(rs_tups) - 1) and insert_noise_next(step, rsi):
+        if insert_noise_next(step, rsi):
             x_pred = sess.run(X_pred, feed_dict=fdict)
         else:
             x_pred = None # not necessary, just extra safety
@@ -332,10 +332,10 @@ for j in range(num_val_batches):
         p, q = batch_size*j, batch_size*(j+1)
         x_in    = X_test[z,   p:q] if z == 0 else x_pred
         x_truth = X_test[z+1, p:q]
-        #rs_in = np.full([batch_size*N*M, 1], redshifts[z+1], dtype=np.float32)
-        rs_Xin = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
-        rs_Yin = np.full([batch_size*N*M, 1], redshifts[z+1], dtype=np.float32)
-        rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
+        rs_in = np.full([batch_size*N*M, 1], redshifts[z+1], dtype=np.float32)
+        #rs_Xin = np.full([batch_size*N*M, 1], redshifts[z], dtype=np.float32)
+        #rs_Yin = np.full([batch_size*N*M, 1], redshifts[z+1], dtype=np.float32)
+        #rs_in = np.concatenate([rs_Xin, rs_Yin], axis=-1)
 
         # Graph data
         # ----------------

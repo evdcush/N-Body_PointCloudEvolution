@@ -1229,11 +1229,12 @@ def get_pbc_kneighbors_csr(X, K, boundary_threshold, include_self=False):
     # graph init
     #adjacency_list = np.zeros((mb_size, N, K), dtype=np.int32)
     csr_list = []
+    clone = np.copy(X[...,:3])
 
     for b in range(mb_size):
         # get expanded cube
-        clone = np.copy(X[b,:,:3])
-        padded_cube, idx_map = pad_cube_boundaries(clone, boundary_threshold)
+        clone_cube = clone[b]
+        padded_cube, idx_map = pad_cube_boundaries(clone_cube, boundary_threshold)
 
         # get neighbors from padded_cube
         kgraph = get_pcube_csr(padded_cube, idx_map, N, K, include_self)
