@@ -114,7 +114,7 @@ if seed != PARAMS_SEED:
 tf.set_random_seed(seed)
 #print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(rng_seed))
 #print('\n\nOFFSETTING LAYER INPUT DIMS FOR CONCAT REDSHIFTS\n\n')
-utils.init_ShiftInv_params(channels, vscope, restore=restore, )#rs_ccat=True)
+utils.init_ShiftInv_params(channels, vscope, restore=restore, const_init=0.01)#rs_ccat=True)
 
 # CUBE DATA
 # ----------------

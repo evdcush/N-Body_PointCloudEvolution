@@ -82,12 +82,19 @@ def init_weight(k_in, k_out, name, restore=False, const_init=None):
     var_args = (name, k_in, k_out)
     if restore:
         init = None
+        #var_args = var_args + (k_in, k_out)
+        tf.get_variable(*var_args, dtype=tf.float32, initializer=init)
     else:
         if const_init is not None:
-            init = tf.constant_initializer(const_init)
+            #init = tf.constant_initializer(const_init, dtype=tf.float32)
+            init = tf.ones((k_in, k_out), dtype=tf.float32) * const_init
+            tf.get_variable(name, dtype=tf.float32, initializer=init)
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+            #tf.get_variable(*var_args, initializer=init)
         else:
             init = tf.glorot_normal_initializer(None)
-    tf.get_variable(*var_args, dtype=tf.float32, initializer=init)
+            #var_args = var_args + (k_in, k_out)
+            tf.get_variable(*var_args, dtype=tf.float32, initializer=init)
 
 def init_bias(k_in, k_out, name, restore=False):
     """ biases initialized to be near zero
