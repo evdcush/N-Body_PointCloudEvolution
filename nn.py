@@ -490,7 +490,8 @@ def ShiftInv_model_func_timestep(X_in, COO_feats, model_specs, redshift=None):
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         # network output
-        net_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
+        #net_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
+        net_out = ShiftInv_network_func_rs(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
 
         # Scaling and skip connections
         #loc_scalar = utils.get_scoped_coeff(scalar_tag)
