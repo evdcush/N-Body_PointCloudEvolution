@@ -79,7 +79,7 @@ def init_weight(k_in, k_out, name, restore=False, const_init=None):
     """
     #std = scale * np.sqrt(2. / k_in)
     #henorm = tf.random_normal((k_in, k_out), stddev=std, seed=seed)
-    var_args = (name, k_in, k_out)
+    var_args = (name, (k_in, k_out))
     if restore:
         init = None
         #var_args = var_args + (k_in, k_out)
