@@ -17,8 +17,8 @@ parser.add_argument('--restore',   '-r', default=0,          type=int,  help='re
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
 parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
-parser.add_argument('--vcoeff',    '-c', default=0,          type=int,  help='use timestep coefficient on velocity')
 parser.add_argument('--save_prefix','-n', default='',        type=str,  help='model name prefix')
+parser.add_argument('--var2',      '-c', default=0,          type=int,  help='multi-purpose var argument')
 parser.add_argument('--variable',   '-q', default=0.0,       type=float, help='multi-purpose variable argument')
 pargs = vars(parser.parse_args())
 start_time = time.time()
@@ -59,7 +59,8 @@ X = None # reduce memory overhead
 # ----------------
 model_type = pargs['model_type'] # 0: set, 1: graph
 model_vars = utils.NBODY_MODELS[model_type]
-use_coeff  = pargs['vcoeff'] == 1
+#use_coeff  = pargs['vcoeff'] == 1
+act_func = tf.nn.relu if pargs['var2'] == 0 else tf.nn.selu
 p_variable = pargs['variable']
 print('noise: {}'.format(p_variable))
 noisy_inputs = p_variable != 0.0
@@ -68,7 +69,8 @@ noisy_inputs = p_variable != 0.0
 # Network depth and channel sizes
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
-channels = [9, 32, 16, 8, 6]
+#channels = [9, 32, 16, 8, 6]
+channels = [9, 16, 24, 8, 3, 8, 6]
 channels[0]  = 10
 #channels[0]  = 11
 #channels[-1] = 6
@@ -148,16 +150,13 @@ def get_list_csr(h_in):
 
 # Model static func args
 # ----------------
-train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M],)
+train_args = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M], activation_func=act_func)
 
 # Model outputs
 # ----------------
 # Train
 #pred_in = (X_input, COO_seg, train_args, RS_in)
 pred_in = (X_input, COO_seg, train_args)
-#X_preds = {i: nn.ShiftInv_single_model_func(*pred_in, timesteps[i], scalar_tags[i]) for i in range(num_rs_layers)}
-#X_preds = {i: nn.ShiftInv_model_func_timestep(*pred_in, i, RS_in) for i in range(num_rs_layers)}
-#X_pred = nn.ShiftInv_model_func_timestep(X_input, COO_feats, model_specs, timestep, scalar_tag=scalar_tag)
 X_pred = nn.ShiftInv_model_func_timestep(*pred_in, RS_in)
 
 # Loss
