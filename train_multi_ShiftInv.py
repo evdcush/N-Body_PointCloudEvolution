@@ -79,7 +79,8 @@ M = pargs['graph_var']
 
 # Training hyperparameters
 # ----------------
-learning_rate = LEARNING_RATE # 0.01
+#learning_rate = LEARNING_RATE # 0.01
+learning_rate = 0.001
 #threshold = 0.03 # for PBC kneighbor search, currently not supported
 batch_size = pargs['batch_size']
 num_iters  = pargs['num_iters']
@@ -116,7 +117,7 @@ if seed != PARAMS_SEED:
 tf.set_random_seed(seed)
 #print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(rng_seed))
 #print('\n\nOFFSETTING LAYER INPUT DIMS FOR CONCAT REDSHIFTS\n\n')
-utils.init_ShiftInv_params(channels, vscope, restore=restore, rs_ccat=1,) #const_init=0.01)
+utils.init_ShiftInv_params(channels, vscope, restore=restore,) #const_init=0.01)
 
 # CUBE DATA
 # ----------------
