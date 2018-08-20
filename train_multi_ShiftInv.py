@@ -69,8 +69,8 @@ noisy_inputs = p_variable != 0.0
 # Network depth and channel sizes
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
-#channels = [9, 32, 16, 8, 6]
-channels = [9, 16, 24, 8, 3, 8, 6]
+channels = [9, 32, 16, 8, 6]
+#channels = [9, 16, 24, 8, 3, 8, 6]
 channels[0]  = 10
 #channels[0]  = 11
 #channels[-1] = 6
