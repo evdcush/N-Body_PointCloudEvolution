@@ -60,7 +60,7 @@ X = None # reduce memory overhead
 model_type = pargs['model_type'] # 0: set, 1: graph
 model_vars = utils.NBODY_MODELS[model_type]
 #use_coeff  = pargs['vcoeff'] == 1
-act_func = tf.nn.relu if pargs['var2'] == 0 else tf.nn.selu
+act_func = tf.nn.relu #if pargs['var2'] == 0 else tf.nn.selu
 p_variable = pargs['variable']
 print('noise: {}'.format(p_variable))
 noisy_inputs = p_variable != 0.0
@@ -69,7 +69,7 @@ noisy_inputs = p_variable != 0.0
 # Network depth and channel sizes
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
-channels = [9, 32, 16, 8, 6]
+channels = [9, 16, 24, 8, 3, 8, 6] if pargs['var2'] != 0 else [9, 32, 16, 8, 6]
 #channels = [9, 16, 24, 8, 3, 8, 6]
 channels[0]  = 10
 #channels[0]  = 11
