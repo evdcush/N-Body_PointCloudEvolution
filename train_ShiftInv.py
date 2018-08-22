@@ -2,6 +2,7 @@ import os, code, sys, time, argparse
 import numpy as np
 from sklearn.neighbors import kneighbors_graph
 import tensorflow as tf
+from tensorflow.core.protobuf import config_pb2
 import nn
 import utils
 from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS, NUM_VAL_SAMPLES
@@ -17,9 +18,9 @@ parser.add_argument('--restore',   '-r', default=0,          type=int,  help='re
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
 parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
-parser.add_argument('--vcoeff',    '-c', default=0,          type=int,  help='use timestep coefficient on velocity')
 parser.add_argument('--save_prefix','-n', default='',        type=str,  help='model name prefix')
-parser.add_argument('--variable',   '-q', default=0.1,  type=float, help='multi-purpose variable argument')
+parser.add_argument('--variable',   '-q', default=0,  type=int, help='multi-purpose variable argument')
+parser.add_argument('--variable2',  '-c', default=0,          type=int,  help='multi-purpose variable argument2')
 pargs = vars(parser.parse_args())
 start_time = time.time()
 
@@ -53,14 +54,16 @@ X = None # reduce memory overhead
 # ----------------
 model_type = pargs['model_type'] # 0: set, 1: graph
 model_vars = utils.NBODY_MODELS[model_type]
-use_coeff  = pargs['vcoeff'] == 1
 var_timestep = False
 
 # Network depth and channel sizes
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
-#channels = [6, 32, 16, 8, 3]
-channels = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
+if pargs['variable2'] != 0:
+    channels = [6, 8, 16, 24, 16, 8, 3, 8, 16, 24, 16, 8, 3]
+else:
+    channels = [6, 32, 16, 8, 3]
+
 channels[0]  = 9
 channels[-1] = 3
 #channels[-1] = 6
@@ -148,8 +151,16 @@ X_pred = nn.ShiftInv_model_func_timestep(X_input, COO_feats, model_specs)
 # Loss
 # ----------------
 # Training error and Optimizer
+# https://www.tensorflow.org/api_docs/python/tf/contrib/opt/LazyAdamOptimizer
+if pargs['variable'] != 0:
+    optimizer = tf.contrib.opt.LazyAdamOptimizer(learning_rate)
+    print('\nLazy Adam\n')
+else:
+    optimizer = tf.train.AdamOptimizer(learning_rate)
+    print('\nregular Adam\n')
+
 error = nn.pbc_loss(X_pred, X_truth, vel=False)
-train = tf.train.AdamOptimizer(learning_rate).minimize(error)
+train = optimizer.minimize(error)
 #sc_error = nn.pbc_loss_scaled(X_input, X_pred, X_truth, vel=False)
 #train = tf.train.AdamOptimizer(learning_rate).minimize(sc_error)
 
@@ -165,7 +176,11 @@ train = tf.train.AdamOptimizer(learning_rate).minimize(error)
 # ----------------
 gpu_frac = 0.9
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
+
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+
+#run_options = tf.RunOptions(report_tensor_allocations_upon_oom=True)
+run_opts = config_pb2.RunOptions(report_tensor_allocations_upon_oom=True)
 
 # initialize variables
 sess.run(tf.global_variables_initializer())
@@ -209,6 +224,7 @@ for step in range(num_iters):
              }
 
     # Train
+    #err = sess.run(error, feed_dict=fdict, options=run_opts)
     train.run(feed_dict=fdict)
 
     # Checkpoint
@@ -219,6 +235,7 @@ for step in range(num_iters):
         e = sess.run(error, feed_dict=fdict)
         print('{:>5}: {}'.format(step+1, e))
     """
+
 
     # Save
     if save_checkpoint(step):
