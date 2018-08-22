@@ -491,7 +491,6 @@ def ShiftInv_model_func_timestep(X_in, COO_feats, model_specs, redshift=None):
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         # network output
         net_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
-        #net_out = ShiftInv_network_func_rs(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
 
         # Scaling and skip connections
         #loc_scalar = utils.get_scoped_coeff(scalar_tag)
@@ -501,20 +500,9 @@ def ShiftInv_model_func_timestep(X_in, COO_feats, model_specs, redshift=None):
 
         H_out = net_out[...,:3]*loc_scalar + X_in[...,:3] + X_in[...,3:]*vel_scalar
 
-
-        '''
-        # timestep --> make optimizable var like loc_scalar
-        # - scalar over entire net out (loc & vel)
-        # - scalar for velocity (but not timestep)
-        #   - for input vel on loc, and on vel
-        # - init the scalars (loc: try 1.0, vel: 0.01)
-        # - share scalars across redshifts
-        '''
-
         # Concat velocity predictions
         if net_out.get_shape().as_list()[-1] > 3:
-            H_vel = net_out[...,3:] * vel_scalar + X_in[...,3:] # Maybe another scalar here for velocity
-            #H_vel = net_out[...,3:]*vel_scalar + X_in[...,3:] # Maybe another scalar here for velocity
+            H_vel = net_out[...,3:] * vel_scalar + X_in[...,3:]
             H_out = tf.concat([H_out, H_vel], axis=-1)
 
         return get_readout(H_out)

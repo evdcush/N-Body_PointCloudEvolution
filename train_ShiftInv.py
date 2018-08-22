@@ -59,7 +59,8 @@ var_timestep = False
 # Network depth and channel sizes
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
-channels = [6, 32, 16, 8, 3]
+#channels = [6, 32, 16, 8, 3]
+channels = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
 channels[0]  = 9
 channels[-1] = 3
 #channels[-1] = 6
