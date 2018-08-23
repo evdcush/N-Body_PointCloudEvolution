@@ -69,7 +69,7 @@ noisy_inputs = p_variable != 0.0
 # Network depth and channel sizes
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
-channels = [9, 16, 24, 8, 3, 8, 6] if pargs['var2'] != 0 else [9, 32, 16, 8, 6]
+channels = [6, 32, 6] if pargs['var2'] != 0 else [9, 32, 16, 8, 6]
 #channels = [9, 16, 24, 8, 3, 8, 6]
 channels[0]  = 10
 #channels[0]  = 11
@@ -79,8 +79,7 @@ M = pargs['graph_var']
 
 # Training hyperparameters
 # ----------------
-#learning_rate = LEARNING_RATE # 0.01
-learning_rate = 0.001
+learning_rate = LEARNING_RATE # 0.01
 #threshold = 0.03 # for PBC kneighbor search, currently not supported
 batch_size = pargs['batch_size']
 num_iters  = pargs['num_iters']

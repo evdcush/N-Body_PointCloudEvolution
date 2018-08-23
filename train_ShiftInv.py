@@ -55,12 +55,14 @@ X = None # reduce memory overhead
 model_type = pargs['model_type'] # 0: set, 1: graph
 model_vars = utils.NBODY_MODELS[model_type]
 var_timestep = False
+learning_rate = LEARNING_RATE # 0.01
 
 # Network depth and channel sizes
 # ----------------
 #channels = model_vars['channels'] # OOM with sparse graph
 if pargs['variable2'] != 0:
-    channels = [6, 8, 16, 24, 16, 8, 3, 8, 16, 24, 16, 8, 3]
+    channels = [6, 32, 3]
+    #learning_rate = 0.001
 else:
     channels = [6, 32, 16, 8, 3]
 
@@ -72,7 +74,7 @@ M = pargs['graph_var']
 
 # Training hyperparameters
 # ----------------
-learning_rate = LEARNING_RATE # 0.01
+
 #threshold = 0.03 # for PBC kneighbor search, currently not supported
 batch_size = pargs['batch_size']
 num_iters  = pargs['num_iters']
@@ -180,7 +182,7 @@ gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 
 #run_options = tf.RunOptions(report_tensor_allocations_upon_oom=True)
-run_opts = config_pb2.RunOptions(report_tensor_allocations_upon_oom=True)
+#run_opts = config_pb2.RunOptions(report_tensor_allocations_upon_oom=True)
 
 # initialize variables
 sess.run(tf.global_variables_initializer())
