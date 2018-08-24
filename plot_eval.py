@@ -3,18 +3,10 @@ import numpy as np
 #import pylab as plt
 from matplotlib import pyplot as plt
 
-''' # Notes
-- Currently not looking at angles, since I was getting NaNs with the basic linalg func
-- need to calculate timesteps for all possible redshifts
-    - this might be better done in a separate script?
-        - load cubes, same random split idx for validation
-        - calculate timesteps for every possible redshift pair
-'''
-
-
 #plt.style.use('ggplot')
 #plt.style.use('bmh')
 #plt.ion()
+
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 # Pseudo-globals
 # ========================================
@@ -107,15 +99,10 @@ def l2_dist(x_true, x_hat):
 # ========================================
 alpha = .5
 LINEAR_VEL_LABEL = 'linear vel'
-#pred_label = 'deep model'
-#pred2_label = 'deep noisy model'
 linVel_c = 'r'
 
 #plabels = ['deep vanilla', 'deep noisy']
-plabels = ['Multi-step 0-11-19', 'Single-step 0-19']
 pcolors = ['b', 'g']
-#pred_c = 'b'
-#pred2_c = 'g'
 
 # Plot multi-hist
 # ========================================
@@ -123,9 +110,7 @@ def label_hist_ax(ax, rs_idx, xlabel='Distance (L2)'):
     # Add some graph details
     zx, zy = rs_idx
     rsx, rsy = REDSHIFTS[zx], REDSHIFTS[zy]
-    #title = 'Error, single-step {:>2}-{:>2}: {:.4f} --> {:.4f}'.format(zx, zy, rsx, rsy)
     title = 'Error comparison, {:>2}-{:>2}: {:.4f} --> {:.4f}'.format(zx, zy, rsx, rsy)
-    #title = 'Error, multi-step {:>2}-{:>2}: {:.4f} --> {:.4f}'.format(zx, zy, rsx, rsy)
     ax.set_title(title, size='medium', style='italic')
     ax.set_xlabel('Distance (L2)')
     leg = ax.legend()
@@ -235,25 +220,11 @@ def plot_multiStep_comp(X_truth, X_preds, rs_pairs, splot_idx, singles=False):
 
 # Load data
 # ========================================
-#rs1 = [(10, 19), (12, 19), (15, 19), (16, 19), (17, 19), (18, 19), ]#(7, 19), (3, 19), (3,7), (0,1), (11,15)]
-#rs2 = [(3,7), (0,1), (11,15)]
-#rs_multi3 = [(1,7), (7,13), (13,19)]
-#rs_multi2 = [(0,11), (11,19)]
 cur_rs = [(0, 19)]
-
-#model_names = ['Multi3_ShiftInv_7K_ZG_{}-{}', 'Multi3_ShiftInv_7K_noisy018_ZG_{}-{}']
-#preds_label = ['deep vanilla', 'deep noisy']
-#preds_c = ['b', 'g']
-#preds_attr = [(label, color, fname) for label, color, fname in zip(preds_label, preds_c, model_names)]
-#mname = 'sinv7K_ZG_{}-{}'
 model_names = ['Multi2_15K_s1_0_11_19_ZG_{}-{}', 'Single_s0_0_19_ZG_{}-{}']
 
+X_truth = load_cube(0,19, model_names[0], truth=True)
 
-#X_truth = load_cube(1, 19, base_name, truth=True) # (4, 200, 32**3, 6)
-#X_preds = [load_cube(1, 19, fname) for fname in model_names]
-#X_truth = np.array([load_cube(zx, zy, 'Multi2_15K_s1_0_11_19_ZG_{}-{}', truth=True)  for zx,zy in cur_rs])
-X_truth = load_cube(0,19, 'Multi2_15K_s1_0_11_19_ZG_{}-{}', truth=True)
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 X_truth = np.take(X_truth, [0,2], axis=0)
 X_preds = []
 for fname in model_names:
@@ -261,16 +232,6 @@ for fname in model_names:
     if fname == model_names[0]:
         x_pred = x_pred[-1]
     X_preds.append(x_pred)
-#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-'''
-for fname in model_names:
-    x_pred = load_cube(*cur_rs[0], fname)[None,...]
-    for zx, zy in cur_rs[1:]:
-        xp = load_cube(zx, zy, fname)[None, ...]
-        x_pred = np.concatenate([x_pred, xp], axis=0)
-    X_preds.append(x_pred)
-'''
-#X_preds  = [load_cube(zx, zy, mname, truth=False) for mname,zx,zy in zip(model_names,cur_rs)]
 
 
 
@@ -292,64 +253,3 @@ plot_multiStep_comp(X_truth, X_preds, cur_rs, splot_idx, singles=True)
 plt.tight_layout()
 #plt.show()
 save_plot(0, 19)
-
-
-
-#plt.show()
-
-'''
-j = 5
-#fsize = ((j+1)*len(cur_rs), j)
-fsize = ((j+1)*nc, j*nr)
-fig = plt.figure(figsize=fsize)
-#plot_hist_ax(l2_dist_Vlinear, l2_dist_pred, (zx, zy), 111)
-
-plot_multistep(cur_rs, splot_idx)
-#plot_multi(cur_rs, splot_idx)
-#plt.suptitle('')
-#fig.suptitle('Comparison of deep model (blue) against moving-along-velocity')
-plt.tight_layout()
-
-
-
-#plt.show()
-save_plot(0, 19)
-
-def plot_multi(rs_pairs, splot_idx):
-    for i, pair in enumerate(rs_pairs):
-        zx, zy = pair
-        cur_splot_idx = splot_idx[i]
-
-        # Load Truth
-        ground_truth = load_cube(zx, zy, truth=True)
-        X_input = ground_truth[0]
-        X_truth = ground_truth[1]
-        ground_truth = None
-
-        # Load Pred
-        X_pred = load_cube(zx, zy)
-
-        # Get masked, formatted data
-        #loc_truth, loc_pred, loc_input, vel_input = mask_data(X_input, X_truth, X_pred)
-
-
-        # Generate moving-along-velocity linear "model prediction"
-        timestep = calculate_timestep(x_in, x_truth[...,:3])
-        loc_velLinear = get_velLinear_pred(x_in, timestep)
-
-        # Get l2 distance to truth
-        l2_dist_Vlinear = l2_dist(loc_truth, loc_Vlinear)
-        l2_dist_pred    = l2_dist(loc_truth, loc_pred)
-
-        # Plot hist
-        plot_hist_ax(l2_dist_Vlinear, l2_dist_pred, pair, cur_splot_idx)
-'''
-
-#zx = 11
-#zy = 15
-#rs_pair = (zx, zy)
-#rsx, rsy = REDSHIFTS[zx], REDSHIFTS[zy]
-#loc_input, vel_input, loc_truth, loc_pred, loc_Vlinear, timestep = load_formatted_cubes(rs_pair)
-#cubes = load_formatted_cubes(rs_pair)
-#timestep = cubes[-1][0]
-#print('{:>2}, {:>2}: {:.4f} --> {:.4f}, TIMESTEP: {:.6f}'.format(zx, zy, rsx, rsy, timestep))
