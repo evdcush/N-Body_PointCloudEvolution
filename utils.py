@@ -204,158 +204,32 @@ def get_scalars():
     return scalars
 
 
-
 # Layer var get wrappers
 # ========================================
-# Weight offset helper for shiftInv params (multistep)
-def get_layer_dims(channels, rs_ccat=None):
-    ktups = [(channels[i], channels[i+1]) for i in range(len(channels)-1)]
-    if rs_ccat is not None:
-        kdims = []
-        for i, ktup in enumerate(ktups):
-            kdim = ktup if i == 0 else (ktup[0] + rs_ccat, ktup[1])
-            kdims.append(kdim)
-    else:
-        kdims = ktups
-    return kdims
-
-def get_ShiftInv_layer_vars(layer_idx, var_scope=VAR_SCOPE):
-    layer_vars = []
-    with tf.variable_scope(var_scope, reuse=True):
-        for w_idx in SHIFT_INV_W_IDX:
-            layer_vars.append(tf.get_variable(MULTI_WEIGHT.format(layer_idx, w_idx)))
-        layer_vars.append(tf.get_variable(BIAS_TAG.format(layer_idx)))
-    return layer_vars # [W1, W2, W3, W4, B]
-
-# Model init wrappers ========================================================
-
-# Single-step
-def init_params(channels, var_scope=VAR_SCOPE, vcoeff=False, seed=None, restore=False):
-    """ Initialize parameters for model
-    Args:
-        channels (list int): list of channel sizes
-        var_scope (str): variable scope for variables (basically what prefixes var names)
-    """
-    # get (k_in, k_out) tuples from channels
-    kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
-    with tf.variable_scope(var_scope):
-        # initialize variables for each layer
-        for idx, ktup in enumerate(kdims):
-            init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed, restore=restore)
-            init_bias(  *ktup,   BIAS_TAG.format(idx), restore=restore)
-        if vcoeff: # scalar weight for simulating timestep, only one
-            init_vel_coeff(restore)
-
-# Weight offset helper for shiftInv params (multistep)
-def get_layer_dims(channels, rs_ccat=None):
-    ktups = [(channels[i], channels[i+1]) for i in range(len(channels)-1)]
-    if rs_ccat is not None:
-        kdims = []
-        for i, ktup in enumerate(ktups):
-            kdim = ktup if i == 0 else (ktup[0] + rs_ccat, ktup[1])
-            kdims.append(kdim)
-    else:
-        kdims = ktups
-    return kdims
+"""
+Assumed to be within the tf.variable_scope of the respective network funcs
+  themselves (called directly), so no dispatching layer wrapper get func
+"""
+def get_vanilla_layer_vars(layer_idx, **kwargs):
+    weight = get_weight(layer_idx)
+    bias = get_bias(layer_idx)
+    return weight, bias
 
 
-# shift-inv params
-def init_ShiftInv_params(channels, var_scope, const_init=None, vcoeff=False, restore=False, rs_ccat=None):
-    """ Init parameters for 'new' perm-equivariant, shift-invariant model
-    For every layer in this model, there are 4 weights and 1 bias
-        W1: (k, q) no-pooling
-        W2: (k, q) pooling rows
-        W3: (k, q) pooling cols
-        W4: (k, q) pooling all
-        B: (q,) bias
-    """
-    # get (k_in, k_out) tuples from channels
-    kdims = get_layer_dims(channels, rs_ccat)
+def get_ShiftInv_layer_vars(layer_idx, **kwargs):
+    weights = []
+    for w_idx in SHIFT_INV_W_IDX:
+        weights.append(get_weight(layer_idx, w_idx=w_idx))
+    bias = get_bias(layer_idx)
+    return weights, bias
 
-    with tf.variable_scope(var_scope):
-        # initialize variables for each layer
-        for layer_idx, ktup in enumerate(kdims):
-            init_bias(*ktup, BIAS_TAG.format(layer_idx), restore=restore) # B
-            for w_idx in SHIFT_INV_W_IDX: # just [1,2,3,4]
-                weight_tag = MULTI_WEIGHT_TAG.format(layer_idx, w_idx)
-                init_weight(*ktup, weight_tag, restore=restore, const_init=const_init)
-        if vcoeff:
-            vinit = 0.002 # best vcoeff constant for 15-19 redshifts
-            init_vel_coeff(restore, vinit)
 
-# Multi-step params for aggregate model
-def init_params_multi(channels, num_rs, var_scope=VAR_SCOPE, seed=None, restore=False):
-    """ Initialize network parameters for multi-step model, for predicting
-    across multiple redshifts. (eg 6.0 -> 4.0 -> ... -> <target rs>)
-    Multi-step model is network where each layer is a single-step model
-    """
-    for j in range(num_rs):
-        tf.set_random_seed(seed) # ensure each sub-model has same weight init
-        cur_scope = var_scope.format(j) #
-        init_params(channels, var_scope=cur_scope, restore=restore)
+def get_RotInv_layer_vars(layer_idx, **kwargs):
+    # TODO
+    assert False
 
-#=============================================================================
-# var gets
-#=============================================================================
-def get_layer_vars(layer_idx, var_scope=VAR_SCOPE):
-    with tf.variable_scope(var_scope, reuse=True):
-        W = tf.get_variable(WEIGHT_TAG.format(layer_idx))
-        B = tf.get_variable(  BIAS_TAG.format(layer_idx))
-    return W, B
 
-def get_ShiftInv_layer_vars(layer_idx, var_scope=VAR_SCOPE):
-    layer_vars = []
-    with tf.variable_scope(var_scope, reuse=True):
-        for w_idx in SHIFT_INV_W_IDX:
-            layer_vars.append(tf.get_variable(MULTI_WEIGHT.format(layer_idx, w_idx)))
-        layer_vars.append(tf.get_variable(BIAS_TAG.format(layer_idx)))
-    return layer_vars # [W1, W2, W3, W4, B]
 
-def get_vcoeff(var_scope):
-    with tf.variable_scope(var_scope, reuse=True):
-        vel_coeff = tf.get_variable(VEL_COEFF_TAG)
-    return vel_coeff
-
-#=============================================================================
-# var gets, assumes caller in proper variable_scope
-#=============================================================================
-def get_scoped_layer_vars(layer_idx):
-    W = tf.get_variable(WEIGHT_TAG.format(layer_idx))
-    B = tf.get_variable(  BIAS_TAG.format(layer_idx))
-    return W, B
-
-def get_scoped_ShiftInv_layer_vars(layer_idx):
-    #layer_vars = []
-    #for w_idx in SHIFT_INV_W_IDX:
-    #    layer_vars.append(tf.get_variable(MULTI_WEIGHT_TAG.format(layer_idx, w_idx)))
-    #layer_vars.append(tf.get_variable(BIAS_TAG.format(layer_idx)))
-    #return layer_vars # [W1, W2, W3, W4, B]
-
-    # TRYING EXPLICIT GETS iNSTEAD OF LIST, just in case
-    # riskier, careful of var name to W_idx
-    W1 = tf.get_variable(MULTI_WEIGHT_TAG.format(layer_idx, 1))
-    W2 = tf.get_variable(MULTI_WEIGHT_TAG.format(layer_idx, 2))
-    W3 = tf.get_variable(MULTI_WEIGHT_TAG.format(layer_idx, 3))
-    W4 = tf.get_variable(MULTI_WEIGHT_TAG.format(layer_idx, 4))
-
-    B  = tf.get_variable(BIAS_TAG.format(layer_idx))
-    return W1, W2, W3, W4, B
-
-def get_scoped_RotInv_weight(layer_idx, w_idx):
-    W = tf.get_variable(MULTI_WEIGHT_TAG.format(layer_idx, w_idx))
-    return W
-
-def get_scoped_bias(layer_idx):
-    B = tf.get_variable(BIAS_TAG.format(layer_idx))
-    return B
-
-def get_scoped_vcoeff():
-    vcoeff = tf.get_variable(VEL_COEFF_TAG)
-    return vcoeff
-
-def get_var(tag):
-    with tf.variable_scope(vscope, reuse=True):
-        return tf.get_variable(tag).eval()
 
 #=============================================================================
 # graph save and restore
