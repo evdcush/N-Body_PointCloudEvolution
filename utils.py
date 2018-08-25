@@ -230,6 +230,15 @@ def get_RotInv_layer_vars(layer_idx, **kwargs):
 
 
 
+#------------------------------------------------------------------------------
+# Model graph save & restoration
+#------------------------------------------------------------------------------
+# Model save
+# ========================================
+class TrainSaver:
+    def __init__(self, mname, num_iters, write_meta_each_checkpoint=False):
+        saver = tf.train.Saver()
+        save_path = '{}{}/Session/'
 
 #=============================================================================
 # graph save and restore
