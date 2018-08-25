@@ -35,6 +35,12 @@ WEIGHT_TAG = 'W{}_{}'
 BIAS_TAG   = 'B_{}'
 SCALAR_TAG = 'T_{}'
 
+# Layer names
+VANILLA   = 'vanilla'
+SHIFT_INV = 'shift-inv'
+ROT_INV   = 'rot-inv'
+LAYER_TYPES = [VANILLA, SHIFT_INV, ROT_IN]
+
 # Model names
 MODEL_TYPES = ['multi-step', 'single-step']
 LAYER_TYPES = ['vanilla', 'shift-inv', 'rot-inv']
@@ -61,7 +67,7 @@ SHIFT_INV_W_IDX = [1,2,3,4]
 
 # Rotation-invariant
 ROTATION_INV_SEGMENTS = ['no-pooling', 'col-depth', 'row-depth',
-                     'row-col', 'depth', 'col', 'row', 'all']
+                         'row-col', 'depth', 'col', 'row', 'all']
 
 
 # Training variables
@@ -121,28 +127,38 @@ def initialize_scalars(init_val=0.002, restore=False):
 
 # Model parameter init wrappers
 # ========================================
-def initialize_RotInv_params():
+def initialize_vanilla_params():
     pass
 
 
 def initialize ShiftInv_params():
     pass
 
-def initialize_model_params(mtype):
+
+def initialize_RotInv_params():
     pass
-#=============================================================================
-# TensorFlow utilities
-#=============================================================================#=============================================================================
-# TensorFlow utilities
-#=============================================================================#=============================================================================
-# TensorFlow utilities
-#=============================================================================#=============================================================================
-# TensorFlow utilities
-#=============================================================================#=============================================================================
-# TensorFlow utilities
-#=============================================================================#=============================================================================
-# TensorFlow utilities
-#=============================================================================
+
+layer_init_funcs = {VANILLA:   initialize_vanilla_params,
+                    SHIFT_INV: initialize_ShiftInv_params,
+                    ROT_INV:   initialize_RotInv_params}
+def initialize_model_params(layer_type, channels, scope=VAR_SCOPE,
+                            seed=PARAMS_SEED, restore=False):
+    """ Initialize model parameters, dispatch based on layer_type
+    Args:
+        layer_type (str): layer-type ['vanilla', 'shift-inv', 'rot-inv']
+        channels list(int): network channels
+        scope (str): scope for tf.variable_scope
+        seed (int): RNG seed for param inits
+        restore (bool): whether new params are initialized, or just placeholders
+    """
+    kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
+    tf.set_random_seed(seed)
+    layer_init_func = layer_init_funcs[layer_type]
+    with tf.variable_scope(scope, reuse=True):
+        layer_init_func(kdims, restore=restore)
+
+
+
 
 def get_ShiftInv_layer_vars(layer_idx, var_scope=VAR_SCOPE):
     layer_vars = []
