@@ -49,7 +49,7 @@ MODEL_BASENAME = '{}_{}_{}' # {model-type}_{layer-type}_{rs1-...-rsN}_{extra-nam
 #------------------------------------------------------------------------------
 # Model variables
 #------------------------------------------------------------------------------
-# Model variables
+# Model params
 # ========================================
 # RNG seeds
 PARAMS_SEED  = 77743196 # Randomly generated seed selected by cross-validation
@@ -127,22 +127,38 @@ def initialize_scalars(init_val=0.002, restore=False):
 
 # Model parameter init wrappers
 # ========================================
-def initialize_vanilla_params():
-    pass
+def initialize_vanilla_params(kdims, restore=False, **kwargs):
+    """ Vanilla layers have 1 bias, 1 weight, scalars"""
+    for layer_idx, kdim in enumerate(kdims):
+        bname = BIAS_TAG.format(layer_idx)
+        Wname = WEIGHT_TAG.format(layer_idx, 0)
+        initialize_bias(  bname, kdim, restore=restore)
+        initialize_weight(Wname, kdim, restore=restore)
+    initialize_scalars(restore=restore)
 
 
-def initialize ShiftInv_params():
-    pass
+def initialize ShiftInv_params(kdims, restore=False, **kwargs):
+    """ ShiftInv layers have 1 bias, 4 weights, scalars """
+    for layer_idx, kdim in enumerate(kdims):
+        initialize_bias(BIAS_TAG.format(layer_idx), kdim, restore=restore)
+        for w_idx in SHIFT_INV_W_IDX:
+            Wname = WEIGHT_TAG.format(layer_idx, w_idx)
+            initialize_weight(Wname, kdim, restore=restore)
+    initialize_scalars(restore=restore)
 
 
-def initialize_RotInv_params():
-    pass
+def initialize_RotInv_params(kdims, restore=False, **kwargs):
+    # TODO
+    assert False
+
 
 layer_init_funcs = {VANILLA:   initialize_vanilla_params,
                     SHIFT_INV: initialize_ShiftInv_params,
                     ROT_INV:   initialize_RotInv_params}
+
+
 def initialize_model_params(layer_type, channels, scope=VAR_SCOPE,
-                            seed=PARAMS_SEED, restore=False):
+                            seed=PARAMS_SEED, restore=False, **kwargs):
     """ Initialize model parameters, dispatch based on layer_type
     Args:
         layer_type (str): layer-type ['vanilla', 'shift-inv', 'rot-inv']
@@ -151,78 +167,17 @@ def initialize_model_params(layer_type, channels, scope=VAR_SCOPE,
         seed (int): RNG seed for param inits
         restore (bool): whether new params are initialized, or just placeholders
     """
+    # Convert channels to (k_in, k_out) tuples
     kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
+
+    # Seed and initialize
     tf.set_random_seed(seed)
     layer_init_func = layer_init_funcs[layer_type]
     with tf.variable_scope(scope, reuse=True):
-        layer_init_func(kdims, restore=restore)
+        layer_init_func(kdims, restore=restore, **kwargs)
+    print('Initialized {} layer parameters'.format(layer_type))
 
 
-
-
-def get_ShiftInv_layer_vars(layer_idx, var_scope=VAR_SCOPE):
-    layer_vars = []
-    with tf.variable_scope(var_scope, reuse=True):
-        for w_idx in SHIFT_INV_W_IDX:
-            layer_vars.append(tf.get_variable(MULTI_WEIGHT.format(layer_idx, w_idx)))
-        layer_vars.append(tf.get_variable(BIAS_TAG.format(layer_idx)))
-    return layer_vars # [W1, W2, W3, W4, B]
-
-# Model init wrappers ========================================================
-
-# Single-step
-def init_params(channels, var_scope=VAR_SCOPE, vcoeff=False, seed=None, restore=False):
-    """ Initialize parameters for model
-    Args:
-        channels (list int): list of channel sizes
-        var_scope (str): variable scope for variables (basically what prefixes var names)
-    """
-    # get (k_in, k_out) tuples from channels
-    kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
-    with tf.variable_scope(var_scope):
-        # initialize variables for each layer
-        for idx, ktup in enumerate(kdims):
-            init_weight(*ktup, WEIGHT_TAG.format(idx), seed=seed, restore=restore)
-            init_bias(  *ktup,   BIAS_TAG.format(idx), restore=restore)
-        if vcoeff: # scalar weight for simulating timestep, only one
-            init_vel_coeff(restore)
-
-# Weight offset helper for shiftInv params (multistep)
-def get_layer_dims(channels, rs_ccat=None):
-    ktups = [(channels[i], channels[i+1]) for i in range(len(channels)-1)]
-    if rs_ccat is not None:
-        kdims = []
-        for i, ktup in enumerate(ktups):
-            kdim = ktup if i == 0 else (ktup[0] + rs_ccat, ktup[1])
-            kdims.append(kdim)
-    else:
-        kdims = ktups
-    return kdims
-
-
-# shift-inv params
-def init_ShiftInv_params(channels, var_scope, const_init=None, vcoeff=False, restore=False, rs_ccat=None):
-    """ Init parameters for 'new' perm-equivariant, shift-invariant model
-    For every layer in this model, there are 4 weights and 1 bias
-        W1: (k, q) no-pooling
-        W2: (k, q) pooling rows
-        W3: (k, q) pooling cols
-        W4: (k, q) pooling all
-        B: (q,) bias
-    """
-    # get (k_in, k_out) tuples from channels
-    kdims = get_layer_dims(channels, rs_ccat)
-
-    with tf.variable_scope(var_scope):
-        # initialize variables for each layer
-        for layer_idx, ktup in enumerate(kdims):
-            init_bias(*ktup, BIAS_TAG.format(layer_idx), restore=restore) # B
-            for w_idx in SHIFT_INV_W_IDX: # just [1,2,3,4]
-                weight_tag = MULTI_WEIGHT_TAG.format(layer_idx, w_idx)
-                init_weight(*ktup, weight_tag, restore=restore, const_init=const_init)
-        if vcoeff:
-            vinit = 0.002 # best vcoeff constant for 15-19 redshifts
-            init_vel_coeff(restore, vinit)
 
 #------------------------------------------------------------------------------
 # Parameter getters
@@ -249,11 +204,20 @@ def get_scalars():
     return scalars
 
 
-#------------------------------------------------------------------------------
-# Parameter init and get wrappers
-#------------------------------------------------------------------------------
-# tf.Variable getters
+
+# Layer var get wrappers
 # ========================================
+# Weight offset helper for shiftInv params (multistep)
+def get_layer_dims(channels, rs_ccat=None):
+    ktups = [(channels[i], channels[i+1]) for i in range(len(channels)-1)]
+    if rs_ccat is not None:
+        kdims = []
+        for i, ktup in enumerate(ktups):
+            kdim = ktup if i == 0 else (ktup[0] + rs_ccat, ktup[1])
+            kdims.append(kdim)
+    else:
+        kdims = ktups
+    return kdims
 
 def get_ShiftInv_layer_vars(layer_idx, var_scope=VAR_SCOPE):
     layer_vars = []
