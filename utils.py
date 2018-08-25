@@ -8,28 +8,26 @@ from mpl_toolkits.mplot3d import Axes3D
 #=============================================================================
 # Globals
 #=============================================================================
-
+#------------------------------------------------------------------------------
+# Data and pathing
+#------------------------------------------------------------------------------
 # Data variables
 # ========================================
-# Redshifts
 REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
              1.1212, 0.9438, 0.7955, 0.6688, 0.5588, 0.4620, 0.3758,
              0.2983, 0.2280, 0.1639, 0.1049, 0.0505, 0.0000]
+# Load
+DATA_ROOT_PATH = '/home/evan/Data/nbody_simulations/N_uniform/{}'
+DATA_PATH_BINARIES = DATA_ROOT_PATH.format('run*/xv_dm.z=0{}') # not in use
+DATA_PATH_NPY      = DATA_ROOT_PATH.format('npy_data/X_{:.4f}_.npy')
 
-# Data load paths
-DATA_PATH_BINARIES = '/home/evan/Data/nbody_simulations/N_uniform/run*/xv_dm.z=0{}'
-DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/N_uniform/npy_data/X_{:.4f}_.npy'
-
-# Data save paths
+# Write
 MODEL_SAVE_PATH = '../Models/'
-
-# Files to save
 SAVE_FILE_NAMES = ['utils.py', 'nn.py', 'train_ShiftInv.py', 'train_multi_ShiftInv.py']
 
 
 # Model naming
 # ========================================
-# Variable scope
 VARIABLE_SCOPE = 'params_{}-{}' # 'params_rsStart-rsTarget'
 
 # Model variable names
@@ -42,6 +40,9 @@ MODEL_TYPES = ['multi-step', 'single-step']
 LAYER_TYPES = ['vanilla', 'shift-inv', 'rot-inv']
 MODEL_BASENAME = '{}_{}_{}' # {model-type}_{layer-type}_{rs1-...-rsN}_{extra-naming}
 
+#------------------------------------------------------------------------------
+# Model variables
+#------------------------------------------------------------------------------
 # Model variables
 # ========================================
 # RNG seeds
@@ -52,6 +53,7 @@ DATASET_SEED = 12345    # for train/validation data splits
 CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
 CHANNELS_SHALLOW = [9, 32, 16, 8, 6]
 
+
 # Layer variables
 # ========================================
 # Shift-invariant
@@ -61,159 +63,84 @@ SHIFT_INV_W_IDX = [1,2,3,4]
 ROTATION_INV_SEGMENTS = ['no-pooling', 'col-depth', 'row-depth',
                      'row-col', 'depth', 'col', 'row', 'all']
 
+
 # Training variables
 # ========================================
 LEARNING_RATE = 0.01
 NUM_VAL_SAMPLES = 200
 
 
+
 #=============================================================================
 # TensorFlow utilities
 #=============================================================================
 
-#=============================================================================
-# tf.Variable inits, for model parameters
-#=============================================================================
+#------------------------------------------------------------------------------
+# tf.Variables
+#------------------------------------------------------------------------------
+# tf.Variable initialization
+# ========================================
+def initialize_var(args_init, initializer):
+    tf.get_variable(*args_init, dtype=tf.float32, initializer=initializer)
 
-def init_weight(k_in, k_out, name, restore=False, const_init=None):
+
+def initialize_weight(name, kdims, restore=False):
     """ initialize weight Variable
     Args:
-        k_in, k_out (int): kernel sizes
-        name (str): variable name"
-        seed (int): random seed
-        restore: if restore, then do not user initializer
+        name (str): variable name
+        kdims tuple(int): kernel sizes (k_in, k_out)
+        restore (bool): if restore, then do not user initializer
     """
-    #std = scale * np.sqrt(2. / k_in)
-    #henorm = tf.random_normal((k_in, k_out), stddev=std, seed=seed)
-    var_args = (name, (k_in, k_out))
-    if restore:
-        init = None
-        #var_args = var_args + (k_in, k_out)
-        tf.get_variable(*var_args, dtype=tf.float32, initializer=init)
-    else:
-        if const_init is not None:
-            #init = tf.constant_initializer(const_init, dtype=tf.float32)
-            init = tf.ones((k_in, k_out), dtype=tf.float32) * const_init
-            tf.get_variable(name, dtype=tf.float32, initializer=init)
-            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-            #tf.get_variable(*var_args, initializer=init)
-        else:
-            init = tf.glorot_normal_initializer(None)
-            #var_args = var_args + (k_in, k_out)
-            tf.get_variable(*var_args, dtype=tf.float32, initializer=init)
+    args_init = (name, kdims)
+    initializer = None if restore else tf.glorot_normal_initializer(None)
+    initialize_var(args_init, initializer)
 
-def init_bias(k_in, k_out, name, restore=False):
+
+def initialize_bias(name, kdims, restore=False):
     """ biases initialized to be near zero
     Args:
-        k_in, k_out (int): kernel sizes  (only k_out needed for bias)
         name (str): variable name
-        restore: if restore, then do not user initializer
+        kdims tuple(int): kernel sizes (k_in, k_out), only k_out used for bias
+        restore (bool): if restore, then do not user initializer
     """
-    if not restore:
-        init = tf.ones((k_out,), dtype=tf.float32) * 1e-8
-        #init = tf.zeros((k_out,), dtype=tf.float32)
-        tf.get_variable(name, dtype=tf.float32, initializer=init)
-    else:
-        tf.get_variable(name, (k_out,), dtype=tf.float32, initializer=None)
-
-def init_vel_coeff(restore=False, vinit=None):
-    """ scalar weight used in skip connection with velocity, approximates
-    timestep
-    Note: get_variable does not accept shape when using concrete values
-
-    Args:
-        restore: if restore, learned values will be loaded so do not initialize
-        vinit: initial weight value
-    """
-    args = (VEL_COEFF_TAG,)
+    k_out = kdims[-1]
+    args_init = (name,)
     if restore:
-        init = None
-        args = args + ((1,))
+        initializer = None
+        args_init += (k_out,)
     else:
-        if vinit is not None:
-            init = tf.constant([vinit])
-        else:
-            init = tf.random_uniform_initializer(0,1)
-            args = args + ((1,))
-    tf.get_variable(*args, dtype=tf.float32, initializer=init)
-
-MCOEFFTAG = 'coeff_{}'
-MCOEFFTAG_SINGLE = 'coeff_{}'
-MCOEFFTAG2 = 'coeff_{}_{}'
-MCOEFFTAG2_RS = 'coeff{}-{}_{}_{}'
-MCOEFFTAG_RS = 'coeff{}-{}'
+        initializer = tf.ones((k_out,), dtype=tf.float32) * 1e-8
+    initialize_var(args_init, initializer)
 
 
-def init_coeff(vscope, rs, restore=False, vinit=0.002):
-    zx, zy = rs
-    tag = MCOEFFTAG_RS.format(zx, zy)
-    args = (tag,)
-    with tf.variable_scope(vscope):
-        if restore:
-            init = None
-            args = args + ((1,)) # (1,) being dim/shape of coeff
-        else:
-            init = tf.constant([vinit])
-        tf.get_variable(*args, dtype=tf.float32, initializer=init)
-    return tag
-
-def get_scoped_coeff(tag):
-    return tf.get_variable(tag)
+def initialize_scalars(init_val=0.002, restore=False):
+    """ 1D scalars used to scale network outputs """
+    initializer = tf.constant([init_val])
+    for i in range(2):
+        initialize_var((SCALAR_TAG.format(i),), initializer)
 
 
-def init_coeff_multi(num_rs, restore=False, vinit=0.002):
-    for i in range(num_rs):
-        tag = MCOEFFTAG.format(i)
-        tf.get_variable(tag, dtype=tf.float32, initializer=tf.constant([vinit]))
+# tf.Variable getters
+# ========================================
+def get_var(name):
+    """ Assumes within variable scope """
+    return tf.get_variable(name)
 
-def init_coeff_single(restore=False, vinit=0.002):
-    #tag = MCOEFFTAG_SINGLE
-    tf.get_variable(MCOEFFTAG_SINGLE.format(0), dtype=tf.float32, initializer=tf.constant([vinit]))
-    tf.get_variable(MCOEFFTAG_SINGLE.format(1), dtype=tf.float32, initializer=tf.constant([vinit]))
 
-def get_scoped_coeff_single():
-    loc_scalar = tf.get_variable(MCOEFFTAG_SINGLE.format(0))
-    vel_scalar = tf.get_variable(MCOEFFTAG_SINGLE.format(1))
-    return loc_scalar, vel_scalar
+def get_scalars():
+    scalars = [get_var(SCALAR_TAG.format(i)) for i in range(2)]
+    return scalars
 
-def get_scoped_coeff_multi(idx):
-    return tf.get_variable(MCOEFFTAG.format(idx))
+def get_weight():
+    assert False
 
-def init_coeff_multi2(num_rs, restore=False, vinit=0.01):
-    num_coeff = 2
-    for i in range(num_rs):
-        for j in range(num_coeff):
-            tag = MCOEFFTAG2.format(i, j)
-            args = (tag,)
-            if restore:
-                init = None
-                args = args + ((1,))
-            else:
-                init = tf.constant([vinit])
-            tf.get_variable(*args, dtype=tf.float32, initializer=init)
-
-def get_scoped_coeff_multi2(idx):
-    t0 = tf.get_variable(MCOEFFTAG2.format(idx,0))
-    t1 = tf.get_variable(MCOEFFTAG2.format(idx,1))
-    return t0, t1
-
-def init_coeff_agg(rs_steps, restore=False, vinit=0.002):
-    num_coeff = 2
-    for i, rs in enumerate(rs_steps):
-        for j in range(num_coeff):
-            tag = MCOEFFTAG2.format(i, j)
-            args = (tag,)
-            if restore:
-                init = None
-                args = args + ((1,))
-            else:
-                init = tf.constant([vinit])
-            tf.get_variable(*args, dtype=tf.float32, initializer=init)
-
-def get_scoped_coeff_agg(idx):
-    t0 = tf.get_variable(MCOEFFTAG2.format(idx,0))
-    t1 = tf.get_variable(MCOEFFTAG2.format(idx,1))
-    return t0, t1
+def get_ShiftInv_layer_vars(layer_idx, var_scope=VAR_SCOPE):
+    layer_vars = []
+    with tf.variable_scope(var_scope, reuse=True):
+        for w_idx in SHIFT_INV_W_IDX:
+            layer_vars.append(tf.get_variable(MULTI_WEIGHT.format(layer_idx, w_idx)))
+        layer_vars.append(tf.get_variable(BIAS_TAG.format(layer_idx)))
+    return layer_vars # [W1, W2, W3, W4, B]
 
 # Model init wrappers ========================================================
 

@@ -279,7 +279,7 @@ def ShiftInv_network_func_rs(X_in_edges, X_in_nodes, COO_feats, num_layers, dims
 # Shift invariant model funcs
 #------------------------------------------------------------------------------
 # ==== Model fn
-def ShiftInv_model_func(X_in_edges, X_in_nodes, COO_feats, model_specs, redshift=None):
+def ShiftInv_model_func_split_graph(X_in_edges, X_in_nodes, COO_feats, model_specs, redshift=None):
     # Get relevant model specs
     # ========================================
     var_scope  = model_specs.var_scope
@@ -298,177 +298,10 @@ def ShiftInv_model_func(X_in_edges, X_in_nodes, COO_feats, model_specs, redshift
             theta = utils.get_scoped_vcoeff()
             H_out = theta * H_out
     return H_out
-"""
-Impl notes for multi:
- - There may be too many pre/post processing steps to effectively do this
-   - may need to keep intermediate predictions in "edge/node" form, and only pool
-     for the final redshift prediction
-"""
-# ==== single fn
-def ShiftInv_single_model_func(X_in, COO_feats, redshift, model_specs, coeff_idx=None):
-    """
-    Args:
-        X_in (tensor): (b, N, 6)
-        COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
-        redshift (tensor): (b*N*M, 1) redshift broadcasted
-    """
-    # Get relevant model specs
-    # ========================================
-    var_scope  = model_specs.var_scope
-    num_layers = model_specs.num_layers
-    activation = model_specs.activation_func # default tf.nn.relu
-    dims = model_specs.dims
-
-    # Get graph inputs
-    # ========================================
-    edges, nodes = get_input_features_TF(X_in, COO_feats, dims)
-
-    # Network forward
-    # ========================================
-    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        H_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
-        # skip connections
-        if coeff_idx is not None:
-            #theta = utils.get_scoped_coeff_multi(coeff_idx)
-            t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx) # (1,)
-            #h_coo = H_out_coo +  theta * X_in_vel
-            h_coo = H_out[...,:3] * t0
-            #h_vel = H_out[...,3:] * t1
-            timestep = X_in[...,3:]  * t1
-            h_out_coo = h_coo + timestep
-            H_out = tf.concat([h_out_coo, H_out[...,3:]], axis=-1)
-    #return H_out
-    return get_readout(X_in + H_out)
-
-# ==== single fn
-def ShiftInv_single_model_func(X_in, COO_feats, model_specs, timestep, scalar_tag, redshift=None):
-    """
-    Args:
-        X_in (tensor): (b, N, 6)
-        COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
-        redshift (tensor): (b*N*M, 1) redshift broadcasted
-    """
-    # Get relevant model specs
-    # ========================================
-    var_scope  = model_specs.var_scope
-    num_layers = model_specs.num_layers
-    #use_vcoeff = model_specs.vcoeff
-    activation = model_specs.activation_func # default tf.nn.relu
-    dims = model_specs.dims
-
-    # Get graph inputs
-    # ========================================
-    edges, nodes = get_input_features_TF(X_in, COO_feats, dims)
-
-    # Network forward V1.
-    # ========================================
-    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        #t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx)
-        loc_scalar = utils.get_scoped_coeff(scalar_tag)
-        H_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
-        num_feats = H_out.get_shape().as_list()[-1]
-
-        if num_feats <= 3: # then only predicting location
-            H_out = H_out*loc_scalar + X_in[...,:3] + X_in[...,3:] * timestep
-
-        else: # predicting velocity
-            h_coo = H_out[...,:3]*loc_scalar + X_in[...,:3] + X_in[...,3:] * timestep
-            h_vel = H_out[...,3:] + X_in[...,3:]
-            H_out = tf.concat([h_coo, h_vel], axis=-1)
-        return get_readout(H_out)
 
 
 # ==== single fn
-def ShiftInv_model_func_timestep_rs(X_in, COO_feats, model_specs, redshift, timestep, scalar_tag):
-    """
-    Args:
-        X_in (tensor): (b, N, 6)
-        COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
-        redshift (tensor): (b*N*M, 1) redshift broadcasted
-    """
-    # Get relevant model specs
-    # ========================================
-    var_scope  = model_specs.var_scope
-    num_layers = model_specs.num_layers
-    activation = model_specs.activation_func # default tf.nn.relu
-    dims = model_specs.dims
-
-    # Get graph inputs
-    # ========================================
-    edges, nodes = get_input_features_TF(X_in, COO_feats, dims)
-
-    # Network forward V1.
-    # ========================================
-    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        # network output
-        #net_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
-        net_out = ShiftInv_network_func_rs(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
-
-        # Scaling and skip connections
-        loc_scalar = utils.get_scoped_coeff(scalar_tag)
-        num_feats = net_out.get_shape().as_list()[-1]
-        H_out = net_out[...,:3]*loc_scalar + X_in[...,:3] + X_in[...,3:] * timestep
-
-        # Concat velocity predictions
-        if net_out.get_shape().as_list()[-1] > 3:
-            H_vel = net_out[...,3:] + X_in[...,3:]
-            H_out = tf.concat([H_out, H_vel], axis=-1)
-
-        return get_readout(H_out)
-
-# ==== single fn
-def ShiftInv_model_func_timestep_old(X_in, COO_feats, model_specs, scalar_tag, redshift=None):
-    """
-    Args:
-        X_in (tensor): (b, N, 6)
-        COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
-        redshift (tensor): (b*N*M, 1) redshift broadcasted
-    """
-    # Get relevant model specs
-    # ========================================
-    var_scope  = model_specs.var_scope
-    num_layers = model_specs.num_layers
-    activation = model_specs.activation_func # default tf.nn.relu
-    dims = model_specs.dims
-
-    # Get graph inputs
-    # ========================================
-    edges, nodes = get_input_features_TF(X_in, COO_feats, dims)
-
-    # Network forward V1.
-    # ========================================
-    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        # network output
-        net_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
-
-        # Scaling and skip connections
-        #loc_scalar = utils.get_scoped_coeff(scalar_tag)
-        #loc_scalar, vel_scalar = utils.get_scoped_scalars(scalar_tag)
-        loc_scalar, vel_scalar = utils.get_scoped_coeff_multi2(scalar_tag)
-        num_feats = net_out.get_shape().as_list()[-1]
-
-        H_out = net_out[...,:3]*loc_scalar + X_in[...,:3] + X_in[...,3:]*vel_scalar
-
-
-        '''
-        # timestep --> make optimizable var like loc_scalar
-        # - scalar over entire net out (loc & vel)
-        # - scalar for velocity (but not timestep)
-        #   - for input vel on loc, and on vel
-        # - init the scalars (loc: try 1.0, vel: 0.01)
-        # - share scalars across redshifts
-        '''
-
-        # Concat velocity predictions
-        if net_out.get_shape().as_list()[-1] > 3:
-            H_vel = net_out[...,3:] * vel_scalar + X_in[...,3:] # Maybe another scalar here for velocity
-            #H_vel = net_out[...,3:]*vel_scalar + X_in[...,3:] # Maybe another scalar here for velocity
-            H_out = tf.concat([H_out, H_vel], axis=-1)
-
-        return get_readout(H_out)
-
-# ==== single fn
-def ShiftInv_model_func_timestep(X_in, COO_feats, model_specs, redshift=None):
+def ShiftInv_model_func(X_in, COO_feats, model_specs, redshift=None):
     """
     Args:
         X_in (tensor): (b, N, 6)
