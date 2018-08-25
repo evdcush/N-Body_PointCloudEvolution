@@ -9,92 +9,72 @@ from mpl_toolkits.mplot3d import Axes3D
 # Globals
 #=============================================================================
 
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-# Clean up EVERYTHING not use.
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
+# Data variables
+# ========================================
+# Redshifts
+REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
+             1.1212, 0.9438, 0.7955, 0.6688, 0.5588, 0.4620, 0.3758,
+             0.2983, 0.2280, 0.1639, 0.1049, 0.0505, 0.0000]
 
-# dataset
-DATA_PATH     = '/home/evan/Data/nbody_simulations/N_{0}/DM*/{1}_dm.z=0{2}000'
-DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/nbody_{}.npy'
-DATA_PATH_THINKPAD = '/home/evan/Data/nbody_simulations/npy_data/X_{:.4f}_.npy'
+# Data load paths
+DATA_PATH_BINARIES = '/home/evan/Data/nbody_simulations/N_uniform/run*/xv_dm.z=0{}'
+DATA_PATH_NPY = '/home/evan/Data/nbody_simulations/N_uniform/npy_data/X_{:.4f}_.npy'
 
-REDSHIFTS = [6.0, 4.0, 2.0, 1.5, 1.2, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
-RS_TAGS = {6.0:'60', 4.0:'40', 2.0:'20', 1.5:'15', 1.2:'12', 1.0:'10',
-           0.8:'08', 0.6:'06', 0.4:'04', 0.2:'02', 0.0:'00'}
+# Data save paths
+MODEL_SAVE_PATH = '../Models/'
 
-# dataset uniform timestep
-DATA_PATH_ZUNI     = '/home/evan/Data/nbody_simulations/N_uniform/run*/xv_dm.z=0{}'
-DATA_PATH_ZUNI_NPY = '/home/evan/Data/nbody_simulations/N_uniform/npy_data/X_{:.4f}_.npy'
-REDSHIFTS_ZUNI = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
-                 1.1212, 0.9438, 0.7955, 0.6688, 0.5588, 0.4620, 0.3758,
-                 0.2983, 0.2280, 0.1639, 0.1049, 0.0505, 0.0000]
+# Files to save
 SAVE_FILE_NAMES = ['utils.py', 'nn.py', 'train_ShiftInv.py', 'train_multi_ShiftInv.py']
 
-# rng seeds
-PARAMS_SEED  = 77743196 # for graph, set models do better with 98765
-DATASET_SEED = 12345 # for train/validation data splits
 
-# models
-GRAPH_CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
-SET_CHANNELS   = [6, 32, 128, 256, 128, 32, 256, 16, 3]
-LEARNING_RATE = 0.01
-NBODY_MODELS = {0:{'channels':   SET_CHANNELS, 'tag': 'S'},
-                1:{'channels': GRAPH_CHANNELS, 'tag': 'G'},}
+# Model naming
+# ========================================
+# Variable scope
+VARIABLE_SCOPE = 'params_{}-{}' # 'params_rsStart-rsTarget'
 
+# Model variable names
+WEIGHT_TAG = 'W{}_{}'
+BIAS_TAG   = 'B_{}'
+SCALAR_TAG = 'T_{}'
+
+# Model names
+MODEL_TYPES = ['multi-step', 'single-step']
+LAYER_TYPES = ['vanilla', 'shift-inv', 'rot-inv']
+MODEL_BASENAME = '{}_{}_{}' # {model-type}_{layer-type}_{rs1-...-rsN}_{extra-naming}
+
+# Model variables
+# ========================================
+# RNG seeds
+PARAMS_SEED  = 77743196 # Randomly generated seed selected by cross-validation
+DATASET_SEED = 12345    # for train/validation data splits
+
+# Network channels
+CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
+CHANNELS_SHALLOW = [9, 32, 16, 8, 6]
+
+# Layer variables
+# ========================================
+# Shift-invariant
+SHIFT_INV_W_IDX = [1,2,3,4]
+
+# Rotation-invariant
+ROTATION_INV_SEGMENTS = ['no-pooling', 'col-depth', 'row-depth',
+                     'row-col', 'depth', 'col', 'row', 'all']
+
+# Training variables
+# ========================================
 LEARNING_RATE = 0.01
 NUM_VAL_SAMPLES = 200
 
-# variable tags
-WEIGHT_TAG = 'W_{}'
-MULTI_WEIGHT_TAG = 'W{}_{}'
-BIAS_TAG   = 'B_{}'
-VEL_COEFF_TAG = 'V'
 
-# variable scope
-VAR_SCOPE = 'params_{}-{}' # formerly just 'params'
-
-
-#GRAPH_TAG  = 'Wg_{}'
-#VAR_SCOPE_MULTI = 'params_{}'
-#VAR_SCOPE_SINGLE_MULTI = 'params_{}-{}'
-#AGG_PSCOPE = 'params_agg'
-
-SHIFT_INV_W_IDX = [1,2,3,4]
-
-# ROTATION
-SEGNAMES_3D = ['no-pooling', 'col-depth', 'row-depth', 'row-col', 'depth', 'col', 'row', 'all']
-
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-# TF-related utils
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+#=============================================================================
+# TensorFlow utilities
+#=============================================================================
 
 #=============================================================================
 # tf.Variable inits, for model parameters
 #=============================================================================
 
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-# Cleanup init functions
-# remove all that gross COEFF_TAG stuff
-# All pseudo globals should be top, together
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
 def init_weight(k_in, k_out, name, restore=False, const_init=None):
     """ initialize weight Variable
     Args:
