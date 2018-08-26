@@ -22,7 +22,11 @@ DATA_PATH_BINARIES = DATA_ROOT_PATH.format('run*/xv_dm.z=0{}') # not in use
 DATA_PATH_NPY      = DATA_ROOT_PATH.format('npy_data/X_{:.4f}_.npy')
 
 # Write
-MODEL_SAVE_PATH = '../Models/'
+BASE_SAVE_PATH  = '../Models/{}/'
+MODEL_SAVE_PATH = BASE_SAVE_PATH + 'Session/'
+FILE_SAVE_PATH  = MODEL_SAVE_PATH + 'original_files/'
+RESULTS_SAVE_PATH = BASE_SAVE_PATH + 'Results/'
+
 SAVE_FILE_NAMES = ['utils.py', 'nn.py', 'train_ShiftInv.py', 'train_multi_ShiftInv.py']
 
 
@@ -237,8 +241,24 @@ def get_RotInv_layer_vars(layer_idx, **kwargs):
 # ========================================
 class TrainSaver:
     def __init__(self, mname, num_iters, write_meta_each_checkpoint=False):
-        saver = tf.train.Saver()
-        save_path = '{}{}/Session/'
+        self.saver = tf.train.Saver()
+        self.num_iters = num_iters
+        self.write_meta_each = write_meta_each_checkpoint
+        # paths
+        self.model_save_path  = MODEL_SAVE_PATH.format(mname)
+        self.result_save_path = RESULTS_SAVE_PATH.format(mname)
+        self.file_save_path   = FILE_SAVE_PATH.format(mname)
+
+
+    def save_cube(self, cube, ground_truth=False, training_cube=False):
+        pass
+
+    def save_error(self, error, training=False):
+        pass
+
+    def save_model(self, session, step, ):
+
+
 
 #=============================================================================
 # graph save and restore

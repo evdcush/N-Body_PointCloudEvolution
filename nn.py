@@ -278,8 +278,10 @@ def ShiftInv_network_func_rs(X_in_edges, X_in_nodes, COO_feats, num_layers, dims
 #------------------------------------------------------------------------------
 # Shift invariant model funcs
 #------------------------------------------------------------------------------
+
 # ==== Model fn
 def ShiftInv_model_func_split_graph(X_in_edges, X_in_nodes, COO_feats, model_specs, redshift=None):
+
     # Get relevant model specs
     # ========================================
     var_scope  = model_specs.var_scope
@@ -293,11 +295,8 @@ def ShiftInv_model_func_split_graph(X_in_edges, X_in_nodes, COO_feats, model_spe
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         H_out = ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, activation, redshift)
 
-        # skip connections
-        if use_vcoeff:
-            theta = utils.get_scoped_vcoeff()
-            H_out = theta * H_out
     return H_out
+
 
 
 # ==== single fn
