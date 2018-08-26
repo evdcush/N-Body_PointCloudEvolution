@@ -1,4 +1,4 @@
-import os, glob, struct, code, sys, time
+import os, glob, struct, shutil, code, sys, time
 import numpy as np
 import tensorflow as tf
 import matplotlib
@@ -27,7 +27,7 @@ MODEL_SAVE_PATH = BASE_SAVE_PATH + 'Session/'
 FILE_SAVE_PATH  = MODEL_SAVE_PATH + 'original_files/'
 RESULTS_SAVE_PATH = BASE_SAVE_PATH + 'Results/'
 
-SAVE_FILE_NAMES = ['utils.py', 'nn.py', 'train_ShiftInv.py', 'train_multi_ShiftInv.py']
+FILE_SAVE_NAMES = ['utils.py', 'nn.py', 'train_ShiftInv.py', 'train_multi_ShiftInv.py']
 
 
 # Model naming
@@ -49,6 +49,11 @@ LAYER_TYPES = [VANILLA, SHIFT_INV, ROT_IN]
 MODEL_TYPES = ['multi-step', 'single-step']
 LAYER_TYPES = ['vanilla', 'shift-inv', 'rot-inv']
 MODEL_BASENAME = '{}_{}_{}' # {model-type}_{layer-type}_{rs1-...-rsN}_{extra-naming}
+
+# Model results names
+CUBE_BASE_NAME = 'X_{}-{}_'
+CUBE_NAME_TRUTH = CUBE_BASE_NAME + 'truth'
+CUBE_NAME_PRED  = CUBE_BASE_NAME + 'prediction'
 
 #------------------------------------------------------------------------------
 # Model variables
@@ -171,6 +176,9 @@ def initialize_model_params(layer_type, channels, scope=VAR_SCOPE,
         seed (int): RNG seed for param inits
         restore (bool): whether new params are initialized, or just placeholders
     """
+    # Check layer_type integrity
+    assert layer_type in layer_init_funcs
+
     # Convert channels to (k_in, k_out) tuples
     kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
 
@@ -233,12 +241,19 @@ def get_RotInv_layer_vars(layer_idx, **kwargs):
     assert False
 
 
-
+def make_dirs(dirs):
+    """ Make directories based on paths in dirs
+    Args:
+        dirs (list): list of paths of dirs to create
+    """
+    for path in dirs:
+        if not os.path.exists(path): os.makedirs(path)
 #------------------------------------------------------------------------------
 # Model graph save & restoration
 #------------------------------------------------------------------------------
 # Model save
 # ========================================
+
 class TrainSaver:
     def __init__(self, mname, num_iters, write_meta_each_checkpoint=False):
         self.saver = tf.train.Saver()
@@ -248,16 +263,40 @@ class TrainSaver:
         self.model_save_path  = MODEL_SAVE_PATH.format(mname)
         self.result_save_path = RESULTS_SAVE_PATH.format(mname)
         self.file_save_path   = FILE_SAVE_PATH.format(mname)
+        self.make_save_dirs()
 
+    def make_save_dirs(self):
+        paths = [self.model_save_path, self.result_save_path,
+                 self.file_save_path]
+        for path in paths:
+            if not os.path.exists(path): os.makedirs(path)
 
-    def save_cube(self, cube, ground_truth=False, training_cube=False):
-        pass
+    def save_files(self):
+        path = self.file_save_path
+        for f in self.FILE_SAVE_NAMES:
+            src = './{}'.format(f)
+            dst = path + f
+            shutil.copy(src, dst)
+
+    def save_cube(self, cube, redshifts, ground_truth=False):
+        rsX, rsY = redshifts
+        name = CUBE_NAME_TRUTH if ground_truth else CUBE_NAME_PRED
+        name = name.format(rsX, rsY)
+        np.save(self.result_save_path + name, cube)
+        print('Saved cube: {}'.format(name))
 
     def save_error(self, error, training=False):
-        pass
+        suffix = 'training' if training else 'validation'
+        name = 'error_{}'.format(suffix)
+        np.save(self.result_save_path + name, error)
+        print('Saved {}'.format(name))
 
-    def save_model(self, session, step, ):
-
+    def save_model(self, session, cur_step):
+        step = cur_step + 1
+        is_final_step = step == self.num_iters
+        wr_meta = True if is_final_step else self.write_meta_each
+        self.saver.save(session, self.model_save_path,
+                        global_step=cur_step, write_meta_graph=wr_meta)
 
 
 #=============================================================================
