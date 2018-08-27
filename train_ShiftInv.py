@@ -114,7 +114,7 @@ def initialize_model_params(layer_type, channels, scope=VAR_SCOPE,
                             seed=PARAMS_SEED, restore=False, **kwargs)
 '''
 #vscope = utils.VAR_SCOPE
-vscope = utils.VAR_SCOPE.format(zX, zY)
+vscope = utils.VARIABLE_SCOPE.format(zX, zY)
 utils.initialize_model_params(ltype, channels, vscope, restore=restore)
 
 #seed = pargs['seed']
@@ -198,6 +198,7 @@ sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 
 # initialize variables
 sess.run(tf.global_variables_initializer())
+train_saver.initialize_saver()
 if restore:
     train_saver.restore_model_parameters(sess)
     #utils.load_graph(sess, model_path)

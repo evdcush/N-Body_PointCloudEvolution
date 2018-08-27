@@ -6,7 +6,8 @@ from scipy.sparse import coo_matrix
 import tensorflow as tf
 
 import utils
-from utils import VAR_SCOPE, SEGNAMES_3D
+from utils import VARIABLE_SCOPE as VAR_SCOPE
+#from utils import VARIABLE_SCOPE, SEGNAMES_3D
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 
@@ -334,8 +335,7 @@ def ShiftInv_model_func(X_in, COO_feats, model_specs, redshift=None):
         net_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
 
         # Scaling and skip connections
-        #loc_scalar, vel_scalar = utils.get_scoped_coeff_single()
-        loc_scalar, vel_scalar = get_scalars()
+        loc_scalar, vel_scalar = utils.get_scalars()
         num_feats = net_out.get_shape().as_list()[-1]
 
         H_out = net_out[...,:3]*loc_scalar + X_in[...,:3] + X_in[...,3:]*vel_scalar

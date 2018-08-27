@@ -219,8 +219,10 @@ def initialize_model_params(layer_type, channels, scope,
 
     # Seed and initialize
     tf.set_random_seed(seed)
-    layer_init_func = LAYER_INIT_FUNCS[layer_type]
-    with tf.variable_scope(scope, reuse=True):
+    #with tf.variable_scope(scope, reuse=True):
+    with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        layer_init_func = LAYER_INIT_FUNCS[layer_type]
         layer_init_func(kdims, restore=restore, **kwargs)
     print('Initialized {} layer parameters'.format(layer_type))
 
@@ -327,7 +329,7 @@ def save_cube(cube, redshifts, save_path, ground_truth=False):
     rsX, rsY = redshifts
     name = CUBE_NAME_TRUTH if ground_truth else CUBE_NAME_PRED
     name = name.format(rsX, rsY)
-    np.save(result_save_path + name, cube)
+    np.save(save_path + name, cube)
     print('Saved cube: {}'.format(name))
 
 def save_error(error, save_path, training=False):
@@ -360,7 +362,7 @@ class TrainSaver:
     """
     def __init__(self, mname, num_iters, always_write_meta=False, restore=False):
         # Training vars
-        self.saver = tf.train.Saver()
+        #self.saver = tf.train.Saver() # must be done AFTER sess.run(tf.global_variables_initializer())
         self.model_name = mname
         self.num_iters = num_iters
         self.always_write_meta = always_write_meta
@@ -371,6 +373,9 @@ class TrainSaver:
         self.result_path = RESULTS_SAVE_PATH.format(mname)
         self.file_path   = FILE_SAVE_PATH.format(mname)
         self.make_model_dirs()
+
+    def initialize_saver(self):
+        self.saver = tf.train.Saver()
 
     def make_model_dirs(self,):
         paths = [self.model_path, self.result_path, self.file_path]
@@ -479,7 +484,7 @@ def load_simulation_data(redshift_indices):
     Args:
         redshift_indices list(int): ordered list of indices into REDSHIFTS
     """
-    num_rs = len(redshifts) # number of cubes to load
+    num_rs = len(redshift_indices) # number of cubes to load
 
     # Load cubes
     rs_idx = redshift_indices[0]
