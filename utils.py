@@ -80,11 +80,8 @@ MODEL_BASENAME = '{}_{}_{}' # {model-type}_{layer-type}_{rs1-...-rsN}_{extra-nam
 VANILLA   = 'vanilla'
 SHIFT_INV = 'shift-inv'
 ROT_INV   = 'rot-inv'
-LAYER_TAGS = [VANILLA:'V', SHIFT_INV:'SI', ROT_INV:'RI']
-LAYER_TYPES = [VANILLA, SHIFT_INV, ROT_IN]
-LAYER_INIT_FUNCS = {VANILLA:   initialize_vanilla_params,
-                    SHIFT_INV: initialize_ShiftInv_params,
-                    ROT_INV:   initialize_RotInv_params}
+LAYER_TAGS = {VANILLA:'V', SHIFT_INV:'SI', ROT_INV:'RI'}
+LAYER_TYPES = [VANILLA, SHIFT_INV, ROT_INV]
 
 # Variable names
 # ========================================
@@ -186,7 +183,7 @@ def initialize_vanilla_params(kdims, restore=False, **kwargs):
     initialize_scalars(restore=restore)
 
 
-def initialize ShiftInv_params(kdims, restore=False, **kwargs):
+def initialize_ShiftInv_params(kdims, restore=False, **kwargs):
     """ ShiftInv layers have 1 bias, 4 weights, scalars """
     for layer_idx, kdim in enumerate(kdims):
         initialize_bias(BIAS_TAG.format(layer_idx), kdim, restore=restore)
@@ -200,6 +197,9 @@ def initialize_RotInv_params(kdims, restore=False, **kwargs):
     # TODO
     assert False
 
+LAYER_INIT_FUNCS = {VANILLA:   initialize_vanilla_params,
+                    SHIFT_INV: initialize_ShiftInv_params,
+                    ROT_INV:   initialize_RotInv_params}
 
 def initialize_model_params(layer_type, channels, scope,
                             seed=PARAMS_SEED, restore=False, **kwargs):
@@ -372,7 +372,7 @@ class TrainSaver:
         self.file_path   = FILE_SAVE_PATH.format(mname)
         self.make_model_dirs()
 
-    def make_model_dirs(self):
+    def make_model_dirs(self,):
         paths = [self.model_path, self.result_path, self.file_path]
         make_dirs(paths)
 
@@ -381,15 +381,19 @@ class TrainSaver:
         restore_parameters(self.saver, sess, self.model_path)
 
     # ==== Saving
-    def save_model_files(self):
+    def save_model_files(self,):
         path = self.file_path
         save_files(path)
 
-    def save_model_cube(self, cube, rs, save_path=self.result_path, ground_truth=False):
-        save_cube(cube, rs, save_path, ground_truth)
-
-    def save_model_error(self, error, save_path=self.result_path, training=False):
+    def save_model_error(self, error, save_path=None, training=False):
+        if save_path is None:
+            save_path = self.result_path
         save_error(error, save_path, training)
+
+    def save_model_cube(self, cube, rs, save_path=None, ground_truth=False):
+        if save_path is None:
+            save_path = self.result_path
+        save_cube(cube, rs, save_path, ground_truth)
 
     def save_model_params(self, session, cur_iter):
         is_final_step = cur_iter == self.num_iters

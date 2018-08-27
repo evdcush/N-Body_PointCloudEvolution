@@ -5,7 +5,7 @@ import tensorflow as tf
 #from tensorflow.core.protobuf import config_pb2
 import nn
 import utils
-from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, NUM_VAL_SAMPLES
+from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, NUM_VAL_SAMPLES, MODEL_BASENAME
 
 
 parser = argparse.ArgumentParser()
@@ -13,12 +13,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed', '-s', default=PARAMS_SEED,     type=int, help='initial parameter seed')
 parser.add_argument('--redshifts', '-z', default=[18,19], nargs='+', type=int, help='redshift tuple, predict z[1] from z[0]')
 parser.add_argument('--particles', '-p', default=32,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
-parser.add_argument('--model_type','-m', default=1,          type=int,  help='model type')
+#parser.add_argument('--model_type','-m', default=1,          type=int,  help='model type')
 parser.add_argument('--graph_var', '-k', default=14,         type=int, help='search parameter for graph model')
 parser.add_argument('--restore',   '-r', default=0,          type=int,  help='resume training from serialized params')
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
 parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
-parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
+parser.add_argument('--model_name', '-m', default=MODEL_BASENAME, type=str,  help='directory where model parameters are saved')
 parser.add_argument('--save_suffix','-n', default='',        type=str,  help='model name suffix')
 parser.add_argument('--variable',   '-q', default=0,  type=int, help='multi-purpose variable argument')
 parser.add_argument('--variable2',  '-c', default=0,          type=int,  help='multi-purpose variable argument2')
@@ -78,7 +78,6 @@ num_iters  = pargs['num_iters']
 #=============================================================================
 # Model name and paths
 # ----------------
-(self, mname, num_iters, always_write_meta=False, restore=False)
 ltype = 'shift-inv'
 mtype = 'single-step'
 model_name = utils.get_model_name(mtype, ltype, redshift_steps, suffix=pargs['save_suffix'])
