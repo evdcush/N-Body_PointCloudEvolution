@@ -80,7 +80,11 @@ num_iters  = pargs['num_iters']
 # ----------------
 ltype = 'shift-inv'
 mtype = 'single-step'
-model_name = utils.get_model_name(mtype, ltype, redshift_steps, suffix=pargs['save_suffix'])
+if pargs['model_name'] != MODEL_BASENAME:
+    model_name = pargs['model_name']
+else:
+    model_name = utils.get_model_name(mtype, ltype, redshift_steps, suffix=pargs['save_suffix'])
+
 #(self, mname, num_iters, always_write_meta=False, restore=False)
 train_saver = utils.TrainSaver(model_name, num_iters, always_write_meta=True, restore=restore)
 zX = redshift_steps[0]  # starting redshift
