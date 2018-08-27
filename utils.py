@@ -440,135 +440,71 @@ def load_simulation_data(redshift_indices):
 
 
 
-
 #=============================================================================
-# Data utils
+# Data processing and manipulation utils
 #=============================================================================
-
-def normalize(X_in, scale_range=(0,1)):
+#------------------------------------------------------------------------------
+# Normalization
+#------------------------------------------------------------------------------
+def normalize(X):
     """ Normalize data features
     coordinates are rescaled to be in range [0,1]
-    velocities are normalized to zero mean and unit variance
+    velocities should not be normalized
 
     Args:
-        X_in (ndarray): data to be normalized, of shape (N, D, 6)
-        scale_range   : range to which coordinate data is rescaled
+        X (ndarray): data to be normalized, of shape (R, N, D, 6)
     """
-    x_r = np.reshape(X_in, [-1,6])
-    coo, vel = np.split(x_r, [3], axis=-1)
-
-    coo_min = np.min(coo, axis=0)
-    coo_max = np.max(coo, axis=0)
-    a,b = scale_range
-    x_r[:,:3] = (b-a) * (x_r[:,:3] - coo_min) / (coo_max - coo_min) + a
-
-    vel_mean = np.mean(vel, axis=0)
-    vel_std  = np.std( vel, axis=0)
-    x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
-
-    X_out = np.reshape(x_r,X_in.shape).astype(np.float32) # just convert to float32 here
-    return X_out
-
-def normalize_rescale_vel(X_in, scale_range=(0,1)):
-    """ Normalize data features
-    coordinates are rescaled to be in range [0,1]
-    velocities are normalized to zero mean and unit variance
-
-    Args:
-        X_in (ndarray): data to be normalized, of shape (N, D, 6)
-        scale_range   : range to which coordinate data is rescaled
-    """
-    x_r = np.reshape(X_in, [-1,6])
-    coo, vel = np.split(x_r, [3], axis=-1)
-
-    coo_min = np.min(coo, axis=0)
-    coo_max = np.max(coo, axis=0)
-    #a,b = scale_range
-    a,b = (0, 1)
-    x_r[:,:3] = (b-a) * (x_r[:,:3] - coo_min) / (coo_max - coo_min) + a
-
-    # PREVIOUS velocity normalization
-    #vel_mean = np.mean(vel, axis=0)
-    #vel_std  = np.std( vel, axis=0)
-    #x_r[:,3:] = (x_r[:,3:] - vel_mean) / vel_std
-
-    # RESCALE velocity to be within scale_range
-    a,b = scale_range
-    #vel_max = np.max(np.max(vel, axis=0), axis=0)
-    #vel_min = np.min(np.min(vel, axis=0), axis=0)
-    vel_max = np.max(vel)
-    vel_min = np.min(vel)
-    x_r[:,3:] = (x_r[:,3:] - vel_min) / (vel_max - vel_min)
-
-    X_out = np.reshape(x_r,X_in.shape).astype(np.float32) # just convert to float32 here
-    return X_out
-
-def normalize_fullrs(X, scale_range=(0,1)):
-    """ Normalize data features, for full data array of redshifts
-    coordinates are rescaled to be in range [0,1]
-    velocities are normalized to zero mean and unit variance
-
-    Args:
-        X_in (ndarray): data to be normalized, of shape (rs, N, D, 6)
-        scale_range   : range to which coordinate data is rescaled
-    """
-    for rs_idx in range(X.shape[0]):
-        X[rs_idx] = normalize_rescale_vel(X[rs_idx])
+    # Rescale coordinate values range from (0,32) -> (0,1)
+    X[...,:3] = X[...,:3] / 32.0
     return X
 
 
-def split_data_validation(X, Y, num_val_samples=NUM_VAL_SAMPLES, seed=DATASET_SEED):
+
+#------------------------------------------------------------------------------
+# Data batching and mutation
+#------------------------------------------------------------------------------
+# Data train/test split
+# ========================================
+def split_data_validation(X, num_val_samples=NUM_VAL_SAMPLES, seed=DATASET_SEED):
     """ split dataset into training and validation sets
 
     Args:
-        X, Y (ndarray): data arrays of shape (num_samples, num_particles, 6)
-        num_val_samples (int): size of validation set
-    Returns: tuple([X_train, X_val], [Y_train, Y_val])
-    """
-    num_samples = X.shape[0]
-    np.random.seed(seed)
-    idx_list = np.random.permutation(num_samples)
-    X = np.split(X[idx_list], [-num_val_samples])
-    Y = np.split(Y[idx_list], [-num_val_samples])
-    return X, Y
-
-def split_data_validation_combined(X, num_val_samples=200, seed=DATASET_SEED):
-    """ split dataset into training and validation sets
-
-    Args:
-        X (ndarray): data arrays of shape (num_rs, num_samples, num_particles, 6)
+        X (ndarray): data of shape (num_redshifts, num_cubes, num_particles, 6)
         num_val_samples (int): size of validation set
     """
-    np.random.seed(seed)
-    idx_list = np.random.permutation(X.shape[1])
-    X = X[:,idx_list]
-    X_train = X[:, :-num_val_samples]
-    X_val   = X[:, -num_val_samples:]
-    return X_train, X_val
+    num_cubes = X.shape[1]
 
+    # Seed split for consistency between models (for comparison)
+    np.random.seed(seed)
+    idx_list = np.random.permutation(num_cubes)
+    X_train, X_test = np.split(X[:,idx_list], [-num_val_samples], axis=1)
+
+    return X_train, X_test
+
+# Symmetric, random data shift augmentation
+# ========================================
 def random_augmentation_shift(batch):
+    # Note, ONLY USED FOR VANILLA MODEL!
     """ Randomly augment data by shifting indices
     and symmetrically relocating particles
     Args:
-        batch (ndarray): (num_rs, batch_size, D, 6)
+        batch (ndarray): (num_rs, batch_size, N, 6)
     Returns:
         batch (ndarray): randomly shifted data array
     """
-    #batch_size = batch.shape[1]
+    # Random vals
+    batch_size = batch.shape[1]
     rands = np.random.rand(6)
-    if batch.ndim > 3: # there is rs dim
-        batch_size = batch.shape[1]
-        shift = np.random.rand(1,batch_size,1,3)
-    else:
-        batch_size = batch.shape[0]
-        shift = np.random.rand(batch_size,1,3)
-    # shape (11, bs, n_P, 6)
+    shift = np.random.rand(1,batch_size,1,3)
+
+    # ==== Swap axes
     if rands[0] < .5:
         batch = batch[...,[1,0,2,4,3,5]]
     if rands[1] < .5:
         batch = batch[...,[0,2,1,3,5,4]]
     if rands[2] < .5:
         batch = batch[...,[2,1,0,5,4,3]]
+    # ==== Relocate particles
     if rands[3] < .5:
         batch[...,0] = 1 - batch[...,0]
         batch[...,3] = -batch[...,3]
@@ -578,91 +514,37 @@ def random_augmentation_shift(batch):
     if rands[5] < .5:
         batch[...,2] = 1 - batch[...,2]
         batch[...,5] = -batch[...,5]
+    # ==== Shift particle locations
     batch_coo = batch[...,:3]
     batch_coo += shift
+
+    # ==== Preserve periodic boundary constraints
     gt1 = batch_coo > 1
     batch_coo[gt1] = batch_coo[gt1] - 1
     batch[...,:3] = batch_coo
     return batch
 
-
+# Data batching
+# ========================================
 def next_minibatch(X_in, batch_size, data_aug=False):
-    """ randomly select samples for training batch
-
+    """ randomly select sample cubes for training batch
     Args:
-        X_in (ndarray): (num_rs, S, N, 6) data input
+        X_in (ndarray): (num_rs, num_cubes, N, 6) data input
         batch_size (int): minibatch size
-        data_aug: if data_aug, randomly shift input data
+        data_aug: if data_aug, randomly shift input data (for vanilla)
     Returns:
-        batches (ndarray): randomly selected and shifted data
+        batches (ndarray): randomly selected data
     """
+    # ==== Get batch indices
     index_list = np.random.choice(X_in.shape[1], batch_size)
+
+    # ==== Get batches, copy for data integrity
     batches = np.copy(X_in[:,index_list])
-    if data_aug:
+    if data_aug: # VANILLA ONLY!
         batches = random_augmentation_shift(batches)
-
-    #assert np.all(batches[0,:,:,-1] > batches[1,:,:,-1])
     return batches
 
 
-def next_zuni_minibatch(X_in, batch_size, data_aug=True):
-    """ randomly select samples for training batch
-
-    Args:
-        X_in (ndarray): (num_rs, N, D, 6) data input
-        batch_size (int): minibatch size
-        data_aug: if data_aug, randomly shift input data
-    Returns:
-        batches (ndarray): randomly selected and shifted data
-    """
-    index_list = np.random.choice(X_in.shape[1], batch_size)
-    batches = X_in[:,index_list]
-    if data_aug:
-        batches[...,:-1] = random_augmentation_shift(batches[...,:-1])
-    return batches
-#=============================================================================
-# Saving utils
-#=============================================================================
-def make_dirs(dirs):
-    """ Make directories based on paths in dirs
-    Args:
-        dirs (list): list of paths of dirs to create
-    """
-    for path in dirs:
-        if not os.path.exists(path): os.makedirs(path)
-
-def make_save_dirs(model_dir, model_name):
-    """ Make save directories for saving:
-        - model hyper parameters
-        - loss data
-        - cube data
-    Args:
-        model_dir (str): the root path for saving model
-        model_name (str): name for model
-    Returns: (model_path, loss_path, cube_path)
-    """
-    model_path = '{}{}/'.format(model_dir, model_name)
-    tf_params_save_path = model_path + 'Session/'
-    loss_path  = model_path + 'Loss/'
-    cube_path  = model_path + 'Cubes/'
-    make_dirs([tf_params_save_path, loss_path, cube_path]) # model_dir lower dir, so automatically created
-    #save_pyfiles(model_path)
-    return tf_params_save_path, loss_path, cube_path
-
-
-def save_pyfiles(model_dir):
-    """ Save project files to save_path
-    For backing up files used for a model
-    Args:
-        save_path (str): path to save files
-    """
-    save_path = model_dir + 'original_files/'
-    make_dirs([save_path])
-    for fname in SAVE_FILE_NAMES:
-        src = './{}'.format(fname)
-        dst = '{}{}'.format(save_path, fname)
-        shutil.copyfile(src, dst)
-        print('saved {} to {}'.format(src, dst))
 
 #==============================================================================
 #==============================================================================
@@ -673,12 +555,30 @@ def save_pyfiles(model_dir):
 # two get model names
 #==============================================================================
 
-def get_model_name(dparams, mtype, vel_coeff, save_prefix):
-    """ Consistent model naming format
-    Model name examples:
-        'GL_32_12-04': GraphModel|WithVelCoeff|32**3 Dataset|redshift 1.2->0.4
-        'S_16_04-00': SetModel|16**3 Dataset|redshift 0.4->0.0
-    """
+#==============================================================================
+# two get model names
+#==============================================================================
+
+'''
+MODEL_TYPES = ['multi-step', 'single-step']
+MODEL_BASENAME = '{}_{}_{}' # {model-type}_{layer-type}_{rs1-...-rsN}_{extra-naming}
+
+# Layer names
+VANILLA   = 'vanilla'
+SHIFT_INV = 'shift-inv'
+ROT_INV   = 'rot-inv'
+LAYER_TYPES = [VANILLA, SHIFT_INV, ROT_IN]
+
+'Single-step_SI_0-12_lr001'
+'Multi-step_RI_15-19'
+'Single-step_V_15-19'
+'''
+
+def get_model_name(mtype, ltype, rs_idx, model_name=MODEL_BASENAME, suffix=''):
+    """ Consistent model naming format """
+    assert mtype in MODEL_TYPES and ltype in LAYER_TYPES
+
+
     n_P, rs = dparams
     zX = RS_TAGS[rs[0]]
     zY = RS_TAGS[rs[1]]
@@ -722,37 +622,7 @@ def get_zuni_model_name(mtype, zX, zY, save_prefix):
 # relocate plot3d
 #==============================================================================
 
-def save_test_cube(x, cube_path, rs, prediction=False):
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    '''
-    if prediction:
-        rs_tag = '{}-{}'.format(*rs) # (zX, zY)
-        ptag   = 'prediction'
-        save_cube(x, cube_path, rs_tag, ptag)
-    else:
-        for i in range(x.shape[0]): # 2
-            rs_tag = '{}'.format(rs[i])
-            ptag   = 'data'
-            save_cube(x[i], cube_path, rs_tag, ptag)
-    '''
-    rs_tag = '{}-{}'.format(*rs) # (zX, zY)
-    ptag = 'prediction' if prediction else 'true'
-    save_cube(x, cube_path, rs_tag, ptag)
 
-
-def save_cube(x, cube_path, rs_tag, ptag):
-    """ Save validation data
-    """
-    num_particles = 16 if x.shape[-2] == 4096 else 32
-    # eg X32_0.6-0.0_val_prediction.npy'
-    val_fname = 'X{}_{}_{}'.format(num_particles, rs_tag, ptag)
-    save_path = '{}{}'.format(cube_path, val_fname)
-    np.save(save_path, x)
-    print('saved {}'.format(save_path))
-
-def save_loss(save_path, data, validation=False):
-    save_name = '_loss_validation' if validation else '_loss_train'
-    np.save(save_path + save_name, data)
 
 def plot_3D_pointcloud(xt, xh, j, pt_size=(.9,.9), colors=('b','r'), fsize=(12,12), xin=None):
     xt_x, xt_y, xt_z = np.split(xt[...,:3], 3, axis=-1)
