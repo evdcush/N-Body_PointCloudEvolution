@@ -11,49 +11,62 @@ from mpl_toolkits.mplot3d import Axes3D
 #------------------------------------------------------------------------------
 # Data and pathing
 #------------------------------------------------------------------------------
-# Data variables
+# Redshifts available in dataset
 # ========================================
 REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
              1.1212, 0.9438, 0.7955, 0.6688, 0.5588, 0.4620, 0.3758,
              0.2983, 0.2280, 0.1639, 0.1049, 0.0505, 0.0000]
-# Load
+
+# Data load paths (must be changed for your machine!)
+# ========================================
 DATA_ROOT_PATH = '/home/evan/Data/nbody_simulations/N_uniform/{}'
 DATA_PATH_BINARIES = DATA_ROOT_PATH.format('run*/xv_dm.z=0{}') # not in use
 DATA_PATH_NPY      = DATA_ROOT_PATH.format('npy_data/X_{:.4f}_.npy')
 
-# Write
-BASE_SAVE_PATH  = '../Models/{}/'
-MODEL_SAVE_PATH = BASE_SAVE_PATH + 'Session/'
-FILE_SAVE_PATH  = MODEL_SAVE_PATH + 'original_files/'
-RESULTS_SAVE_PATH = BASE_SAVE_PATH + 'Results/'
 
+# Data write paths
+# ========================================
+# All model save paths
+BASE_SAVE_PATH = '../Models/{}/'
+MODEL_SAVE_PATH   = BASE_SAVE_PATH  + 'Session/'
+FILE_SAVE_PATH    = MODEL_SAVE_PATH + 'original_files/'
+RESULTS_SAVE_PATH = BASE_SAVE_PATH  + 'Results/'
 FILE_SAVE_NAMES = ['utils.py', 'nn.py', 'train_ShiftInv.py', 'train_multi_ShiftInv.py']
 
+# Model data names
+CUBE_BASE_NAME = 'X_{}-{}_'
+CUBE_NAME_TRUTH = CUBE_BASE_NAME + 'truth'
+CUBE_NAME_PRED  = CUBE_BASE_NAME + 'prediction'
 
+
+#------------------------------------------------------------------------------
 # Model naming
+#------------------------------------------------------------------------------
+# Model and layer names
 # ========================================
-VARIABLE_SCOPE = 'params_{}-{}' # 'params_rsStart-rsTarget'
-
-# Model variable names
-WEIGHT_TAG = 'W{}_{}'
-BIAS_TAG   = 'B_{}'
-SCALAR_TAG = 'T_{}'
+# Model names
+MODEL_TYPES = ['multi-step', 'single-step']
+MODEL_BASENAME = '{}_{}_{}' # {model-type}_{layer-type}_{rs1-...-rsN}_{extra-naming}
 
 # Layer names
 VANILLA   = 'vanilla'
 SHIFT_INV = 'shift-inv'
 ROT_INV   = 'rot-inv'
 LAYER_TYPES = [VANILLA, SHIFT_INV, ROT_IN]
+LAYER_INIT_FUNCS = {VANILLA:   initialize_vanilla_params,
+                    SHIFT_INV: initialize_ShiftInv_params,
+                    ROT_INV:   initialize_RotInv_params}
 
-# Model names
-MODEL_TYPES = ['multi-step', 'single-step']
-LAYER_TYPES = ['vanilla', 'shift-inv', 'rot-inv']
-MODEL_BASENAME = '{}_{}_{}' # {model-type}_{layer-type}_{rs1-...-rsN}_{extra-naming}
+# Variable names
+# ========================================
+# Scope naming
+VARIABLE_SCOPE = 'params_{}-{}' # eg. 'params_0-7' for rs 9.0000 --> 1.1212
 
-# Model results names
-CUBE_BASE_NAME = 'X_{}-{}_'
-CUBE_NAME_TRUTH = CUBE_BASE_NAME + 'truth'
-CUBE_NAME_PRED  = CUBE_BASE_NAME + 'prediction'
+# Model variable names
+WEIGHT_TAG = 'W{}_{}'
+BIAS_TAG   = 'B_{}'
+SCALAR_TAG = 'T_{}'
+
 
 #------------------------------------------------------------------------------
 # Model variables
@@ -87,7 +100,7 @@ NUM_VAL_SAMPLES = 200
 
 
 #=============================================================================
-# TensorFlow utilities
+# TensorFlow Variable inits and gets
 #=============================================================================
 #------------------------------------------------------------------------------
 # Parameter initialization
@@ -161,11 +174,6 @@ def initialize_RotInv_params(kdims, restore=False, **kwargs):
     assert False
 
 
-layer_init_funcs = {VANILLA:   initialize_vanilla_params,
-                    SHIFT_INV: initialize_ShiftInv_params,
-                    ROT_INV:   initialize_RotInv_params}
-
-
 def initialize_model_params(layer_type, channels, scope=VAR_SCOPE,
                             seed=PARAMS_SEED, restore=False, **kwargs):
     """ Initialize model parameters, dispatch based on layer_type
@@ -177,14 +185,14 @@ def initialize_model_params(layer_type, channels, scope=VAR_SCOPE,
         restore (bool): whether new params are initialized, or just placeholders
     """
     # Check layer_type integrity
-    assert layer_type in layer_init_funcs
+    assert layer_type in LAYER_TYPES
 
     # Convert channels to (k_in, k_out) tuples
     kdims = [(channels[i], channels[i+1]) for i in range(len(channels) - 1)]
 
     # Seed and initialize
     tf.set_random_seed(seed)
-    layer_init_func = layer_init_funcs[layer_type]
+    layer_init_func = LAYER_INIT_FUNCS[layer_type]
     with tf.variable_scope(scope, reuse=True):
         layer_init_func(kdims, restore=restore, **kwargs)
     print('Initialized {} layer parameters'.format(layer_type))
@@ -241,17 +249,16 @@ def get_RotInv_layer_vars(layer_idx, **kwargs):
     assert False
 
 
-def make_dirs(dirs):
-    """ Make directories based on paths in dirs
-    Args:
-        dirs (list): list of paths of dirs to create
-    """
-    for path in dirs:
-        if not os.path.exists(path): os.makedirs(path)
+#=============================================================================
+# Save, load utilities.
+#=============================================================================
+""" NB: all save, load utilities are provided by the functions below, but are
+    conveniently interfaced to the trainer by TrainSaver
+"""
 #------------------------------------------------------------------------------
-# Model graph save & restoration
+# Standalone save/restore util functions
 #------------------------------------------------------------------------------
-# Save utilities
+# Model save utils
 # ========================================
 def make_dirs(dirs):
     """ Make all directories along paths in dirs """
@@ -285,21 +292,31 @@ def save_params(saver, sess, cur_iter, path, write_meta_graph=True):
     step = cur_iter + 1
     saver.save(sess, path, global_step=step, write_meta_graph=write_meta_graph)
 
-
-# Model save
+# Model restore utils
 # ========================================
+def restore_parameters(saver, sess, save_dir):
+    """ restore trained model parameters """
+    path = tf.train.get_checkpoint_state(save_dir)
+    saver.restore(sess, path.model_checkpoint_path)
+    print('Restored trained model parameters from {}'.format(save_dir))
+
+
+#------------------------------------------------------------------------------
+# Save/Restore utils interface class
+#------------------------------------------------------------------------------
 class TrainSaver:
     """ TrainSaver wraps tf.train.Saver() for session,
-        and interfaces useful saving utilities
+        and interfaces all essential save/restore utilities
     """
-    def __init__(self, mname, num_iters, write_meta_each_checkpoint=False):
-        # ==== training vars
+    def __init__(self, mname, num_iters, always_write_meta=False, restore=False):
+        # Training vars
         self.saver = tf.train.Saver()
         self.model_name = mname
         self.num_iters = num_iters
-        self.write_meta_each = write_meta_each_checkpoint
+        self.always_write_meta = always_write_meta
+        self.restore = restore
 
-        # ==== paths
+        # Paths
         self.model_path  = MODEL_SAVE_PATH.format(mname)
         self.result_path = RESULTS_SAVE_PATH.format(mname)
         self.file_path   = FILE_SAVE_PATH.format(mname)
@@ -309,6 +326,11 @@ class TrainSaver:
         paths = [self.model_path, self.result_path, self.file_path]
         make_dirs(paths)
 
+    # ==== Restoring
+    def restore_model_parameters(self, sess):
+        restore_parameters(self.saver, sess, self.model_path)
+
+    # ==== Saving
     def save_model_files(self):
         path = self.file_path
         save_files(path)
@@ -321,66 +343,8 @@ class TrainSaver:
 
     def save_model_params(self, session, cur_iter):
         is_final_step = step == self.num_iters
-        wr_meta = True if is_final_step else self.write_meta_each
+        wr_meta = True if is_final_step else self.always_write_meta
         save_model(self.saver, session, cur_iter, self.model_path, wr_meta)
-
-
-# Model restore
-# ========================================
-
-#=============================================================================
-# graph save and restore
-#=============================================================================
-def load_graph(sess, save_dir):
-    saver = tf.train.Saver()
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    path = tf.train.get_checkpoint_state(save_dir)
-    saver.restore(sess, path.model_checkpoint_path)
-
-
-#=============================================================================
-'''
-There were a few things wrong with this function, and it's usage at caller level:
- - firstly, it was only loading pretrained weights from the first RS tuple (3-7)
- - but it was also assigning these params to the final RS tuple (15-19)
-    So both only one set of trained params was being loaded, and it was being
-    loaded to the wrong redshift model
- - take a look at the git diff before the commit tagged with 'UTILS.LMG'
-   shit was fucked
-
-# Have confirmed now that variables do change value after saver.restore
-'''
-#=============================================================================
-def load_multi_graph(sess, vscopes, num_layers, save_paths, vel_coeff=False):
-    #for vidx, vscope in enumerate(vscopes):
-    for spath, vscope in zip(save_paths, vscopes):
-        sdict = {}
-        for layer_idx in range(num_layers):
-            wtag = vscope + '/' + WEIGHT_TAG.format(layer_idx)
-            btag = vscope + '/' +   BIAS_TAG.format(layer_idx)
-            W, B = get_layer_vars(layer_idx, vscope)
-            sdict[wtag] = W
-            sdict[btag] = B
-
-            if vel_coeff:
-                vtag = vscope + '/' + VEL_COEFF_TAG
-                sdict[vtag] = get_vel_coeff(vscope)
-        print('loading pretrained params for scope {} @ {}'.format(vscope, spath))
-        saver = tf.train.Saver(sdict)
-        path = tf.train.get_checkpoint_state(spath)
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        saver.restore(sess, path.model_checkpoint_path)
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-# END TF-related utils
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-
-#=============================================================================
-# Loading utils
-#=============================================================================
-
-
 
 #==============================================================================
 #==============================================================================
