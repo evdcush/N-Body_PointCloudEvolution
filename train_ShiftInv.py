@@ -2,10 +2,11 @@ import os, code, sys, time, argparse
 import numpy as np
 from sklearn.neighbors import kneighbors_graph
 import tensorflow as tf
-from tensorflow.core.protobuf import config_pb2
+#from tensorflow.core.protobuf import config_pb2
 import nn
 import utils
-from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, RS_TAGS, NUM_VAL_SAMPLES
+from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, NUM_VAL_SAMPLES
+
 
 parser = argparse.ArgumentParser()
 # argparse not handle bools well so 0,1 used instead
@@ -18,7 +19,7 @@ parser.add_argument('--restore',   '-r', default=0,          type=int,  help='re
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
 parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
 parser.add_argument('--model_dir', '-d', default='./Model/', type=str,  help='directory where model parameters are saved')
-parser.add_argument('--save_prefix','-n', default='',        type=str,  help='model name prefix')
+parser.add_argument('--save_suffix','-n', default='',        type=str,  help='model name suffix')
 parser.add_argument('--variable',   '-q', default=0,  type=int, help='multi-purpose variable argument')
 parser.add_argument('--variable2',  '-c', default=0,          type=int,  help='multi-purpose variable argument2')
 pargs = vars(parser.parse_args())
@@ -36,14 +37,13 @@ N = num_particles**3
 redshift_steps = pargs['redshifts']
 num_rs = len(redshift_steps)
 num_rs_layers = num_rs - 1
+# restore
+restore = pargs['restore'] == 1
 
 # Load data
 # ----------------
-X = utils.load_zuni_npy_data(redshift_steps, norm_coo=True)
-#X = utils.load_rs_npy_data(redshift_steps, norm_coo=True, old_dataset=True)[...,:-1]
-X_train, X_test = utils.split_data_validation_combined(X, num_val_samples=NUM_VAL_SAMPLES)
-#timestep = utils.get_timestep(X[0], X[1])
-#print('timestep = {}'.format(timestep))
+X = utils.normalize(utils.load_simulation_data(redshift_steps))
+X_train, X_test = utils.split_data_validation(X)
 X = None # reduce memory overhead
 
 
@@ -52,20 +52,14 @@ X = None # reduce memory overhead
 #=============================================================================
 # Model features
 # ----------------
-model_type = pargs['model_type'] # 0: set, 1: graph
-model_vars = utils.NBODY_MODELS[model_type]
+#model_type = pargs['model_type'] # 0: set, 1: graph
+#model_vars = utils.NBODY_MODELS[model_type]
 var_timestep = False
 learning_rate = LEARNING_RATE # 0.01
 
 # Network depth and channel sizes
 # ----------------
-#channels = model_vars['channels'] # OOM with sparse graph
-if pargs['variable2'] != 0:
-    channels = [6, 32, 3]
-    #learning_rate = 0.001
-else:
-    channels = [6, 32, 16, 8, 3]
-
+channels = [6, 32, 16, 8, 3]
 channels[0]  = 9
 channels[-1] = 3
 #channels[-1] = 6
@@ -74,7 +68,6 @@ M = pargs['graph_var']
 
 # Training hyperparameters
 # ----------------
-
 #threshold = 0.03 # for PBC kneighbor search, currently not supported
 batch_size = pargs['batch_size']
 num_iters  = pargs['num_iters']
@@ -85,18 +78,31 @@ num_iters  = pargs['num_iters']
 #=============================================================================
 # Model name and paths
 # ----------------
+(self, mname, num_iters, always_write_meta=False, restore=False)
+ltype = 'shift-inv'
+mtype = 'single-step'
+model_name = utils.get_model_name(mtype, ltype, redshift_steps, suffix=pargs['save_suffix'])
+#(self, mname, num_iters, always_write_meta=False, restore=False)
+train_saver = utils.TrainSaver(model_name, num_iters, always_write_meta=True, restore=restore)
 zX = redshift_steps[0]  # starting redshift
 zY = redshift_steps[-1] # target redshift
-model_name = utils.get_zuni_model_name(model_type, zX, zY, pargs['save_prefix'])
-paths = utils.make_save_dirs(pargs['model_dir'], model_name)
-model_path, loss_path, cube_path = paths
+#model_name = utils.get_zuni_model_name(model_type, zX, zY, pargs['save_prefix'])
+#paths = utils.make_save_dirs(pargs['model_dir'], model_name)
+#model_path, loss_path, cube_path = paths
 
-# restore
-restore = pargs['restore'] == 1
+'''
+restore_model_parameters(self, sess):
+save_model_files(self):
+save_model_cube(self, cube, rs, save_path=self.result_path, ground_truth=False):
+save_model_error(self, error, save_path=self.result_path, training=False):
+save_model_params(self, session, cur_iter):
+'''
 
 # save test data
-utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
-utils.save_pyfiles(model_path)
+train_saver.save_model_cube(X_test, redshift_steps, ground_truth=True)
+train_saver.save_model_files()
+#utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
+#utils.save_pyfiles(model_path)
 
 
 #=============================================================================
@@ -104,18 +110,22 @@ utils.save_pyfiles(model_path)
 #=============================================================================
 # Init model params
 # ----------------
+'''
+def initialize_model_params(layer_type, channels, scope=VAR_SCOPE,
+                            seed=PARAMS_SEED, restore=False, **kwargs)
+'''
+#vscope = utils.VAR_SCOPE
 vscope = utils.VAR_SCOPE.format(zX, zY)
-seed = pargs['seed']
-if seed != PARAMS_SEED:
-    print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(seed))
-tf.set_random_seed(seed)
-utils.init_ShiftInv_params(channels, vscope, restore=restore)
+utils.initialize_model_params(ltype, channels, vscope, restore=restore)
 
-
-with tf.variable_scope(vscope):
-    utils.init_coeff_single(restore=restore)
-    #utils.init_coeff_agg(num_rs_layers, restore=restore)
-
+#seed = pargs['seed']
+#if seed != PARAMS_SEED:
+#    print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(seed))
+#tf.set_random_seed(seed)
+#utils.init_ShiftInv_params(channels, vscope, restore=restore)
+#with tf.variable_scope(vscope):
+#    utils.init_coeff_single(restore=restore)
+#    #utils.init_coeff_agg(num_rs_layers, restore=restore)
 
 
 # CUBE DATA
@@ -147,19 +157,22 @@ model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
 #X_pred = nn.ShiftInv_single_model_func_v1(X_input, COO_feats, model_specs, coeff_idx=0)
 
 # Static timestep model:
-X_pred = nn.ShiftInv_model_func_timestep(X_input, COO_feats, model_specs)
+X_pred = nn.ShiftInv_model_func(X_input, COO_feats, model_specs)
 
 
 # Loss
 # ----------------
 # Training error and Optimizer
 # https://www.tensorflow.org/api_docs/python/tf/contrib/opt/LazyAdamOptimizer
+'''
 if pargs['variable'] != 0:
     optimizer = tf.contrib.opt.LazyAdamOptimizer(learning_rate)
     print('\nLazy Adam\n')
 else:
     optimizer = tf.train.AdamOptimizer(learning_rate)
     print('\nregular Adam\n')
+'''
+optimizer = tf.train.AdamOptimizer(learning_rate)
 
 error = nn.pbc_loss(X_pred, X_truth, vel=False)
 train = optimizer.minimize(error)
@@ -187,14 +200,16 @@ sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 # initialize variables
 sess.run(tf.global_variables_initializer())
 if restore:
-    utils.load_graph(sess, model_path)
+    train_saver.restore_model_parameters(sess)
+    #utils.load_graph(sess, model_path)
 
 
 
 # Session saver
 # ----------------
-saver = tf.train.Saver()
-saver.save(sess, model_path + model_name)
+#saver = tf.train.Saver()
+#saver.save(sess, model_path + model_name)
+train_saver.save_model_params(sess, 0)
 checkpoint = 100
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
 
@@ -207,7 +222,7 @@ np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
     # Data batching
     # ----------------
-    _x_batch = utils.next_minibatch(X_train, batch_size, data_aug=False) # shape (2, b, N, 6)
+    _x_batch = utils.next_minibatch(X_train, batch_size) # shape (2, b, N, 6)
 
     # split data
     x_in    = _x_batch[0] # (b, N, 6)
@@ -243,7 +258,9 @@ for step in range(num_iters):
     if save_checkpoint(step):
         err = sess.run(error, feed_dict=fdict)
         utils.print_checkpoint(step, err)
-        saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+        #saver.save(sess, model_path + model_name, global_step=step, write_meta_graph=True)
+        #save_model_params(self, session, cur_iter)
+        train_saver.save_model_params(sess, step)
 
 
 # END training
@@ -251,7 +268,8 @@ for step in range(num_iters):
 print('elapsed time: {}'.format(time.time() - start_time))
 
 # Save trained variables and session
-saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
+#saver.save(sess, model_path + model_name, global_step=num_iters, write_meta_graph=True)
+train_saver.save_model_params(sess, num_iters)
 X_train = None # reduce memory overhead
 
 
@@ -315,8 +333,18 @@ utils.print_median_validation_loss(redshift_steps, test_loss)
 
 
 # save loss and predictions
-utils.save_loss(loss_path + model_name, test_loss, validation=True)
+#utils.save_loss(loss_path + model_name, test_loss, validation=True)
 #utils.save_loss(loss_path + model_name + 'SC', test_loss_sc, validation=True)
-utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
+#utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
+
+#restore_model_parameters(self, sess):
+#save_model_files(self):
+#save_model_cube(self, cube, rs, save_path=self.result_path, ground_truth=False):
+#save_model_error(self, error, save_path=self.result_path, training=False):
+#save_model_params(self, session, cur_iter):
+
+train_saver.save_model_error(test_loss)
+train_saver.save_model_cube(test_predictions, (zX, zY), ground_truth=False)
+
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use

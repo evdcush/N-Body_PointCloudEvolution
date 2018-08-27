@@ -168,9 +168,18 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
     row_idx  = COO_feats[0]
     col_idx  = COO_feats[1]
     cube_idx = COO_feats[2]
+    '''
+    def get_ShiftInv_layer_vars(layer_idx, **kwargs):
+    weights = []
+    for w_idx in SHIFT_INV_W_IDX:
+        weights.append(get_weight(layer_idx, w_idx=w_idx))
+    bias = get_bias(layer_idx)
+    return weights, bias
+    '''
 
     # get layer weights
-    W1, W2, W3, W4, B = utils.get_scoped_ShiftInv_layer_vars(layer_id)
+    W, B = utils.get_ShiftInv_layer_vars(layer_id)
+    W1, W2, W3, W4 = W
 
     # Helper funcs
     # ========================================
@@ -325,9 +334,8 @@ def ShiftInv_model_func(X_in, COO_feats, model_specs, redshift=None):
         net_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
 
         # Scaling and skip connections
-        #loc_scalar = utils.get_scoped_coeff(scalar_tag)
-        #loc_scalar, vel_scalar = utils.get_scoped_scalars(scalar_tag)
-        loc_scalar, vel_scalar = utils.get_scoped_coeff_single()
+        #loc_scalar, vel_scalar = utils.get_scoped_coeff_single()
+        loc_scalar, vel_scalar = get_scalars()
         num_feats = net_out.get_shape().as_list()[-1]
 
         H_out = net_out[...,:3]*loc_scalar + X_in[...,:3] + X_in[...,3:]*vel_scalar

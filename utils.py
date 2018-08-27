@@ -110,7 +110,6 @@ DATASET_SEED = 12345    # for train/validation data splits
 CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
 CHANNELS_SHALLOW = [9, 32, 16, 8, 6]
 
-
 # Layer variables
 # ========================================
 # Shift-invariant
@@ -119,7 +118,6 @@ SHIFT_INV_W_IDX = [1,2,3,4]
 # Rotation-invariant
 ROTATION_INV_SEGMENTS = ['no-pooling', 'col-depth', 'row-depth',
                          'row-col', 'depth', 'col', 'row', 'all']
-
 
 # Training variables
 # ========================================
@@ -203,7 +201,7 @@ def initialize_RotInv_params(kdims, restore=False, **kwargs):
     assert False
 
 
-def initialize_model_params(layer_type, channels, scope=VAR_SCOPE,
+def initialize_model_params(layer_type, channels, scope,
                             seed=PARAMS_SEED, restore=False, **kwargs):
     """ Initialize model parameters, dispatch based on layer_type
     Args:
@@ -388,15 +386,15 @@ class TrainSaver:
         save_files(path)
 
     def save_model_cube(self, cube, rs, save_path=self.result_path, ground_truth=False):
-        save_cube(cube, redshifts, save_path, ground_truth)
+        save_cube(cube, rs, save_path, ground_truth)
 
     def save_model_error(self, error, save_path=self.result_path, training=False):
         save_error(error, save_path, training)
 
     def save_model_params(self, session, cur_iter):
-        is_final_step = step == self.num_iters
+        is_final_step = cur_iter == self.num_iters
         wr_meta = True if is_final_step else self.always_write_meta
-        save_model(self.saver, session, cur_iter, self.model_path, wr_meta)
+        save_params(self.saver, session, cur_iter, self.model_path, wr_meta)
 
 
 
@@ -509,7 +507,6 @@ def normalize(X):
     # Rescale coordinate values range from (0,32) -> (0,1)
     X[...,:3] = X[...,:3] / 32.0
     return X
-
 
 
 #------------------------------------------------------------------------------
