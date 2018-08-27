@@ -55,7 +55,7 @@ DATA_PATH_NPY      = DATA_ROOT_PATH.format('npy_data/X_{:.4f}_.npy')
 # Data write paths
 # ========================================
 # All model save paths
-BASE_SAVE_PATH = '../Models/{}/'
+BASE_SAVE_PATH = './Models/{}/'
 MODEL_SAVE_PATH   = BASE_SAVE_PATH  + 'Session/'
 FILE_SAVE_PATH    = MODEL_SAVE_PATH + 'original_files/'
 RESULTS_SAVE_PATH = BASE_SAVE_PATH  + 'Results/'
