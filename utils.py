@@ -251,53 +251,82 @@ def make_dirs(dirs):
 #------------------------------------------------------------------------------
 # Model graph save & restoration
 #------------------------------------------------------------------------------
+# Save utilities
+# ========================================
+def make_dirs(dirs):
+    """ Make all directories along paths in dirs """
+    for path in dirs:
+        if not os.path.exists(path): os.makedirs(path)
+
+def save_files(save_path, files_to_save=FILE_SAVE_NAMES):
+    """ Copy project files to directory """
+    for f in files_to_save:
+        src = './{}'.format(f)
+        dst = save_path + f
+        shutil.copy(src, dst)
+
+def save_cube(cube, redshifts, save_path, ground_truth=False):
+    """ Save data cube """
+    rsX, rsY = redshifts
+    name = CUBE_NAME_TRUTH if ground_truth else CUBE_NAME_PRED
+    name = name.format(rsX, rsY)
+    np.save(result_save_path + name, cube)
+    print('Saved cube: {}'.format(name))
+
+def save_error(error, save_path, training=False):
+    """ Save model error """
+    suffix = 'training' if training else 'validation'
+    name = 'error_{}'.format(suffix)
+    np.save(save_path + name, error)
+    print('Saved {}'.format(name))
+
+def save_params(saver, sess, cur_iter, path, write_meta_graph=True):
+    """ Save trained model parameters """
+    step = cur_iter + 1
+    saver.save(sess, path, global_step=step, write_meta_graph=write_meta_graph)
+
+
 # Model save
 # ========================================
-
 class TrainSaver:
+    """ TrainSaver wraps tf.train.Saver() for session,
+        and interfaces useful saving utilities
+    """
     def __init__(self, mname, num_iters, write_meta_each_checkpoint=False):
+        # ==== training vars
         self.saver = tf.train.Saver()
+        self.model_name = mname
         self.num_iters = num_iters
         self.write_meta_each = write_meta_each_checkpoint
-        # paths
-        self.model_save_path  = MODEL_SAVE_PATH.format(mname)
-        self.result_save_path = RESULTS_SAVE_PATH.format(mname)
-        self.file_save_path   = FILE_SAVE_PATH.format(mname)
-        self.make_save_dirs()
 
-    def make_save_dirs(self):
-        paths = [self.model_save_path, self.result_save_path,
-                 self.file_save_path]
-        for path in paths:
-            if not os.path.exists(path): os.makedirs(path)
+        # ==== paths
+        self.model_path  = MODEL_SAVE_PATH.format(mname)
+        self.result_path = RESULTS_SAVE_PATH.format(mname)
+        self.file_path   = FILE_SAVE_PATH.format(mname)
+        self.make_model_dirs()
 
-    def save_files(self):
-        path = self.file_save_path
-        for f in self.FILE_SAVE_NAMES:
-            src = './{}'.format(f)
-            dst = path + f
-            shutil.copy(src, dst)
+    def make_model_dirs(self):
+        paths = [self.model_path, self.result_path, self.file_path]
+        make_dirs(paths)
 
-    def save_cube(self, cube, redshifts, ground_truth=False):
-        rsX, rsY = redshifts
-        name = CUBE_NAME_TRUTH if ground_truth else CUBE_NAME_PRED
-        name = name.format(rsX, rsY)
-        np.save(self.result_save_path + name, cube)
-        print('Saved cube: {}'.format(name))
+    def save_model_files(self):
+        path = self.file_path
+        save_files(path)
 
-    def save_error(self, error, training=False):
-        suffix = 'training' if training else 'validation'
-        name = 'error_{}'.format(suffix)
-        np.save(self.result_save_path + name, error)
-        print('Saved {}'.format(name))
+    def save_model_cube(self, cube, rs, save_path=self.result_path, ground_truth=False):
+        save_cube(cube, redshifts, save_path, ground_truth)
 
-    def save_model(self, session, cur_step):
-        step = cur_step + 1
+    def save_model_error(self, error, save_path=self.result_path, training=False):
+        save_error(error, save_path, training)
+
+    def save_model_params(self, session, cur_iter):
         is_final_step = step == self.num_iters
         wr_meta = True if is_final_step else self.write_meta_each
-        self.saver.save(session, self.model_save_path,
-                        global_step=cur_step, write_meta_graph=wr_meta)
+        save_model(self.saver, session, cur_iter, self.model_path, wr_meta)
 
+
+# Model restore
+# ========================================
 
 #=============================================================================
 # graph save and restore
