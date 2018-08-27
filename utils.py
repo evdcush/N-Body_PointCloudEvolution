@@ -5,6 +5,34 @@ import matplotlib
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
+''' TODO:
+# TOP PRIORITY
+ - Eventually create a trainer class, or abstract as much training code from
+   train to here. Ideally only needing a single train.py.
+     - NEED higher-level abstraction and modularity, currently too much
+       thrashing and potential for code error
+     - Training consistency, for all models, all network types
+     - make train.py invariant to:
+       - model-type: multi-step or single
+       - layer-type: vanilla, shift-inv, or rot-inv
+ - In order to abstract train functionality or make a trainer class,
+   need to evaluate:
+     - Can you instantiate placeholders OUTSIDE of the caller script?
+       - must they be placed in train.py for scope reasons? or feeding?
+
+# EVENTUALLY
+ - Make a separate evaluation script ('evaluation.py' or whatev), that can
+   evaluate a model separate from training script.
+     - Then, to use in train.py, just import the respective functions
+ - Visualizations:
+   - automatic generation of plots for error or whatev,
+   - maybe a meta script that maintains all models trained in a spreadsheet or
+     npy array, that tracks performance based on num_iters, model type, redshifts
+     hyperparameters, etc.
+ - Have density-based graph model as another option, like layer-type, for models
+   instead of just KNN
+'''
+
 #=============================================================================
 # Globals
 #=============================================================================
@@ -52,6 +80,7 @@ MODEL_BASENAME = '{}_{}_{}' # {model-type}_{layer-type}_{rs1-...-rsN}_{extra-nam
 VANILLA   = 'vanilla'
 SHIFT_INV = 'shift-inv'
 ROT_INV   = 'rot-inv'
+LAYER_TAGS = [VANILLA:'V', SHIFT_INV:'SI', ROT_INV:'RI']
 LAYER_TYPES = [VANILLA, SHIFT_INV, ROT_IN]
 LAYER_INIT_FUNCS = {VANILLA:   initialize_vanilla_params,
                     SHIFT_INV: initialize_ShiftInv_params,
@@ -255,6 +284,29 @@ def get_RotInv_layer_vars(layer_idx, **kwargs):
 """ Note: all save, load utilities are provided by the functions below, but are
     interfaced to the trainer by TrainSaver
 """
+# Model name getter
+# ========================================
+def get_model_name(mtype, ltype, rs_idx, model_name=MODEL_BASENAME, suffix=''):
+    """ Consistent model naming format
+    Args:
+        mtype, ltype (str): model and layer types
+        rs_idx list(int): ordered list of indices into redshifts
+    """
+    # ==== Confirm valid types
+    assert mtype in MODEL_TYPES and ltype in LAYER_TYPES
+    if model_name != MODEL_BASENAME: # if optional model_name used
+        return model_name
+
+    # ==== Model name fields
+    layer_tag = LAYER_TAGS[ltype] # in ['V', 'SI', 'RI']
+    rs_tag = "".join([str(z)+'-' if z != rs_idx[-1] else str(z) for z in rs_idx])
+    suff = '_{}'.format(suffix) if len(suffix) > 0 else ''
+
+    # ==== Format model name
+    model_name = model_name.format(layer_tag, mtype, rs_tag) + suff
+
+    return model_name
+
 #------------------------------------------------------------------------------
 # Standalone save/restore util functions
 #------------------------------------------------------------------------------
@@ -481,6 +533,7 @@ def split_data_validation(X, num_val_samples=NUM_VAL_SAMPLES, seed=DATASET_SEED)
 
     return X_train, X_test
 
+
 # Symmetric, random data shift augmentation
 # ========================================
 def random_augmentation_shift(batch):
@@ -524,6 +577,7 @@ def random_augmentation_shift(batch):
     batch[...,:3] = batch_coo
     return batch
 
+
 # Data batching
 # ========================================
 def next_minibatch(X_in, batch_size, data_aug=False):
@@ -546,154 +600,14 @@ def next_minibatch(X_in, batch_size, data_aug=False):
 
 
 
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-# two get model names
-#==============================================================================
-
-#==============================================================================
-# two get model names
-#==============================================================================
-
-'''
-MODEL_TYPES = ['multi-step', 'single-step']
-MODEL_BASENAME = '{}_{}_{}' # {model-type}_{layer-type}_{rs1-...-rsN}_{extra-naming}
-
-# Layer names
-VANILLA   = 'vanilla'
-SHIFT_INV = 'shift-inv'
-ROT_INV   = 'rot-inv'
-LAYER_TYPES = [VANILLA, SHIFT_INV, ROT_IN]
-
-'Single-step_SI_0-12_lr001'
-'Multi-step_RI_15-19'
-'Single-step_V_15-19'
-'''
-
-def get_model_name(mtype, ltype, rs_idx, model_name=MODEL_BASENAME, suffix=''):
-    """ Consistent model naming format """
-    assert mtype in MODEL_TYPES and ltype in LAYER_TYPES
-
-
-    n_P, rs = dparams
-    zX = RS_TAGS[rs[0]]
-    zY = RS_TAGS[rs[1]]
-
-    model_tag = NBODY_MODELS[mtype]['tag']
-    vel_tag = 'L' if vel_coeff is not None else ''
-
-    model_name = '{}{}_{}_{}-{}'.format(model_tag, vel_tag, n_P, zX, zY)
-    if save_prefix != '':
-        model_name = '{}_{}'.format(save_prefix, model_name)
-    return model_name
-
-def get_zuni_model_name(mtype, zX, zY, save_prefix):
-    """ Consistent model naming format
-    Model name examples:
-        'GL_32_12-04': GraphModel|WithVelCoeff|32**3 Dataset|redshift 1.2->0.4
-        'S_16_04-00': SetModel|16**3 Dataset|redshift 0.4->0.0
-    """
-    #n_P, rs = dparams
-    #zX = RS_TAGS[rs[0]]
-    #zY = RS_TAGS[rs[1]]
-
-    model_tag = NBODY_MODELS[mtype]['tag']
-    #vel_tag = 'L' if vel_coeff is not None else ''
-
-    #model_name = '{}{}_{}_{}-{}'.format(model_tag, vel_tag, n_P, zX, zY)
-    #model_name = 'ZG_90-00'
-    model_name = 'Z{}_{}-{}'.format(model_tag, zX, zY)
-    if save_prefix != '':
-        model_name = '{}_{}'.format(save_prefix, model_name)
-    return model_name
-
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-# two save cubes
-# save loss likely need to be changed
-# relocate plot3d
-#==============================================================================
-
-
-
-def plot_3D_pointcloud(xt, xh, j, pt_size=(.9,.9), colors=('b','r'), fsize=(12,12), xin=None):
-    xt_x, xt_y, xt_z = np.split(xt[...,:3], 3, axis=-1)
-    xh_x, xh_y, xh_z = np.split(xh[...,:3], 3, axis=-1)
-
-    fig = plt.figure(figsize=fsize)
-    ax = fig.gca(projection='3d')
-    ax.scatter(xt_x[j], xt_y[j], xt_z[j], s=pt_size[0], c=colors[0])
-    ax.scatter(xh_x[j], xh_y[j], xh_z[j], s=pt_size[1], c=colors[1])
-
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    return fig
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-
-#==============================================================================
-
 #=============================================================================
-# State and Misc Utils
+# Model state and information utils
 #=============================================================================
-
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-# get timestep unecessary here
-#==============================================================================
-def _get_mask(x, bound=0.1):
-    xtmp = x[...,:3]
-    lower, upper = bound, 1-bound
-    mask1 = np.logical_and(xtmp[...,0] < upper, xtmp[...,0] > lower)
-    mask2 = np.logical_and(xtmp[...,1] < upper, xtmp[...,1] > lower)
-    mask3 = np.logical_and(xtmp[...,2] < upper, xtmp[...,2] > lower)
-    mask = mask1 * mask2 * mask3
-    mask_nz = np.nonzero(mask)[0]
-    return mask_nz
-
-def _mask_data(x_in, x_truth):
-    mask = _get_mask(x_in)
-    masked_input = x_in[mask]
-    masked_truth = x_truth[mask]
-    return masked_input, masked_truth
-
-def get_timestep(x_in, x_true):
-    """ # calculates timestep from input redshift to target redshift
-    """
-    x_in_flat   = x_in.reshape([-1, 6])
-    x_true_flat = x_true.reshape([-1, 6])
-
-    m_in, m_true = _mask_data(x_in_flat, x_true_flat)
-    #diff = x_true[...,:3] - x_in[...,:3]
-    diff = m_true[...,:3] - m_in[...,:3]
-    timestep = np.linalg.lstsq(m_in[...,3:].ravel()[:,None], diff.ravel())[0]
-    return timestep[0]
-
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-
-
+#------------------------------------------------------------------------------
+# Error prints
+#------------------------------------------------------------------------------
 def print_checkpoint(step, err, sc_err=None):
+    """ Print current training error """
     text = 'Checkpoint {:>5}--> LOC: {:.8f}'.format(step+1, err)
     if sc_err is not None:
         text = text + ', SCA:: {:.6f}'.format(sc_err)
@@ -703,7 +617,7 @@ def print_checkpoint(step, err, sc_err=None):
 def print_median_validation_loss(rs, err, sc_err=None):
     zx, zy = rs
     err_median = np.median(err)
-    print('\nEvaluation Median Loss:\n{}'.format('='*78))
+    print('\nEvaluation Median Error:\n{}'.format('='*78))
     print('# LOCATION LOSS:')
     print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, err_median))
     if sc_err is not None:
