@@ -20,7 +20,7 @@ REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
 # Data load paths (must be changed for your machine!)
 # ========================================
 DATA_ROOT_PATH = '/home/evan/Data/nbody_simulations/N_uniform/{}'
-DATA_PATH_BINARIES = DATA_ROOT_PATH.format('run*/xv_dm.z=0{}') # not in use
+DATA_PATH_BINARIES = DATA_ROOT_PATH.format('binaries/run*/xv_dm.z=0{:.4f}') # not in use
 DATA_PATH_NPY      = DATA_ROOT_PATH.format('npy_data/X_{:.4f}_.npy')
 
 
@@ -250,10 +250,10 @@ def get_RotInv_layer_vars(layer_idx, **kwargs):
 
 
 #=============================================================================
-# Save, load utilities.
+# Model save, load utilities
 #=============================================================================
-""" NB: all save, load utilities are provided by the functions below, but are
-    conveniently interfaced to the trainer by TrainSaver
+""" Note: all save, load utilities are provided by the functions below, but are
+    interfaced to the trainer by TrainSaver
 """
 #------------------------------------------------------------------------------
 # Standalone save/restore util functions
@@ -346,29 +346,27 @@ class TrainSaver:
         wr_meta = True if is_final_step else self.always_write_meta
         save_model(self.saver, session, cur_iter, self.model_path, wr_meta)
 
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-#==============================================================================
-# two different sets of data utils, one for old shit, one for current
-# many, many duplicate functions and functionality
-# names are bad
-#==============================================================================
 
 
-
-def read_sim(file_list, n_P):
-    """ reads simulation data from disk and returns
-
+#=============================================================================
+# Simulation dataset read/load utilities
+#=============================================================================
+""" Note: due to long read times and disk space constraints, data is not
+    read from binaries.
+    Instead, the numpy npy formatted simulation data is what is used regularly
+"""
+#------------------------------------------------------------------------------
+# Dataset (binary) dataset read functions
+#------------------------------------------------------------------------------
+# Read simulation cubes stored in binary structs
+# ========================================
+def read_simulation_binaries(file_list, n_P=32):
+    """ reads simulation data from binaries and and converts to numpy ndarray
     Args:
-        file_list: (list<str>) paths to files
-        n_P: (int) number of particles base (n_P**3 particles)
+        file_list list(str): paths to files
+        n_P (int): number of particles base (n_P**3 particles)
+            NB: only 32**3 simulation data is used
+    Returns: numpy array of data
     """
     num_particles = n_P**3
     dataset = []
@@ -382,150 +380,65 @@ def read_sim(file_list, n_P):
     dataset = np.array(dataset).reshape([len(file_list),num_particles,6])
     return dataset
 
-def load_datum(n_P, redshift, normalize_data=False):
+# Interface for binary read func
+# ========================================
+def load_simulation_cube_binary(redshift, data_path=DATA_PATH_BINARIES):
     """ loads two redshift datasets from proper data directory
-
     Args:
-        redshift: (float) redshift
-        n_P: (int) base of number of particles (n_P**3 particles)
+        redshift (float): redshift value
     """
-    N_P = 10000 if n_P == 32 else 1000
-    glob_paths = glob.glob(DATA_PATH.format(N_P, 'xv', redshift))
-    X = read_sim(glob_paths, n_P)
-    if normalize_data:
-        X = normalize(X)
-    return X
-
-def load_data(n_P, *args, **kwargs):
-    """ loads datasets from proper data directory
-    # note: this function is redundant
-
-    Args:
-        n_P: (int) base of number of particles (n_P**3 particles)
-    """
-    data = []
-    for redshift in args:
-        x = load_datum(n_P, redshift, **kwargs)
-        data.append(x)
-    return data
-
-def load_npy_data(n_P, redshifts=None, normalize=False):
-    """ Loads data serialized as numpy array of np.float32
-    Args:
-        n_P: base number of particles (16 or 32)
-        redshifts (tuple): tuple of redshifts
-    """
-    assert n_P in [16, 32]
-    X = np.load(DATA_PATH_NPY.format(n_P)) # (11, N, n_P, 6)
-    if redshifts is not None:
-        zX, zY = redshifts
-        rs_start  = REDSHIFTS.index(zX)
-        rs_target = REDSHIFTS.index(zY)
-        X = X[[rs_start, rs_target]] # (2, N, n_P, 6)
-    if normalize:
-        X = normalize_fullrs(X)
-    return X
-
-def load_rs_old_npy_data(redshifts, norm_coo=False, norm_vel=False):
-    """ Loads new uniformly timestep data serialized as np array of np.float32
-    Args:
-        redshifts (list int): list of indices into redshifts in order
-        norm_coo: normalize coordinate values to [0,1]
-        norm_vel: normalize vel values (only norm'd if coord norm'd)
-    """
-    n_P = 32
-    X_all_rs = load_npy_data(n_P, normalize=False)[redshifts]
-    num_rs, N, M, D = X_all_rs.shape
-    X = np.zeros((num_rs, N, M, D+1)).astype(np.float32)
-    X[...,:-1] = X_all_rs
-    X_all_rs = None # reduce memory overhead
-
-    for idx, z_idx in enumerate(redshifts):
-        X[idx,:,:,-1] = REDSHIFTS[z_idx]
-    if norm_coo:
-        X[...,:3] = X[...,:3] / n_P
-    return X
-
-def thinkpadx201_load_npy(redshifts, norm_coo=False, norm_vel=False):
-    """ Loads new uniformly timestep data serialized as np array of np.float32
-    Args:
-        redshifts (list int): list of indices into redshifts in order
-        norm_coo: normalize coordinate values to [0,1]
-        norm_vel: normalize vel values (only norm'd if coord norm'd)
-    """
-    num_rs = len(redshifts)
-    N = 1000
-    M = 16**3
-    D = 7
-    X = np.zeros((num_rs, N, M, D)).astype(np.float32)
-    for idx, z_idx in enumerate(redshifts):
-        z_rs   = REDSHIFTS[z_idx]
-        z_path = DATA_PATH_THINKPAD.format(z_rs)
-        print('LD: {}'.format(z_path[-13:]))
-        X[idx, :, :, :-1] = np.load(z_path)
-        X[idx, :, :,-1] = z_rs
-    if norm_coo:
-        X[...,:3] = X[...,:3] / 32.0
+    glob_paths = glob.glob(data_path.format(redshift))
+    X = read_sim(glob_paths).astype(np.float32)
     return X
 
 
-def load_rs_npy_data(redshifts, norm_coo=False, norm_vel=False, old_dataset=False):
-    """ Loads new uniformly timestep data serialized as np array of np.float32
+
+#------------------------------------------------------------------------------
+# Dataset (npy) read functions
+#------------------------------------------------------------------------------
+# Load simulation cube from npy
+# ========================================
+def load_simulation_cube_npy(redshift, cat_dim=True):
+    """ Loads uniformly timestepped simulation cube stored in npy format
+    Note redshift here is true redshift float value
     Args:
-        redshifts (list int): list of indices into redshifts in order
-        norm_coo: normalize coordinate values to [0,1]
-        norm_vel: normalize vel values (only norm'd if coord norm'd)
+        redshift (float): redshift value
+        cat_dim (bool): expand a new dim at axis 0 for concatenation
     """
-    if old_dataset:
-        return load_rs_old_npy_data(redshifts, norm_coo)
-    else:
-        return load_zuni_npy_data(redshifts, norm_coo)
+    # Cube dims
+    num_cubes = 1000; num_particles = 32**3; num_features = 6;
 
-
-#=============================================================================
-# NEW DATA UTILS, uniformly displaced
-#=============================================================================
-def load_zuni_datum(redshift):
-    """ loads a single redshift datum from uniformly timestepped redshift data
-
-    Args:
-        redshift: (float) redshift
-    """
-    n_P = 32
-    assert redshift in REDSHIFTS_ZUNI
-    redshift_str = '{:.4f}'.format(redshift)
-    glob_paths = glob.glob(DATA_PATH_ZUNI.format(redshift_str))
-    X = read_sim(glob_paths, n_P).astype(np.float32)
+    # Load cube
+    cube_path = DATA_PATH_NPY.format(redshift)
+    print('Loading Redshift {:.4f} Cube from: {}'.format(redshift, cube_path[-13:]))
+    X = np.load(cube_path).astype(np.float32)
+    if cat_dim:
+        X = np.expand_dims(X, 0)
     return X
 
-def load_zuni_npy_data(redshifts=None, norm_coo=False):
-    """ Loads new uniformly timestep data serialized as np array of np.float32
+
+# Load cubes for each redshift
+# ========================================
+def load_simulation_data(redshift_indices):
+    """ Loads uniformly timestep data serialized as np array of np.float32
+    Redshift indices are used instead of true float values for ease
     Args:
-        redshifts (list int): list of indices into redshifts in order
-        norm_coo: normalize coordinate values to [0,1]
-        norm_vel: normalize vel values (only norm'd if coord norm'd)
+        redshift_indices list(int): ordered list of indices into REDSHIFTS
     """
-    if redshifts is None:
-        redshifts = list(range(len(REDSHIFTS_ZUNI))) # copy
-    num_rs = len(redshifts)
-    S = 1000
-    N = 32**3
-    #D = 7
-    D = 6
-    X = np.zeros((num_rs, S, N, D)).astype(np.float32)
-    for idx, z_idx in enumerate(redshifts):
-        z_rs   = REDSHIFTS_ZUNI[z_idx]
-        z_path = DATA_PATH_ZUNI_NPY.format(z_rs)
-        print('LD: {}'.format(z_path[-13:]))
-        print('  X[{}] = ({},{:.4f})'.format(idx, z_idx, z_rs)) # sanity check
-        X[idx] = np.load(z_path)
-        #X[idx,:,:,:-1] = np.load(z_path)
-        #X[idx,:,:,-1] = z_rs
-    if norm_coo:
-        X[...,:3] = X[...,:3] / 32.0
-        assert np.max(X[...,:3]) <= 1.0
-        assert np.min(X[...,:3]) >= 0.0
+    num_rs = len(redshifts) # number of cubes to load
+
+    # Load cubes
+    rs_idx = redshift_indices[0]
+    redshift = REDSHIFTS[rs_idx]
+    X = load_simulation_cube_npy(redshift)
+    if num_rs == 1:
+        return X
+    for rs_idx in redshift_indices[1:]:
+        redshift = REDSHIFTS[rs_idx]
+        X = np.concatenate([X, load_simulation_cube_npy(redshift)], axis=0)
     return X
+
+
 
 
 #=============================================================================
