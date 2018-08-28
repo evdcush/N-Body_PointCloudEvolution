@@ -28,21 +28,6 @@ TODO:
    - Does wrapping functions in a class affect performance (backprop)
      - most of the tf code I've seen is purely functional
 '''
-class AttrDict(dict):
-    __getattr__ = dict.__getitem__
-    __setattr__ = dict.__setitem__
-
-
-class ModelFuncArgs():
-    def __init__(self, num_layers, var_scope, dims=None, activation_func=tf.nn.relu):
-        self.num_layers = num_layers
-        self.var_scope = var_scope
-        self.dims = dims
-        self.activation_func = activation_func
-
-    def __call__(self):
-        # return the only two things EVERY model will have
-        return self.num_layers, self.var_scope
 
 #==============================================================================
 # Layer ops
@@ -142,7 +127,74 @@ def rad_graph_layer(h, layer_idx, var_scope, spT):
     h_out = left_mult(h - graph_mu, W) + B
     return h_out
 
+#==============================================================================
+# Layer class
+#==============================================================================
+# functions < Layer < Network < Model
+class GraphConv:
+    """ All layers use some kind of graph convolution
+    - KNN: simplest, just mean(X[G], M_axis)
+    - Radius: trickier
+      - requires SparseTensor
+      - makes assumptions about the SparseTensor to allow for
+        tf.sparse_tensor_dense_matmul
+    # SPECIAL CASES
+    - ShiftInv: uses KNN graph currently, but performs convolution
+      using unsorted_segment_mean instead of vanilla mean
+        - Ideally, should be able to swap out ShiftInv/pooling convs
+    - RotInv: probably same shit
+    """
+    def __init__(self, X_in, G, M):
+        self.X = X_in
+        self.G = G
+        self.M = M
+        self.graph_conv
 
+    def graph_conv(self): # MUST BE OVERRIDDEN
+        pass
+
+class KGraphConv(GraphConv):
+    """ KNN graph convolution
+    The simplest type of graph convolution
+    Just take the mean over each node's edges
+    """
+    def __init__(self, X_in, G, M):
+        super(KGraphConv, self).__init__(X_in, G, M)
+
+    def graph_conv(self):
+        X = self.X; G = self.G; M = self.M;
+        dims = tf.shape(X)
+        mb = dims[0]; n  = dims[1]; d  = dims[2];
+        rdim = [mb,n,M,d]
+        conv = tf.reduce_mean(tf.reshape(tf.gather_nd(X, G), rdim), axis=2)
+        return conv
+
+
+
+class Layer:
+    """ Layers wrap functions (layers are functions too...)
+    What do layers need?
+      - Variables (weights, biases)
+      - a layer index, to retrieve said Variables
+        - Here we can probably use tf.get_variable within scope
+      - a variable scope, for all the above
+      - Data:
+        - input data: typically activations and an adjacency graph
+    So:
+      - Placeholders?
+    """
+    def __init__(self, h_input, adjacency):
+        self.H = h_input
+        self.A = adjacency
+
+class ShiftInvariantLayer(Layer):
+    def __init__(self,):
+
+class Network:
+    """ Network wraps all layer ops (activations)
+    ASSUME PLACEHOLDERS, can still feed as usual
+    """
+    def __init__(self, ):
 
 
 

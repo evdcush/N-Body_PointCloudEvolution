@@ -35,9 +35,10 @@ from mpl_toolkits.mplot3d import Axes3D
 #=============================================================================
 # Utility classes
 #=============================================================================
-class AttrDict(dict):
+class AttrDict(dict): # just a dict mutated/accessed by attribute instead index
     __getattr__ = dict.__getitem__
     __setattr__ = dict.__setitem__
+
 
 
 #=============================================================================
@@ -361,59 +362,6 @@ def restore_parameters(saver, sess, save_dir):
     print('Restored trained model parameters from {}'.format(save_dir))
 
 
-#------------------------------------------------------------------------------
-# Save/Restore utils interface class
-#------------------------------------------------------------------------------
-class TrainSaver:
-    """ TrainSaver wraps tf.train.Saver() for session,
-        and interfaces all essential save/restore utilities
-    """
-    def __init__(self, mname, num_iters, always_write_meta=False, restore=False):
-        # Training vars
-        #self.saver = tf.train.Saver() # must be done AFTER sess.run(tf.global_variables_initializer())
-        self.model_name = mname
-        self.num_iters = num_iters
-        self.always_write_meta = always_write_meta
-        self.restore = restore
-
-        # Paths
-        self.model_path  = MODEL_SAVE_PATH.format(mname)
-        self.result_path = RESULTS_SAVE_PATH.format(mname)
-        self.file_path   = FILE_SAVE_PATH.format(mname)
-        self.make_model_dirs()
-
-    def initialize_saver(self):
-        self.saver = tf.train.Saver()
-
-    def make_model_dirs(self,):
-        paths = [self.model_path, self.result_path, self.file_path]
-        make_dirs(paths)
-
-    # ==== Restoring
-    def restore_model_parameters(self, sess):
-        restore_parameters(self.saver, sess, self.model_path)
-
-    # ==== Saving
-    def save_model_files(self,):
-        path = self.file_path
-        save_files(path)
-
-    def save_model_error(self, error, save_path=None, training=False):
-        if save_path is None:
-            save_path = self.result_path
-        save_error(error, save_path, training)
-
-    def save_model_cube(self, cube, rs, save_path=None, ground_truth=False):
-        if save_path is None:
-            save_path = self.result_path
-        save_cube(cube, rs, save_path, ground_truth)
-
-    def save_model_params(self, session, cur_iter):
-        is_final_step = cur_iter == self.num_iters
-        wr_meta = True if is_final_step else self.always_write_meta
-        save_params(self.saver, session, cur_iter, self.model_path, wr_meta)
-
-
 
 #=============================================================================
 # Simulation dataset read/load utilities
@@ -447,6 +395,7 @@ def read_simulation_binaries(file_list, n_P=32):
     dataset = np.array(dataset).reshape([len(file_list),num_particles,6])
     return dataset
 
+
 # Interface for binary read func
 # ========================================
 def load_simulation_cube_binary(redshift, data_path=DATA_PATH_BINARIES):
@@ -457,7 +406,6 @@ def load_simulation_cube_binary(redshift, data_path=DATA_PATH_BINARIES):
     glob_paths = glob.glob(data_path.format(redshift))
     X = read_sim(glob_paths).astype(np.float32)
     return X
-
 
 
 #------------------------------------------------------------------------------
@@ -638,3 +586,83 @@ def print_median_validation_loss(rs, err, sc_err=None):
         sc_err_median = np.median(sc_err)
         print('# SCALED LOSS:')
         print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, sc_err_median))
+
+
+
+#=============================================================================
+# Model utility classes
+#=============================================================================
+#------------------------------------------------------------------------------
+# Save/Restore utils interface class
+#------------------------------------------------------------------------------
+class TrainSaver:
+    """ TrainSaver wraps tf.train.Saver() for session,
+        and interfaces all essential save/restore utilities
+    """
+    def __init__(self, mname, num_iters, always_write_meta=False, restore=False):
+        # Training vars
+        #self.saver = tf.train.Saver() # must be done AFTER sess.run(tf.global_variables_initializer())
+        self.model_name = mname
+        self.num_iters = num_iters
+        self.always_write_meta = always_write_meta
+        self.restore = restore
+
+        # Paths
+        self.model_path  = MODEL_SAVE_PATH.format(mname)
+        self.result_path = RESULTS_SAVE_PATH.format(mname)
+        self.file_path   = FILE_SAVE_PATH.format(mname)
+        self.make_model_dirs()
+
+    def initialize_saver(self):
+        self.saver = tf.train.Saver()
+
+    def make_model_dirs(self,):
+        paths = [self.model_path, self.result_path, self.file_path]
+        make_dirs(paths)
+
+    # ==== Restoring
+    def restore_model_parameters(self, sess):
+        restore_parameters(self.saver, sess, self.model_path)
+
+    # ==== Saving
+    def save_model_files(self,):
+        path = self.file_path
+        save_files(path)
+
+    def save_model_error(self, error, save_path=None, training=False):
+        if save_path is None:
+            save_path = self.result_path
+        save_error(error, save_path, training)
+
+    def save_model_cube(self, cube, rs, save_path=None, ground_truth=False):
+        if save_path is None:
+            save_path = self.result_path
+        save_cube(cube, rs, save_path, ground_truth)
+
+    def save_model_params(self, session, cur_iter):
+        is_final_step = cur_iter == self.num_iters
+        wr_meta = True if is_final_step else self.always_write_meta
+        save_params(self.saver, session, cur_iter, self.model_path, wr_meta)
+
+
+#------------------------------------------------------------------------------
+# Model function args
+#------------------------------------------------------------------------------
+class ModelFuncArgs():
+    def __init__(self, num_layers, var_scope, dims=None, activation_func=tf.nn.relu):
+        self.num_layers = num_layers
+        self.var_scope = var_scope
+        self.dims = dims
+        self.activation_func = activation_func
+
+    def __call__(self):
+        # return the only two things EVERY model will have
+        return self.num_layers, self.var_scop
+
+
+class Trainer():
+    pass
+
+class Model():
+    pass
+

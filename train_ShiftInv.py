@@ -52,11 +52,8 @@ X = None # reduce memory overhead
 #=============================================================================
 # Model features
 # ----------------
-#model_type = pargs['model_type'] # 0: set, 1: graph
-#model_vars = utils.NBODY_MODELS[model_type]
-var_timestep = False
-#learning_rate = LEARNING_RATE # 0.01
-learning_rate = 0.001
+learning_rate = LEARNING_RATE # 0.01
+#learning_rate = 0.001
 
 # Network depth and channel sizes
 # ----------------
@@ -90,23 +87,12 @@ else:
 train_saver = utils.TrainSaver(model_name, num_iters, always_write_meta=True, restore=restore)
 zX = redshift_steps[0]  # starting redshift
 zY = redshift_steps[-1] # target redshift
-#model_name = utils.get_zuni_model_name(model_type, zX, zY, pargs['save_prefix'])
-#paths = utils.make_save_dirs(pargs['model_dir'], model_name)
-#model_path, loss_path, cube_path = paths
 
-'''
-restore_model_parameters(self, sess):
-save_model_files(self):
-save_model_cube(self, cube, rs, save_path=self.result_path, ground_truth=False):
-save_model_error(self, error, save_path=self.result_path, training=False):
-save_model_params(self, session, cur_iter):
-'''
 
 # save test data
 train_saver.save_model_cube(X_test, redshift_steps, ground_truth=True)
 train_saver.save_model_files()
-#utils.save_test_cube(X_test, cube_path, (zX, zY), prediction=False)
-#utils.save_pyfiles(model_path)
+
 
 
 #=============================================================================
@@ -114,22 +100,8 @@ train_saver.save_model_files()
 #=============================================================================
 # Init model params
 # ----------------
-'''
-def initialize_model_params(layer_type, channels, scope=VAR_SCOPE,
-                            seed=PARAMS_SEED, restore=False, **kwargs)
-'''
-#vscope = utils.VAR_SCOPE
 vscope = utils.VARIABLE_SCOPE.format(zX, zY)
 utils.initialize_model_params(ltype, channels, vscope, restore=restore)
-
-#seed = pargs['seed']
-#if seed != PARAMS_SEED:
-#    print('\n\n\n USING DIFFERENT RANDOM SEED: {}\n\n\n'.format(seed))
-#tf.set_random_seed(seed)
-#utils.init_ShiftInv_params(channels, vscope, restore=restore)
-#with tf.variable_scope(vscope):
-#    utils.init_coeff_single(restore=restore)
-#    #utils.init_coeff_agg(num_rs_layers, restore=restore)
 
 
 # CUBE DATA
@@ -170,16 +142,6 @@ X_pred = nn.ShiftInv_model_func(X_input, COO_feats, model_specs)
 
 # Loss
 # ----------------
-# Training error and Optimizer
-# https://www.tensorflow.org/api_docs/python/tf/contrib/opt/LazyAdamOptimizer
-'''
-if pargs['variable'] != 0:
-    optimizer = tf.contrib.opt.LazyAdamOptimizer(learning_rate)
-    print('\nLazy Adam\n')
-else:
-    optimizer = tf.train.AdamOptimizer(learning_rate)
-    print('\nregular Adam\n')
-'''
 optimizer = tf.train.AdamOptimizer(learning_rate)
 
 error = nn.pbc_loss(X_pred, X_truth, vel=False)
@@ -201,9 +163,6 @@ gpu_frac = 0.9
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
-
-#run_options = tf.RunOptions(report_tensor_allocations_upon_oom=True)
-#run_opts = config_pb2.RunOptions(report_tensor_allocations_upon_oom=True)
 
 # initialize variables
 sess.run(tf.global_variables_initializer())
