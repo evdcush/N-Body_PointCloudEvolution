@@ -55,7 +55,8 @@ X = None # reduce memory overhead
 #model_type = pargs['model_type'] # 0: set, 1: graph
 #model_vars = utils.NBODY_MODELS[model_type]
 var_timestep = False
-learning_rate = LEARNING_RATE # 0.01
+#learning_rate = LEARNING_RATE # 0.01
+learning_rate = 0.001
 
 # Network depth and channel sizes
 # ----------------
@@ -147,7 +148,10 @@ COO_feats = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
 #=============================================================================
 # helper for kneighbor search
 def get_list_csr(h_in):
-    return nn.get_kneighbor_list(h_in, M, inc_self=False, )#pbc=True)
+    return nn.get_kneighbor_list(h_in, M, inc_self=False)
+    # thresh 0.03 on (0,19) about 6.1 % of total num of particles for one samp
+    #return nn.get_pbc_kneighbors_csr(h_in, M, boundary_threshold=0.05, include_self=False)
+
 
 
 # Model static func args

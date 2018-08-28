@@ -11,114 +11,121 @@ from utils import VARIABLE_SCOPE as VAR_SCOPE
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
 
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-# TF-related ops
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
 '''
-NEW STANDARD FOR MODEL/NETWORK FUNC ARGS:
-Instead of always passing num_layers, var_scope, activation, dims
- - pass dict of the static values, and data as only args
- - maybe make get funcs for each model type?
+TODO:
+ - think of bette way to standardize model and network func arguments, so
+   that layers and networks can be swapped and interfaced more simply
+   - Solutions:
+     - wrapper funcs
+     - higher level interface funcs
+     - a model func class? or model func args class, or dict
+ - maybe make a trainer?
+
+ - TEST:
+   - any difference between doing the edges/nodes preprocessing in TF sess
+     or before feeding (does it affect backprop)
+   - Does wrapping functions in a class affect performance (backprop)
+     - most of the tf code I've seen is purely functional
 '''
 class ModelFuncArgs():
-    def __init__(self, num_layers, var_scope, dims=None, vcoeff=False,
-                 add_skip=False, activation_func=tf.nn.relu):
+    def __init__(self, num_layers, var_scope, dims=None, activation_func=tf.nn.relu):
         self.num_layers = num_layers
         self.var_scope = var_scope
-        self.dims = dims # LEN/ORDER IS ARBITRARY, whatever individual model funcs expect
-        self.vcoeff = vcoeff
+        self.dims = dims
         self.add_skip = add_skip
         self.activation_func = activation_func
-
-    def output_skips(self, H_out):
-        """ EXPERIMENTAL, don't know how gradient flow affected by funcs wrapped
-        in class methods
-        TODO
-        """
-        assert False
-
-    def get_ShiftInv_specs(self,):
-        #specs = [self.num_layers, self.var_scope]
-        assert False
 
     def __call__(self):
         # return the only two things EVERY model will have
         return self.num_layers, self.var_scope
-#=============================================================================
-# ROTATION INVARIANT NETWORK/LAYER OPS
-#=============================================================================
+
+#==============================================================================
+# Layer ops
+#==============================================================================
 #------------------------------------------------------------------------------
-# ROTATION invariant layer ops
+# Base nn functions
 #------------------------------------------------------------------------------
-def pool_rot_graph(X, idx, broadcast):
+def left_mult(h, W, subscripts=None): # return tf.einsum("ck,kq->cq", h, W)
+    """ batch matmul for set-based data
     """
+    return tf.einsum('ijl,lq->ijq', h, W)
+
+#==== set ops
+def set_layer(h, layer_idx, var_scope, *args):
+    """ Set layer
+    *args just for convenience, set_layer has no additional
     Args:
-        X (tensor): has shape (c, k), row-major order
-        idx (numpy array): has shape (c),
-            must be row idx of non-zero entries to pool over columns
-            must be column idx of non-zero entries to pool over rows
-        N (int): number of segments (number of particles in this case)
-        b (int): batch size
-        broadcast (bool): if True, after pooling re-broadcast to original shape
-
-    Returns:
-        tensor of shape (c, k) if broadcast, else (b*N, k)
+        h: data tensor, (mb_size, N, k_in)
+        layer_idx (int): layer index for params
+        var_scope (str): variable scope for get variables from graph
+    RETURNS: (mb_size, N, k_out)
     """
-    num_segs = tf.reduce_max(idx) + 1
-    X_pooled = tf.unsorted_segment_mean(X, idx, num_segs)
-    if broadcast:
-        X_pooled = tf.gather_nd(X_pooled, tf.expand_dims(idx, axis=2))
-    else:
-        X_pooled = tf.reshape(X_pooled, [tf.shape(X)[0], -1, tf.shape(X)[2]])
-    return X_pooled
+    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
+    mu = tf.reduce_mean(h, axis=1, keepdims=True)
+    h_out = left_mult(h - mu, W) + B
+    return h_out
 
+#==== graph ops
 
-def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
-    """
+# Kgraph ops
+
+def kgraph_conv(h, adj, K):
+    """ Graph convolution op for KNN-based adjacency lists
+    build graph tensor with gather_nd, and take
+    mean on KNN dim: mean((mb_size, N, K, k_in), axis=2)
     Args:
-        H_in (tensor): (b, e, k)
-            b=batch_size
-            e=N*(M-1)*(M-2), num of edges in 3D adjacency (diags removed), N=num_part, M=num_neigh
-            k=channel size
-        segID_3D: (b, 7, e) segment ids for pooling, there are 7:
-            col-depth, row-depth, row-col, depth, col, row, all
-        W: 8 (or 6) set of weights for pooling
-        B: bias
-    Returns:
-        H_out (tensor): (c, q), or (b, N, q) if is_last
+        h: data tensor, (mb_size, N, k_in)
+        adj: adjacency index list, for gather_nd (*, 2)
+        K (int): num nearest neighbors
     """
-    # Prepare data and parameters
-    # ========================================
-    # split inputs
-    b, N = bN
-    #row_idx, col_idx, cube_idx = tf.split(COO_feats, 3, axis=0)
-    row_idx  = COO_feats[0]
-    col_idx  = COO_feats[1]
-    cube_idx = COO_feats[2]
+    dims = tf.shape(h)
+    mb = dims[0]; n  = dims[1]; d  = dims[2];
+    rdim = [mb,n,K,d]
+    nn_graph = tf.reduce_mean(tf.reshape(tf.gather_nd(h, adj), rdim), axis=2)
+    return nn_graph
 
-    # Helper funcs
-    # ========================================
-    def _left_mult(h, W_name):
-        W = utils.get_scoped_RotInv_weight(layer_idx, W_name)
-        return tf.einsum("ijk,kq->ijq", h, W)
+def kgraph_layer(h, layer_idx, var_scope, alist, K):
+    """ Graph layer for KNN
 
-    # Layer forward pass
-    # ========================================
-    H_out = _left_mult(H_in, SEGNAMES_3D[0])
-    for idx, seg_name in enumerate(SEGNAMES_3D[1:]):
-        H_pooled = pool_rot_graph(H_in, segID_3D[:, idx], True)
-        H_out = H_out + _left_mult(H_pooled, seg_name)
+    Args:
+        h: data tensor, (mb_size, N, k_in)
+        layer_idx (int): layer index for params
+        var_scope (str): variable scope for get variables from graph
+        alist: adjacency index list tensor (*, 2), of tf.int32
+        K (int): number of nearest neighbors in KNN
+    RETURNS: (mb_size, N, k_out)
+    """
+    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
+    graph_mu = kgraph_conv(h, alist, K)
 
-    # Output
-    # ========================================
-    bias = tf.get_variable(utils.BIAS_TAG.format(layer_idx))
-    H_out = H_out + bias
-    if is_last: # pool over depth dim
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        H_out = pool_rot_graph(H_out, segID_3D[:,3], False)
-    return H_out
+    h_out = left_mult(h - graph_mu, W) + B
+    return h_out
+
+# Radius graph ops
+
+def rad_graph_conv(h, spT):
+    """ graph conv for radius neighbors graph
+    NB: the sparse tensor for the radius graph has ALREADY been processed
+    such that the mean pooling is performed in the matmul
+
+    Args:
+        h: tensor of shape (b, N, D)
+        spT: sparse_tensor of shape (b*N, b*N)
+    """
+    dims = tf.shape(h)
+    h_flat = tf.reshape(h, (-1, dims[-1]))
+    rad_conv = tf.reshape(tf.sparse_tensor_dense_matmul(spT, h_flat), dims)
+    return rad_conv
+
+def rad_graph_layer(h, layer_idx, var_scope, spT):
+    #W, Wg = utils.get_graph_layer_vars(layer_idx, var_scope=var_scope)
+    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
+    graph_mu = rad_graph_conv(h, spT)
+
+    h_out = left_mult(h - graph_mu, W) + B
+    return h_out
+
+
 
 
 
@@ -265,47 +272,13 @@ def ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, a
             H = activation(H)
     return H
 
-# ==== Network fn
-def ShiftInv_network_func_rs(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, activation, redshift):
-    # Just concats the rs at every layer except output
 
-    # Input layer
-    # ========================================
-    H_in = include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=redshift)
-    H = activation(ShiftInv_layer(H_in, COO_feats, dims, 0))
-    H = tf.concat([H, redshift], axis=-1) # RS ccat'd
-
-    # Hidden layers
-    # ========================================
-    for layer_idx in range(1, num_layers):
-        is_last = layer_idx == num_layers - 1
-        H = ShiftInv_layer(H, COO_feats, dims, layer_idx, is_last=is_last)
-        if not is_last:
-            H = activation(H)
-            H = tf.concat([H, redshift], axis=-1) # RS ccat'd
-    return H
 
 #------------------------------------------------------------------------------
 # Shift invariant model funcs
 #------------------------------------------------------------------------------
 
-# ==== Model fn
-def ShiftInv_model_func_split_graph(X_in_edges, X_in_nodes, COO_feats, model_specs, redshift=None):
 
-    # Get relevant model specs
-    # ========================================
-    var_scope  = model_specs.var_scope
-    num_layers = model_specs.num_layers
-    use_vcoeff = model_specs.vcoeff
-    activation = model_specs.activation_func # default tf.nn.relu
-    dims = model_specs.dims
-
-    # Network forward
-    # ========================================
-    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        H_out = ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, activation, redshift)
-
-    return H_out
 
 
 
@@ -328,7 +301,7 @@ def ShiftInv_model_func(X_in, COO_feats, model_specs, redshift=None):
     # ========================================
     edges, nodes = get_input_features_TF(X_in, COO_feats, dims)
 
-    # Network forward V1.
+    # Network forward V
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         # network output
@@ -347,188 +320,15 @@ def ShiftInv_model_func(X_in, COO_feats, model_specs, redshift=None):
 
         return get_readout(H_out)
 
-# ==== single fn
-def ShiftInv_model_func_timestep_ACCEL(X_in, COO_feats, model_specs, scalar_tag, redshift=None):
-    """
-    Args:
-        X_in (tensor): (b, N, 6)
-        COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
-        redshift (tensor): (b*N*M, 1) redshift broadcasted
-    """
-    # Get relevant model specs
-    # ========================================
-    var_scope  = model_specs.var_scope
-    num_layers = model_specs.num_layers
-    activation = model_specs.activation_func # default tf.nn.relu
-    dims = model_specs.dims
-
-    # Get graph inputs
-    # ========================================
-    edges, nodes = get_input_features_TF(X_in, COO_feats, dims)
-
-    # Network forward V1.
-    # ========================================
-    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        # network output
-        A = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
-
-        # Scaling and skip connections
-        #loc_scalar = utils.get_scoped_coeff(scalar_tag)
-        #loc_scalar, vel_scalar = utils.get_scoped_coeff_multi2(scalar_tag)
-        T1, T2 = utils.get_scoped_coeff_multi2(scalar_tag)
-        num_feats = net_out.get_shape().as_list()[-1]
-
-        #H_out = net_out[...,:3]*loc_scalar + X_in[...,:3] + X_in[...,3:]*vel_scalar
-        #H_out = A
-        H_vel = X_in[...,3:] + A
-
-        # Concat velocity predictions
-        if net_out.get_shape().as_list()[-1] > 3:
-            H_vel = net_out[...,3:] * vel_scalar + X_in[...,3:] # Maybe another scalar here for velocity
-            #H_vel = net_out[...,3:]*vel_scalar + X_in[...,3:] # Maybe another scalar here for velocity
-            H_out = tf.concat([H_out, H_vel], axis=-1)
-
-        return get_readout(H_out)
 
 
-# ==== single fn
-#def vel_network_func(X_in, activation):
 
-def vel_single_model_func(X_in, model_specs, coeff_idx):
-    """
-    Args:
-        X_in (tensor): (b, N, 6)
-    """
-    # Get relevant model specs
-    # ========================================
-    var_scope  = model_specs.var_scope
-
-    # Network forward
-    # ========================================
-    with tf.variable_scope(var_scope, reuse=True):
-        #t1 = utils.get_scoped_coeff_multi(coeff_idx)
-        t0, t1 = utils.get_scoped_coeff_multi2(coeff_idx)
-        x_in_loc = X_in[...,:3]
-        x_in_vel = X_in[...,3:]
-
-        x_out_loc = x_in_loc + x_in_vel * t1
-        x_out_vel = x_in_vel * t0
-        #x_vel = X_in[...,3:] * t1
-        #x_loc = X_in[...,:3]
-        X_out = tf.concat([x_out_loc, x_out_vel], axis=-1)
-        #X_out = x_loc * t0
-    return get_readout(X_out)
-
-# ==== Multi-A Model fn
-def ShiftInv_multi_model_func(X_in, COO_feats, redshifts, model_specs, use_coeff=False):
-    """
-    Args:
-        X_in (tensor): (b, N, 6)
-        COO_feats (tensor): (num_rs, 3, b*N*M), segment ids for rows, cols, all
-    """
-    # Get relevant model specs
-    # ========================================
-    num_rs = len(redshifts) - 1
-    b, N, M = model_specs.dims # (b, N, M)
-
-    # Helpers
-    # ========================================
-    def _ShiftInv_fwd(h_in, rs_idx):
-        coo = COO_feats[rs_idx]
-        rs = tf.fill([b*N*M, 1], redshifts[rs_idx])
-        cidx = rs_idx if use_coeff else None
-        return ShiftInv_single_model_func_v1(h_in, coo, model_specs, rs, cidx)
-
-    # Network forward
-    # ======================================== # don't think you need to do var scope here
-    h_pred = _ShiftInv_fwd(X_in, 0)
-    for i in range(1, num_rs):
-        h_pred = _ShiftInv_fwd(h_pred, i)
-    return h_pred
 
 
 #=============================================================================
 # LAYER OPS
 #=============================================================================
-def left_mult(h, W):
-    """ batch matmul for set-based data
-    """
-    return tf.einsum('ijl,lq->ijq', h, W)
 
-#==== set ops
-def set_layer(h, layer_idx, var_scope, *args):
-    """ Set layer
-    *args just for convenience, set_layer has no additional
-    Args:
-        h: data tensor, (mb_size, N, k_in)
-        layer_idx (int): layer index for params
-        var_scope (str): variable scope for get variables from graph
-    RETURNS: (mb_size, N, k_out)
-    """
-    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
-    mu = tf.reduce_mean(h, axis=1, keepdims=True)
-    h_out = left_mult(h - mu, W) + B
-    return h_out
-
-#==== graph ops
-
-# Kgraph ops
-
-def kgraph_conv(h, adj, K):
-    """ Graph convolution op for KNN-based adjacency lists
-    build graph tensor with gather_nd, and take
-    mean on KNN dim: mean((mb_size, N, K, k_in), axis=2)
-    Args:
-        h: data tensor, (mb_size, N, k_in)
-        adj: adjacency index list, for gather_nd (*, 2)
-        K (int): num nearest neighbors
-    """
-    dims = tf.shape(h)
-    mb = dims[0]; n  = dims[1]; d  = dims[2];
-    rdim = [mb,n,K,d]
-    nn_graph = tf.reduce_mean(tf.reshape(tf.gather_nd(h, adj), rdim), axis=2)
-    return nn_graph
-
-def kgraph_layer(h, layer_idx, var_scope, alist, K):
-    """ Graph layer for KNN
-
-    Args:
-        h: data tensor, (mb_size, N, k_in)
-        layer_idx (int): layer index for params
-        var_scope (str): variable scope for get variables from graph
-        alist: adjacency index list tensor (*, 2), of tf.int32
-        K (int): number of nearest neighbors in KNN
-    RETURNS: (mb_size, N, k_out)
-    """
-    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
-    graph_mu = kgraph_conv(h, alist, K)
-
-    h_out = left_mult(h - graph_mu, W) + B
-    return h_out
-
-# Radius graph ops
-
-def rad_graph_conv(h, spT):
-    """ graph conv for radius neighbors graph
-    NB: the sparse tensor for the radius graph has ALREADY been processed
-    such that the mean pooling is performed in the matmul
-
-    Args:
-        h: tensor of shape (b, N, D)
-        spT: sparse_tensor of shape (b*N, b*N)
-    """
-    dims = tf.shape(h)
-    h_flat = tf.reshape(h, (-1, dims[-1]))
-    rad_conv = tf.reshape(tf.sparse_tensor_dense_matmul(spT, h_flat), dims)
-    return rad_conv
-
-def rad_graph_layer(h, layer_idx, var_scope, spT):
-    #W, Wg = utils.get_graph_layer_vars(layer_idx, var_scope=var_scope)
-    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
-    graph_mu = rad_graph_conv(h, spT)
-
-    h_out = left_mult(h - graph_mu, W) + B
-    return h_out
 
 #=============================================================================
 # Network and model functions
