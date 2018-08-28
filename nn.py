@@ -20,6 +20,7 @@ TODO:
      - higher level interface funcs
      - a model func class? or model func args class, or dict
  - maybe make a trainer?
+ - segment_mean stuff no longer needs explicit shape!
 
  - TEST:
    - any difference between doing the edges/nodes preprocessing in TF sess
@@ -27,12 +28,16 @@ TODO:
    - Does wrapping functions in a class affect performance (backprop)
      - most of the tf code I've seen is purely functional
 '''
+class AttrDict(dict):
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+
+
 class ModelFuncArgs():
     def __init__(self, num_layers, var_scope, dims=None, activation_func=tf.nn.relu):
         self.num_layers = num_layers
         self.var_scope = var_scope
         self.dims = dims
-        self.add_skip = add_skip
         self.activation_func = activation_func
 
     def __call__(self):
@@ -45,10 +50,22 @@ class ModelFuncArgs():
 #------------------------------------------------------------------------------
 # Base nn functions
 #------------------------------------------------------------------------------
-def left_mult(h, W, subscripts=None): # return tf.einsum("ck,kq->cq", h, W)
+def left_mult(h, W, subscript=None):
     """ batch matmul for set-based data
     """
-    return tf.einsum('ijl,lq->ijq', h, W)
+    if subscript is None:
+        ndims = len(h.shape)
+        lhs = 'ij'[:ndims-1] # h at most 3D in our usage
+        subscript = '{0}k,kq->{0}q'.format(lhs)
+    return tf.einsum(subscript, h, W)
+
+#------------------------------------------------------------------------------
+# Base layer ops
+#------------------------------------------------------------------------------
+
+
+# Data write paths
+# ========================================
 
 #==== set ops
 def set_layer(h, layer_idx, var_scope, *args):
@@ -306,6 +323,7 @@ def ShiftInv_model_func(X_in, COO_feats, model_specs, redshift=None):
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         # network output
         net_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
         # Scaling and skip connections
         loc_scalar, vel_scalar = utils.get_scalars()

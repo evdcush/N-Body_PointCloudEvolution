@@ -140,7 +140,8 @@ X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
 # NEIGHBOR GRAPH DATA
 # ----------------
 # these shapes must be concrete for unsorted_segment_mean
-COO_feats = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
+#COO_feats = tf.placeholder(tf.int32, shape=(3, batch_size*N*M,))
+COO_feats = tf.placeholder(tf.int32, shape=(3, None,))
 
 
 #=============================================================================

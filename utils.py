@@ -32,6 +32,13 @@ from mpl_toolkits.mplot3d import Axes3D
  - Have density-based graph model as another option, like layer-type, for models
    instead of just KNN
 '''
+#=============================================================================
+# Utility classes
+#=============================================================================
+class AttrDict(dict):
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+
 
 #=============================================================================
 # Globals
@@ -304,8 +311,9 @@ def get_model_name(mtype, ltype, rs_idx, model_name=MODEL_BASENAME, suffix=''):
 
     # ==== Format model name
     model_name = model_name.format(layer_tag, mtype, rs_tag) + suff
-
     return model_name
+
+
 
 #------------------------------------------------------------------------------
 # Standalone save/restore util functions
