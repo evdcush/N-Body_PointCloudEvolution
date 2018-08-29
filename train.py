@@ -2,18 +2,20 @@ import os, code, sys, time, argparse
 import numpy as np
 from sklearn.neighbors import kneighbors_graph
 import tensorflow as tf
-#from tensorflow.core.protobuf import config_pb2
 import nn
 import utils
 from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, NUM_VAL_SAMPLES, MODEL_BASENAME
 
+""" TODO:
 
+Would-be-nice:
+ - have some other script handle the parse-args, instead of polluting here
+"""
+'''
 parser = argparse.ArgumentParser()
 # argparse not handle bools well so 0,1 used instead
 parser.add_argument('--seed', '-s', default=PARAMS_SEED,     type=int, help='initial parameter seed')
 parser.add_argument('--redshifts', '-z', default=[18,19], nargs='+', type=int, help='redshift tuple, predict z[1] from z[0]')
-parser.add_argument('--particles', '-p', default=32,         type=int,  help='number of particles in dataset, either 16**3 or 32**3')
-#parser.add_argument('--model_type','-m', default=1,          type=int,  help='model type')
 parser.add_argument('--graph_var', '-k', default=14,         type=int, help='search parameter for graph model')
 parser.add_argument('--restore',   '-r', default=0,          type=int,  help='resume training from serialized params')
 parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
@@ -21,11 +23,17 @@ parser.add_argument('--batch_size','-b', default=8,          type=int,  help='tr
 parser.add_argument('--model_name', '-m', default=MODEL_BASENAME, type=str,  help='directory where model parameters are saved')
 parser.add_argument('--save_suffix','-n', default='',        type=str,  help='model name suffix')
 parser.add_argument('--variable',   '-q', default=0,  type=int, help='multi-purpose variable argument')
-parser.add_argument('--variable2',  '-c', default=0,          type=int,  help='multi-purpose variable argument2')
+parser.add_argument('--ltype',  '-c', default='shift-inv', type=str,  help='multi-purpose variable argument2')
 pargs = vars(parser.parse_args())
+'''
+parser = utils.Parser()
+args = parser.parse_args()
 start_time = time.time()
 
+#print('bool var: {}, type = {}'.format(pargs['variable'], type(pargs['variable'])))
+code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
+'''
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 #=============================================================================
 # NBODY Data
@@ -317,3 +325,4 @@ train_saver.save_model_cube(test_predictions, (zX, zY), ground_truth=False)
 
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+'''

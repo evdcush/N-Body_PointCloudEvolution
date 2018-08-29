@@ -1,4 +1,4 @@
-import os, glob, struct, shutil, code, sys, time
+import os, glob, struct, shutil, code, sys, time, argparse
 import numpy as np
 import tensorflow as tf
 import matplotlib
@@ -661,4 +661,56 @@ class Trainer():
 
 class Model():
     pass
+
+
+
+#=============================================================================
+# New utils made for train
+#=============================================================================
+
+#parser = argparse.ArgumentParser()
+
+class Parser:
+    """ Wrapper for argparse parser
+    """
+    def __init__(self):
+        self.p = argparse.ArgumentParser()
+        self.add_parse_args()
+
+    def add_parse_args(self,):
+        add = self.p.add_argument
+
+        # ==== Data variables
+        add('--seed',       '-s', type=int, default=PARAMS_SEED,)
+        add('--redshifts',  '-z', type=int, default=[18,19], nargs='+',)
+        add('--model_name', '-m', type=str, default=MODEL_BASENAME,)
+        add('--save_suffix','-n', type=str, default='')
+
+        # ==== Model parameter variables
+        add('--layer_type', '-l', type=str, default='shift-inv')
+        add('--graph_var',  '-k', type=int, default=14,) # type might be float for rad
+        add('--channels',   '-c', type=int, default=CHANNELS_SHALLOW, nargs='+')
+        add('--var_scope',  '-v', type=str, default=VARIABLE_SCOPE)
+        add('--learn_rate', '-a', type=float, default=LEARNING_RATE)
+
+        # ==== Training variables
+        add('--num_test',   '-t', type=int, default=200)
+        add('--num_iters',  '-i', type=int, default=1000)
+        add('--batch_size', '-b', type=int, default=4)
+        add('--restore',    '-r', type=int, default=0,) # bool
+        add('--variable',   '-q', type=int, default=0)  # bool, multi-purpose
+
+    def parse_args(self):
+        parsed = AttrDict(vars(self.p.parse_args()))
+        self.args = parsed
+        return parsed
+
+    def print_args(self):
+        print('SESSION CONFIG\n{}'.format('='*79))
+        margin = len(max(self.args, key=len)) + 1
+        for k,v in self.args.items():
+            print('{:>{margin}}: {}'.format(k,v, margin=margin))
+
+
+
 
