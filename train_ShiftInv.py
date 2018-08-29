@@ -109,6 +109,8 @@ utils.initialize_model_params(ltype, channels, vscope, restore=restore)
 # ----------------
 X_input = tf.placeholder(tf.float32, shape=(None, N, 6))
 X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
+X_edges = tf.placeholder(tf.float32, shape=(batch_size*N*M,3))
+X_nodes = tf.placeholder(tf.float32, shape=(batch_size*N,3))
 
 
 
@@ -128,6 +130,8 @@ def get_list_csr(h_in):
     # thresh 0.03 on (0,19) about 6.1 % of total num of particles for one samp
     #return nn.get_pbc_kneighbors_csr(h_in, M, boundary_threshold=0.05, include_self=False)
 
+
+
 # Model static func args
 # ----------------
 #model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
@@ -137,12 +141,13 @@ model_specs.num_layers = num_layers
 model_specs.var_scope = vscope
 model_specs.activation_func = tf.nn.relu
 model_specs.dims = dims
+_X_edges, _X_nodes = nn.get_input_features_ShiftInv(X_input, COO_feats, dims)
 
 # Model outputs
 # ----------------
 # Train
 if compute_edges_nodes:
-    X_edges, X_nodes = nn.get_input_features_ShiftInv(X_input, COO_feats, dims)
+    #X_edges, X_nodes = nn.get_input_features_ShiftInv(X_input, COO_feats, dims)
     X_pred = nn.model_func_ShiftInv_preprocess_assumption(X_input, X_edges, X_nodes, COO_feats, model_specs)
 else:
     X_pred = nn.model_func_ShiftInv(X_input, COO_feats, model_specs)
@@ -217,6 +222,11 @@ for step in range(num_iters):
              COO_feats: coo_feats,
              }
 
+    if compute_edges_nodes:
+        edges, nodes = sess.run([_X_edges, _X_nodes], feed_dict=fdict)
+        fdict[X_edges] = edges
+        fdict[X_nodes] = nodes
+
     # Train
     #err = sess.run(error, feed_dict=fdict, options=run_opts)
     train.run(feed_dict=fdict)
@@ -281,6 +291,11 @@ for j in range(num_val_batches):
              X_truth: x_truth,
              COO_feats: coo_feats,
              }
+
+    if compute_edges_nodes:
+        edges, nodes = sess.run([_X_edges, _X_nodes], feed_dict=fdict)
+        fdict[X_edges] = edges
+        fdict[X_nodes] = nodes
 
     # Validation output
     # ----------------
