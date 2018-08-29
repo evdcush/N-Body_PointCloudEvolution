@@ -269,7 +269,7 @@ Assumed to be within the tf.variable_scope of the respective network funcs
 """
 def get_vanilla_layer_vars(layer_idx, **kwargs):
     weight = get_weight(layer_idx)
-    bias = get_bias(layer_idx)
+    bias   = get_bias(layer_idx)
     return weight, bias
 
 
@@ -654,10 +654,6 @@ class ModelFuncArgs():
         self.var_scope = var_scope
         self.dims = dims
         self.activation_func = activation_func
-
-    def __call__(self):
-        # return the only two things EVERY model will have
-        return self.num_layers, self.var_scop
 
 
 class Trainer():

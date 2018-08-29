@@ -63,6 +63,7 @@ channels[-1] = 3
 #channels[-1] = 6
 num_layers = len(channels) - 1
 M = pargs['graph_var']
+compute_edges_nodes = pargs['variable'] != 0
 
 # Training hyperparameters
 # ----------------
@@ -109,6 +110,8 @@ utils.initialize_model_params(ltype, channels, vscope, restore=restore)
 X_input = tf.placeholder(tf.float32, shape=(None, N, 6))
 X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
 
+
+
 # NEIGHBOR GRAPH DATA
 # ----------------
 # these shapes must be concrete for unsorted_segment_mean
@@ -125,19 +128,25 @@ def get_list_csr(h_in):
     # thresh 0.03 on (0,19) about 6.1 % of total num of particles for one samp
     #return nn.get_pbc_kneighbors_csr(h_in, M, boundary_threshold=0.05, include_self=False)
 
-
-
 # Model static func args
 # ----------------
-model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
+#model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
+dims = [batch_size,N,M]
+model_specs = utils.AttrDict()
+model_specs.num_layers = num_layers
+model_specs.var_scope = vscope
+model_specs.activation_func = tf.nn.relu
+model_specs.dims = dims
 
 # Model outputs
 # ----------------
 # Train
-#X_pred = nn.ShiftInv_single_model_func_v1(X_input, COO_feats, model_specs, coeff_idx=0)
+if compute_edges_nodes:
+    X_edges, X_nodes = nn.get_input_features_ShiftInv(X_input, COO_feats, dims)
+    X_pred = nn.model_func_ShiftInv_preprocess_assumption(X_input, X_edges, X_nodes, COO_feats, model_specs)
+else:
+    X_pred = nn.model_func_ShiftInv(X_input, COO_feats, model_specs)
 
-# Static timestep model:
-X_pred = nn.ShiftInv_model_func(X_input, COO_feats, model_specs)
 
 
 # Loss
@@ -287,29 +296,6 @@ for j in range(num_val_batches):
 # END Validation
 # ========================================
 utils.print_median_validation_loss(redshift_steps, test_loss)
-#zx, zy = redshift_steps
-#print('# LOCATION LOSS:')
-#print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, test_median))
-
-
-#MCOEFFTAG = 'coeff_{}'
-#VEL_COEFF_TAG = 'V'
-#t0 = utils.get_var('coeff_{}_{}'.format(0,0))[0]
-#t1 = utils.get_var('coeff_{}_{}'.format(0,1))[0]
-#print(' TIMESTEP, final value: {:.6f}'.format(t1))
-#print('LOCSCALAR, final value: {:.6f}'.format(t0))
-
-
-# save loss and predictions
-#utils.save_loss(loss_path + model_name, test_loss, validation=True)
-#utils.save_loss(loss_path + model_name + 'SC', test_loss_sc, validation=True)
-#utils.save_test_cube(test_predictions, cube_path, (zX, zY), prediction=True)
-
-#restore_model_parameters(self, sess):
-#save_model_files(self):
-#save_model_cube(self, cube, rs, save_path=self.result_path, ground_truth=False):
-#save_model_error(self, error, save_path=self.result_path, training=False):
-#save_model_params(self, session, cur_iter):
 
 train_saver.save_model_error(test_loss)
 train_saver.save_model_cube(test_predictions, (zX, zY), ground_truth=False)

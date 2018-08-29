@@ -28,13 +28,81 @@ TODO:
    - Does wrapping functions in a class affect performance (backprop)
      - most of the tf code I've seen is purely functional
 '''
+#==============================================================================
+# Globals
+#==============================================================================
+SUBSCRIPT_VANILLA  = 'ijk,kq->ijq'
+SUBSCRIPT_SHIFTINV = 'ck,kq->cq'
+
 
 #==============================================================================
-# Layer ops
+# Data processing funcs
+#==============================================================================
+#------------------------------------------------------------------------------
+# Shift invariant ops
+#------------------------------------------------------------------------------
+# Shift invariant nodes
+# ========================================
+def include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=None):
+    """ Broadcast node features to edges for input layer
+    Args:
+        X_in_edges (tensor):   (c, 3), input edge features (relative pos of neighbors)
+        X_in_nodes (tensor): (b*N, 3), input node features (velocities)
+        COO_feats (tensor): (3, c), rows, cols, cube indices (respectively)
+    Returns:
+        X_in_graph (tensor): (c, 9), input with node features broadcasted to edges
+    """
+    # ==== get row, col indices
+    row_idx = COO_feats[0]
+    col_idx = COO_feats[1]
+
+    # ==== get node row, columns
+    node_rows = tf.gather_nd(X_in_nodes, tf.expand_dims(row_idx, axis=1))
+    node_cols = tf.gather_nd(X_in_nodes, tf.expand_dims(col_idx, axis=1))
+
+    # ==== full node, edges graph
+    X_in_graph = tf.concat([X_in_edges, node_rows, node_cols], axis=1) # (c, 9)
+
+    # ==== broadcast redshifts
+    if redshift is not None:
+        X_in_graph = tf.concat([X_in_graph, redshift], axis=1) # (c, 10)
+    return X_in_graph
+
+
+# Shift invariant edges
+# ========================================
+def get_input_features_ShiftInv(X_in, coo, dims):
+    """ get edges and nodes with TF ops
+    TESTED EQUIVALENT TO numpy-BASED FUNC
+
+    get relative distances of each particle from its M neighbors
+    Args:
+        X_in (tensor): (b, N, 6), input data
+        coo (tensor): (3,b*N*M)
+    """
+    # ==== split input
+    b, N, M = dims
+    X = tf.reshape(X_in, (-1, 6))
+    edges = X[...,:3] # loc
+    nodes = X[...,3:] # vel
+
+    # ==== get edges (neighbors)
+    cols = coo[1]
+    edges = tf.reshape(tf.gather(edges, cols), [b, N, M, 3])
+    # weight edges
+    edges = edges - tf.expand_dims(X_in[...,:3], axis=2) # (b, N, M, 3) - (b, N, 1, 3)
+    return tf.reshape(edges, [-1, 3]), nodes
+
+
+
+#==============================================================================
+# NN functions
 #==============================================================================
 #------------------------------------------------------------------------------
 # Base nn functions
 #------------------------------------------------------------------------------
+# Weight transformations
+# ========================================
 def left_mult(h, W, subscript=None):
     """ batch matmul for set-based data
     """
@@ -45,32 +113,10 @@ def left_mult(h, W, subscript=None):
     return tf.einsum(subscript, h, W)
 
 #------------------------------------------------------------------------------
-# Base layer ops
+# Graph convolutions
 #------------------------------------------------------------------------------
-
-
-# Data write paths
+# KNN graph conv
 # ========================================
-
-#==== set ops
-def set_layer(h, layer_idx, var_scope, *args):
-    """ Set layer
-    *args just for convenience, set_layer has no additional
-    Args:
-        h: data tensor, (mb_size, N, k_in)
-        layer_idx (int): layer index for params
-        var_scope (str): variable scope for get variables from graph
-    RETURNS: (mb_size, N, k_out)
-    """
-    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
-    mu = tf.reduce_mean(h, axis=1, keepdims=True)
-    h_out = left_mult(h - mu, W) + B
-    return h_out
-
-#==== graph ops
-
-# Kgraph ops
-
 def kgraph_conv(h, adj, K):
     """ Graph convolution op for KNN-based adjacency lists
     build graph tensor with gather_nd, and take
@@ -83,29 +129,13 @@ def kgraph_conv(h, adj, K):
     dims = tf.shape(h)
     mb = dims[0]; n  = dims[1]; d  = dims[2];
     rdim = [mb,n,K,d]
-    nn_graph = tf.reduce_mean(tf.reshape(tf.gather_nd(h, adj), rdim), axis=2)
-    return nn_graph
+    conv = tf.reduce_mean(tf.reshape(tf.gather_nd(h, adj), rdim), axis=2)
+    return conv
 
-def kgraph_layer(h, layer_idx, var_scope, alist, K):
-    """ Graph layer for KNN
 
-    Args:
-        h: data tensor, (mb_size, N, k_in)
-        layer_idx (int): layer index for params
-        var_scope (str): variable scope for get variables from graph
-        alist: adjacency index list tensor (*, 2), of tf.int32
-        K (int): number of nearest neighbors in KNN
-    RETURNS: (mb_size, N, k_out)
-    """
-    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
-    graph_mu = kgraph_conv(h, alist, K)
-
-    h_out = left_mult(h - graph_mu, W) + B
-    return h_out
-
-# Radius graph ops
-
-def rad_graph_conv(h, spT):
+# Radius graph conv
+# ========================================
+def rad_graph_conv(h, spT, *args):
     """ graph conv for radius neighbors graph
     NB: the sparse tensor for the radius graph has ALREADY been processed
     such that the mean pooling is performed in the matmul
@@ -119,113 +149,94 @@ def rad_graph_conv(h, spT):
     rad_conv = tf.reshape(tf.sparse_tensor_dense_matmul(spT, h_flat), dims)
     return rad_conv
 
-def rad_graph_layer(h, layer_idx, var_scope, spT):
-    #W, Wg = utils.get_graph_layer_vars(layer_idx, var_scope=var_scope)
-    W, B = utils.get_layer_vars(layer_idx, var_scope=var_scope)
-    graph_mu = rad_graph_conv(h, spT)
 
-    h_out = left_mult(h - graph_mu, W) + B
-    return h_out
-
-#==============================================================================
-# Layer class
-#==============================================================================
-# functions < Layer < Network < Model
-class GraphConv:
-    """ All layers use some kind of graph convolution
-    - KNN: simplest, just mean(X[G], M_axis)
-    - Radius: trickier
-      - requires SparseTensor
-      - makes assumptions about the SparseTensor to allow for
-        tf.sparse_tensor_dense_matmul
-    # SPECIAL CASES
-    - ShiftInv: uses KNN graph currently, but performs convolution
-      using unsorted_segment_mean instead of vanilla mean
-        - Ideally, should be able to swap out ShiftInv/pooling convs
-    - RotInv: probably same shit
-    """
-    def __init__(self, X_in, G, M):
-        self.X = X_in
-        self.G = G
-        self.M = M
-        self.graph_conv
-
-    def graph_conv(self): # MUST BE OVERRIDDEN
-        pass
-
-class KGraphConv(GraphConv):
-    """ KNN graph convolution
-    The simplest type of graph convolution
-    Just take the mean over each node's edges
-    """
-    def __init__(self, X_in, G, M):
-        super(KGraphConv, self).__init__(X_in, G, M)
-
-    def graph_conv(self):
-        X = self.X; G = self.G; M = self.M;
-        dims = tf.shape(X)
-        mb = dims[0]; n  = dims[1]; d  = dims[2];
-        rdim = [mb,n,M,d]
-        conv = tf.reduce_mean(tf.reshape(tf.gather_nd(X, G), rdim), axis=2)
-        return conv
-
-
-
-class Layer:
-    """ Layers wrap functions (layers are functions too...)
-    What do layers need?
-      - Variables (weights, biases)
-      - a layer index, to retrieve said Variables
-        - Here we can probably use tf.get_variable within scope
-      - a variable scope, for all the above
-      - Data:
-        - input data: typically activations and an adjacency graph
-    So:
-      - Placeholders?
-    """
-    def __init__(self, h_input, adjacency):
-        self.H = h_input
-        self.A = adjacency
-
-class ShiftInvariantLayer(Layer):
-    def __init__(self,):
-
-class Network:
-    """ Network wraps all layer ops (activations)
-    ASSUME PLACEHOLDERS, can still feed as usual
-    """
-    def __init__(self, ):
-
-
-
-#=============================================================================
-# SHIFT INVARIANT NETWORK/LAYER OPS
-#=============================================================================
-#------------------------------------------------------------------------------
-# Shift invariant layer ops
-#------------------------------------------------------------------------------
-def pool_graph(X, idx, num_segs, broadcast):
+# Pooled graph conv
+# ========================================
+def pool_graph_conv(h, pool_idx, num_segs, broadcast):
     """
     Args:
-        X (tensor): has shape (c, k), row-major order
-        idx (numpy array): has shape (c),
+        h (tensor): has shape (c, k), row-major order
+        pool_idx (numpy array): has shape (c),
             must be row idx of non-zero entries to pool over columns
             must be column idx of non-zero entries to pool over rows
-        N (int): number of segments (number of particles in this case)
-        b (int): batch size
+        num_segs (int): number of segments in h (how many particles)
         broadcast (bool): if True, after pooling re-broadcast to original shape
 
     Returns:
         tensor of shape (c, k) if broadcast, else (b*N, k)
     """
-    X_pooled = tf.unsorted_segment_mean(X, idx, num_segs)
+    pooled_conv = tf.unsorted_segment_mean(h, pool_idx, num_segs)
     if broadcast:
-        X_pooled = tf.gather_nd(X_pooled, tf.expand_dims(idx, axis=1))
-    return X_pooled
+        pooled_conv = tf.gather_nd(X_pooled, tf.expand_dims(pool_idx, axis=1))
+    return pooled_conv
 
 
-def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
+#==============================================================================
+# Layer ops
+#==============================================================================
+#------------------------------------------------------------------------------
+# Vanilla
+#------------------------------------------------------------------------------
+# Set layer (no longer used)
+# ========================================
+def set_layer(h, layer_idx, *args):
+    """ Set layer
+    *args just for convenience, set_layer has no additional
+    Args:
+        h: data tensor, (mb_size, N, k_in)
+        layer_idx (int): layer index for params
+        var_scope (str): variable scope for get variables from graph
+    RETURNS: (mb_size, N, k_out)
     """
+    W, B = utils.get_vanilla_layer_vars(layer_idx)
+    mu = tf.reduce_mean(h, axis=1, keepdims=True)
+    h_out = left_mult(h - mu, W, subscript=SUBSCRIPT_VANILLA) + B
+    return h_out
+
+# KNN graph layer (vanilla, not in use)
+# ========================================
+def kgraph_layer(h, layer_idx, G, K):
+    """ Graph layer for KNN
+
+    Args:
+        h: data tensor, (mb_size, N, k_in)
+        layer_idx (int): layer index for params
+        G: adjacency index list tensor (*, 2), of tf.int32
+        K (int): number of nearest neighbors in KNN
+    RETURNS: (mb_size, N, k_out)
+    """
+    W, B = utils.get_vanilla_layer_vars(layer_idx)
+    edge_mean = kgraph_conv(h, G, K)
+    h_out = left_mult(h - edge_mean, W, SUBSCRIPT_VANILLA) + B
+    return h_out
+
+# Radius graph layer
+# ========================================
+def rad_graph_layer(h, layer_idx, spT, *args):
+    """ Radius graph layer
+    NB: considerably more memory consumption than any other layer type
+    Args:
+        h (tensor): activation
+        layer_idx (int): layer index for retrieving parameters
+        spT (SparseTensor): the radius graph, in pseudo-COO-matrix
+                            form as a tf.SparseTensor
+    Returns: (mb_size, N, k_out) tensor
+    """
+    W, B = utils.get_vanilla_layer_vars(layer_idx)
+    cluster_mean = rad_graph_conv(h, spT)
+    h_out = left_mult(h - cluster_mean, W, SUBSCRIPT_VANILLA) + B
+    return h_out
+
+
+#------------------------------------------------------------------------------
+# Shift Invariant layers
+#------------------------------------------------------------------------------
+def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
+    """ Shift-invariant network layer
+    # pooling relations
+    # row : col
+    # col : row
+    # cubes : cubes
     Args:
         H_in (tensor): (c, k), stores shift-invariant edge features, row-major
           - c = b*N*M, if KNN then M is fixed, and k = num_edges = num_neighbors = M
@@ -241,33 +252,22 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
     # ========================================
     # split inputs
     b, N = bN
-    #row_idx, col_idx, cube_idx = tf.split(COO_feats, 3, axis=0)
     row_idx  = COO_feats[0]
     col_idx  = COO_feats[1]
     cube_idx = COO_feats[2]
-    '''
-    def get_ShiftInv_layer_vars(layer_idx, **kwargs):
-    weights = []
-    for w_idx in SHIFT_INV_W_IDX:
-        weights.append(get_weight(layer_idx, w_idx=w_idx))
-    bias = get_bias(layer_idx)
-    return weights, bias
-    '''
 
     # get layer weights
-    W, B = utils.get_ShiftInv_layer_vars(layer_id)
-    W1, W2, W3, W4 = W
+    weights, B = utils.get_ShiftInv_layer_vars(layer_id)
+    W1, W2, W3, W4 = weights
 
     # Helper funcs
     # ========================================
     def _pool(H, idx, broadcast=True):
-        # row : col
-        # col : row
-        # cubes : cubes
-        return pool_graph(H, idx, b*N, broadcast)
+
+        return pool_graph_conv(H, idx, b*N, broadcast)
 
     def _left_mult(h, W):
-        return tf.einsum("ck,kq->cq", h, W)
+        return left_mult(h, W, SUBSCRIPT_SHIFTINV)
 
     # Layer forward pass
     # ========================================
@@ -290,43 +290,20 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
     # ========================================
     H_out = (H1 + H2 + H3 + H4) + B
     if is_last:
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         H_out = tf.reshape(_pool(H_out, row_idx, broadcast=False), (b, N, -1))
     return H_out
 
 
+#==============================================================================
+# Network ops
+#==============================================================================
 #------------------------------------------------------------------------------
-# Shift invariant network ops
+# Network Functions # TODO: at somepoint make a network func interface or class
 #------------------------------------------------------------------------------
-def include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=None):
-    """ Broadcast node features to edges for input layer
-    Args:
-        X_in_edges (tensor):   (c, 3), input edge features (relative pos of neighbors)
-        X_in_nodes (tensor): (b*N, 3), input node features (velocities)
-        COO_feats (tensor): (3, c), rows, cols, cube indices (respectively)
-    Returns:
-        X_in_graph (tensor): (c, 9), input with node features broadcasted to edges
-    """
-    # get row, col indices
-    row_idx = COO_feats[0]
-    col_idx = COO_feats[1]
-
-    # get node row, columns
-    node_rows = tf.gather_nd(X_in_nodes, tf.expand_dims(row_idx, axis=1))
-    node_cols = tf.gather_nd(X_in_nodes, tf.expand_dims(col_idx, axis=1))
-
-    # full node, edges graph
-    X_in_graph = tf.concat([X_in_edges, node_rows, node_cols], axis=1) # (c, 9)
-
-    # broadcast redshifts (for multi)
-    if redshift is not None:
-        X_in_graph = tf.concat([X_in_graph, redshift], axis=1) # (c, 10)
-
-    return X_in_graph
-
-
-# ==== Network fn
-def ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, activation, redshift=None):
+# Shift invariant network
+# ========================================
+def network_func_ShiftInv(X_in_edges, X_in_nodes, COO_feats,
+                          num_layers, dims, activation, redshift=None):
     # Input layer
     # ========================================
     H_in = include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=redshift)
@@ -343,16 +320,13 @@ def ShiftInv_network_func(X_in_edges, X_in_nodes, COO_feats, num_layers, dims, a
 
 
 
+#==============================================================================
+# Model ops
+#==============================================================================
 #------------------------------------------------------------------------------
 # Shift invariant model funcs
 #------------------------------------------------------------------------------
-
-
-
-
-
-# ==== single fn
-def ShiftInv_model_func(X_in, COO_feats, model_specs, redshift=None):
+def model_func_ShiftInv(X_in, COO_feats, model_specs, redshift=None):
     """
     Args:
         X_in (tensor): (b, N, 6)
@@ -368,226 +342,76 @@ def ShiftInv_model_func(X_in, COO_feats, model_specs, redshift=None):
 
     # Get graph inputs
     # ========================================
-    edges, nodes = get_input_features_TF(X_in, COO_feats, dims)
+    edges, nodes = get_input_features_ShiftInv(X_in, COO_feats, dims)
 
-    # Network forward V
+    # Network forward
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        # network output
-        net_out = ShiftInv_network_func(edges, nodes, COO_feats, num_layers, dims[:-1], activation, redshift)
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-
-        # Scaling and skip connections
-        loc_scalar, vel_scalar = utils.get_scalars()
+        # ==== Split input
+        X_in_loc, X_in_vel = X_in[...,:3], X_in[...,3:]
+        # ==== Network output
+        net_out = network_func_ShiftInv(edges, nodes, COO_feats, num_layers,
+                                        dims[:-1], activation, redshift)
         num_feats = net_out.get_shape().as_list()[-1]
 
-        H_out = net_out[...,:3]*loc_scalar + X_in[...,:3] + X_in[...,3:]*vel_scalar
+        # ==== Scale network output and compute skip connections
+        loc_scalar, vel_scalar = utils.get_scalars()
+        H_out = net_out[...,:3]*loc_scalar + X_in_loc + X_in_vel*vel_scalar
 
-        # Concat velocity predictions
+        # ==== Concat velocity predictions
         if net_out.get_shape().as_list()[-1] > 3:
-            H_vel = net_out[...,3:] * vel_scalar + X_in[...,3:]
+            H_vel = net_out[...,3:]*vel_scalar + X_in_vel
             H_out = tf.concat([H_out, H_vel], axis=-1)
-
         return get_readout(H_out)
 
 
-
-
-
-
-#=============================================================================
-# LAYER OPS
-#=============================================================================
-
-
-#=============================================================================
-# Network and model functions
-#=============================================================================
-
-#==== helpers
-def get_layer(args):
-    # hacky dispatch on num of args. set uses no extra, radgraph 1, kgraph 2
-    num_args = len(args)
-    if num_args > 0:
-        layer = rad_graph_layer if num_args == 1 else kgraph_layer
-    else:
-        layer = set_layer
-    return layer
-
-def skip_connection(x_in, h, vel_coeff=None):
-    # input splits
-    x_coo = x_in[...,:3]
-    x_vel = x_in[...,3:] if x_in.shape[-1] == h.shape[-1] else x_in[...,3:-1]
-    # h splits
-    h_coo = h[...,:3]
-    h_vel = h[...,3:]
-    # add
-    h_coo += x_coo
-    h_vel += x_vel
-
-    if vel_coeff is not None:
-        h_coo += vel_coeff * x_vel
-    h_out = tf.concat((h_coo, h_vel), axis=-1)
-    return h_out
-
-# ==== Network fn
-def network_fwd(x_in, num_layers, var_scope, *args, activation=tf.nn.relu):
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    layer = get_layer(args)
-    H = x_in
-    for i in range(num_layers):
-        H = layer(H, i, var_scope, *args)
-        if i != num_layers - 1:
-            H = activation(H)
-    return H
-
-# ==== Model fn
-def model_fwd(x_in, num_layers, *args, activation=tf.nn.relu, add=True, vel_coeff=False, var_scope=VAR_SCOPE):
-    h_out = network_fwd(x_in, num_layers, var_scope, *args, activation=activation)
-    if add:
-        vcoeff = utils.get_vel_coeff(var_scope) if vel_coeff else None
-        #h_out = skip_connection(x_in, h_out, vcoeff)
-        h_out = h_out + x_in[...,:3] + vcoeff*x_in[...,3:-1]
-    return h_out
-
-#=============================================================================
-# Multi-step model functions
-#=============================================================================
-# multi fns for single step trained models
-def aggregate_multiStep_fwd(x_rs, num_layers, var_scopes, nn_graph, *args, vel_coeff=False):
-    """ Multi-step function for aggregate model
-    Aggregate model uses a different sub-model for each redshift
+def model_func_ShiftInv_preprocess_assumption(X_in, edges, nodes, COO_feats, model_specs, redshift=None):
     """
-    # Helpers
-    concat_rs = lambda h, i: tf.concat((h, x_rs[i,:,:,-1:]), axis=-1)
-    fwd = lambda h, i: get_readout(model_fwd(h, num_layers, nn_graph[i], *args, var_scope=var_scopes[i], vel_coeff=vel_coeff))
-    loss = lambda h, x: pbc_loss(h, x[...,:-1], )#True)
-
-    # forward pass
-    h = fwd(x_rs[0], 0)
-    error = loss(h, x_rs[1])
-    for i in range(1, len(var_scopes)):
-        h_in = concat_rs(h, i)
-        h = fwd(h_in, i)
-        error += loss(h, x_rs[i+1])
-    return h, error
-
-def aggregate_multiStep_fwd_validation(x_rs, num_layers, var_scopes, graph_fn, *args, vel_coeff=False):
-    """ Multi-step function for aggregate model
-    Aggregate model uses a different sub-model for each redshift
-    WILL NOT WORK FOR SPARSETENSOR, since tf.py_func does not allow for sparse
-    return
-    """
-    preds = []
-    # Helpers
-    concat_rs = lambda h, i: tf.concat((h, x_rs[i,:,:,-1:]), axis=-1)
-    fwd = lambda h, g, i: get_readout(model_fwd(h, num_layers, g, *args, var_scope=var_scopes[i], vel_coeff=vel_coeff))
-
-    # forward pass
-    g = tf.py_func(graph_fn, [x_rs[0]], tf.float32)
-    h = fwd(x_rs[0], g, 0)
-    preds.append(h)
-    for i in range(1, len(var_scopes)):
-        h_in = concat_rs(h, i)
-        g = tf.py_func(graph_fn, [h_in], tf.float32)
-        h = fwd(h_in, g, i)
-        preds.append(h)
-    return preds
-
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-# END TF-related ops
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-#<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
-
-#=============================================================================
-# adj list ops for shift inv data
-#=============================================================================
-
-def get_input_features_TF(X_in, coo, dims):
-    """ get edges and nodes with TF ops
-    TESTED EQUIVALENT TO numpy-BASED FUNC
-
-    get relative distances of each particle from its M neighbors
     Args:
-        X_in (tensor): (b, N, 6), input data
-        coo (tensor): (3,b*N*M)
+        X_in (tensor): (b, N, 6)
+        COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
+        redshift (tensor): (b*N*M, 1) redshift broadcasted
     """
-    cols = coo[1]
-    b, N, M = dims
-    # split input
-    X = tf.reshape(X_in, (-1, 6))
-    edges = X[...,:3] # loc
-    nodes = X[...,3:] # vel
+    # Get relevant model specs
+    # ========================================
+    var_scope  = model_specs.var_scope
+    num_layers = model_specs.num_layers
+    activation = model_specs.activation_func # default tf.nn.relu
+    dims = model_specs.dims
 
-    # get edges (neighbors)
-    edges = tf.reshape(tf.gather(edges, cols), [b, N, M, 3])
-    edges = edges - tf.expand_dims(X_in[...,:3], axis=2) # (b, N, M, 3) - (b, N, 1, 3)
+    # Get graph inputs
+    # ========================================
+    #edges, nodes = get_input_features_ShiftInv(X_in, COO_feats, dims)
 
-    return tf.reshape(edges, [-1, 3]), nodes
+    # Network forward
+    # ========================================
+    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
+        # ==== Split input
+        X_in_loc, X_in_vel = X_in[...,:3], X_in[...,3:]
+        # ==== Network output
+        net_out = network_func_ShiftInv(edges, nodes, COO_feats, num_layers,
+                                        dims[:-1], activation, redshift)
+        num_feats = net_out.get_shape().as_list()[-1]
 
+        # ==== Scale network output and compute skip connections
+        loc_scalar, vel_scalar = utils.get_scalars()
+        H_out = net_out[...,:3]*loc_scalar + X_in_loc + X_in_vel*vel_scalar
 
-def get_input_edge_features_batch(X_in, lst_csrs, M, offset_idx=False):
-    """ get relative distances of each particle from its M neighbors
-    Args:
-        X_in (ndarray): (b, N, 6), input data
-        lst_csrs (list(csr)): len b list of csrs
-    """
-    x = X_in[...,:3] # (b, N, 3)
-    b, N, k = x.shape
-
-    #x_out = np.zeros((b, N*M, k)).astype(np.float32)
-    x_out = np.zeros((b, N, M, k)).astype(np.float32)
-    # have to loop, since mem issues with full X_in[adj_list]
-    for i in range(b):
-        h = x[i]     # (N, 3)
-        a = lst_csrs[i].indices.reshape(N, M) # (N, M)
-        h_sel = h[a] # (N, M, 3)
-        h_out = h_sel - h[:,None,:] # (N, M, 3) - (N, 1, 3)
-        x_out[i] = h_out
-    return x_out.reshape(-1, k)
-
-
-def get_input_node_features(X_in):
-   """ get node values (velocity vectors) for each particle
-   X_in.shape == (b, N, 6)
-   """
-   return X_in[...,3:].reshape(-1, 3)
-
-def sinv_dim_change(X_in):
-    return np.moveaxis(X_in, 0, -1) # now (N,...,b)
+        # ==== Concat velocity predictions
+        if net_out.get_shape().as_list()[-1] > 3:
+            H_vel = net_out[...,3:]*vel_scalar + X_in_vel
+            H_out = tf.concat([H_out, H_vel], axis=-1)
+        return get_readout(H_out)
 
 
 #=============================================================================
-# numpy adjacency list func wrappers
+# Graph, adjacency functions
 #=============================================================================
-
-def get_adj_graph(X_in, k, pbc_threshold=None):
-    """ neighbor graph interface func
-    NB: kgraph and radgraph have VERY different returns. Not exchangeable.
-
-    Args:
-        X_in (ndarray): data
-        k (int or float): nearest neighbor variable, int is kgraph, float is rad
-        pbc_threshold (float): boundary threshold for pbc
-    """
-    graph_fn = get_kgraph if isinstance(k, int) else get_radgraph
-    return graph_fn(X_in, k, pbc_threshold)
-
-def get_kgraph(X, k, pbc_threshold=None):
-    return alist_to_indexlist(get_kneighbor_alist(X, k))
-
-def get_radgraph(X, k, pbc_threshold=None):
-    return radius_graph_fn(X, k)
-
-
-def get_pbc_graph(x, graph_fn, threshold):
-    """
-    x.shape = (N, 3)
-    """
-    assert False # TODO
-
-
+#------------------------------------------------------------------------------
+# Adjacency utils
+#------------------------------------------------------------------------------
+# Kgraph
+# ========================================
 def alist_to_indexlist(alist):
     """ Reshapes adjacency list for tensorflow gather_nd func
     alist.shape: (B, N, K)
@@ -599,33 +423,35 @@ def alist_to_indexlist(alist):
     out = np.stack([id1,alist.flatten()], axis=1).astype(np.int32)
     return out
 
-def get_kneighbor_alist(X_in, K=14, offset_idx=False, inc_self=True):
-    """ search for K nneighbors, and return offsetted indices in adjacency list
-    No periodic boundary conditions used
 
-    Args:
-        X_in (numpy ndarray): input data of shape (mb_size, N, 6)
-    """
-    mb_size, N, D = X_in.shape
-    adj_list = np.zeros([mb_size, N, K], dtype=np.int32)
-    for i in range(mb_size):
-        # this returns indices of the nn
-        graph_idx = kneighbors_graph(X_in[i, :, :3], K, include_self=inc_self).indices
-        graph_idx = graph_idx.reshape([N, K]) #+ (N * i)  # offset idx for batches
-        if offset_idx:
-            graph_idx += (N*i)
-        adj_list[i] = graph_idx
-    return adj_list
+# Sparse matrix conversions
+# ========================================
+def get_indices_from_list_CSR(A, offset=True):
+    # Dims
+    # ----------------
+    b = len(A) # batch size
+    N = A[0].shape[0] # (32**3)
+    M = A[0].indices.shape[0] // N
 
-def get_kneighbor_list(X_in, M, offset_idx=False, inc_self=False):
-    b, N, D = X_in.shape
-    lst_csrs = []
+    # Get CSR feats (indices)
+    # ----------------
+    CSR_feats = np.zeros((b*N*M)).astype(np.int32)
     for i in range(b):
-        kgraph = kneighbors_graph(X_in[i,:,:3], M, include_self=inc_self).astype(np.float32)
-        if offset_idx:
-            kgraph.indices = kgraph.indices + (N * i)
-        lst_csrs.append(kgraph)
-    return lst_csrs
+        # Offset indices
+        idx = A[i].indices + i*N
+
+        # Assign csr feats
+        k, q = i*N*M, (i+1)*N*M
+        CSR_feats[k:q] = idx
+    return CSR_feats
+
+def confirm_CSR_to_COO_index_integrity(A, COO_feats):
+    """ CSR.indices compared against COO.cols
+    Sanity check to ensure that my indexing algebra is correct
+    """
+    CSR_feats = get_indices_from_list_CSR(A)
+    cols = COO_feats[1]
+    assert np.all(CSR_feats == cols)
 
 
 def to_coo_batch(A):
@@ -663,75 +489,20 @@ def to_coo_batch(A):
     #confirm_CSR_to_COO_index_integrity(A, COO_feats) # checked out
     return COO_feats
 
-def confirm_CSR_to_COO_index_integrity(A, COO_feats):
-    """ CSR.indices compared against COO.cols
-    Sanity check to ensure that my indexing algebra is correct
-    """
-    CSR_feats = get_indices_from_list_CSR(A)
-    cols = COO_feats[1]
-    assert np.all(CSR_feats == cols)
-
-def get_indices_from_list_CSR(A, offset=True):
-    # Dims
-    # ----------------
-    b = len(A) # batch size
-    N = A[0].shape[0] # (32**3)
-    M = A[0].indices.shape[0] // N
-
-    # Get CSR feats (indices)
-    # ----------------
-    CSR_feats = np.zeros((b*N*M)).astype(np.int32)
+#------------------------------------------------------------------------------
+# Graph func wrappers
+#------------------------------------------------------------------------------
+# Graph gets
+# ========================================
+def get_kneighbor_list(X_in, M, offset_idx=False, inc_self=False):
+    b, N, D = X_in.shape
+    lst_csrs = []
     for i in range(b):
-        # Offset indices
-        idx = A[i].indices + i*N
-
-        # Assign csr feats
-        k, q = i*N*M, (i+1)*N*M
-        CSR_feats[k:q] = idx
-    return CSR_feats
-
-
-
-def pre_process_adjacency(A):
-    """
-    Batch of adjacency matrices <> row, col offset indices.
-    Nodes can have different number of neighbors (e.g., density based).
-
-    NOTE: this returns DIFFERENT col than coo-matrix conversion
-     - cols with nonzero are sorted. Whether this is needed for the pooling op
-       I'm not sure. Cols are always set-wise same as coo.
-     - cols in coo are based on csr.indices and csr.indptr, which means indices
-       are not sorted in scalar order, but either arbitrary or NN distance
-
-    This is also FAR MORE computationally expensive than coo conversion
-
-    Args:
-        A (numpy array): adjacency batch, has shape (b, N, N)
-
-    Returns:
-        row_idx (numpy array), col_idx (numpy array), all_idx(numpy array):
-            all have shape (c), where c = sum_{i=0..b} n_i, and n_i is the number of non-zero entries of
-            the i-th adjacency in the batch.
-                - if all matrices in the batch have the same number n of non zero-entries, c = b*n
-                - if the number of neighbors is fixed to M, then n = N*M and c = b*N*M
-
-        row_idx, col_idx are indices of non-zero entries
-        all_idx keeps track of how many non-zero entries are in each element of the batch - needed for _pool_all operation
-    """
-    b = len(A)
-    N = A[0].shape[0]
-
-    row_idx = []
-    col_idx = []
-    all_idx = []
-    for i in range(b):
-        a = A[i].toarray()
-        r_idx, c_idx = np.nonzero(a)
-        row_idx.extend(i * N + r_idx)  # offset indices
-        col_idx.extend(i * N + c_idx)  # offset indices
-        all_idx.extend(i + np.zeros_like(r_idx))  # offset indices
-
-    return np.array(row_idx), np.array(col_idx), np.array(all_idx)
+        kgraph = kneighbors_graph(X_in[i,:,:3], M, include_self=inc_self).astype(np.float32)
+        if offset_idx:
+            kgraph.indices = kgraph.indices + (N * i)
+        lst_csrs.append(kgraph)
+    return lst_csrs
 
 
 #=============================================================================
@@ -875,27 +646,6 @@ def get_pcube_adjacency_list(x, idx_map, N, K):
             outer_idx = kgraph[k_idx]
             kgraph[k_idx] = idx_map[outer_idx - N]
     return kgraph.reshape(N,K)
-
-def get_pbc_kneighbors(X, K, boundary_threshold):
-    """
-    """
-    # get boundary range
-    lower = boundary_threshold
-    upper = 1 - boundary_threshold
-    mb_size, N, D = X.shape
-
-    # graph init
-    adjacency_list = np.zeros((mb_size, N, K), dtype=np.int32)
-
-    for b in range(mb_size):
-        # get expanded cube
-        clone = np.copy(X[b,:,:3])
-        padded_cube, idx_map = pad_cube_boundaries(clone, boundary_threshold)
-
-        # get neighbors from padded_cube
-        kgraph_idx = get_pcube_adjacency_list(padded_cube, idx_map, N, K)
-        adjacency_list[b] = kgraph_idx
-    return adjacency_list
 
 
 def get_pcube_csr(x, idx_map, N, K, include_self=False):
@@ -1076,3 +826,77 @@ def npy_pbc_loss(readout, x_truth, mu_axis=None):
     pbc_dist  = npy_periodic_boundary_dist(readout, x_truth)
     error = np.mean(np.sum(pbc_dist, axis=-1), axis=mu_axis)
     return error
+
+
+
+#==============================================================================
+# Layer class
+#==============================================================================
+# SOMEDAY! No time right now
+'''
+# functions < Layer < Network < Model
+class GraphConv:
+    """ All layers use some kind of graph convolution
+    - KNN: simplest, just mean(X[G], M_axis)
+    - Radius: trickier
+      - requires SparseTensor
+      - makes assumptions about the SparseTensor to allow for
+        tf.sparse_tensor_dense_matmul
+    # SPECIAL CASES
+    - ShiftInv: uses KNN graph currently, but performs convolution
+      using unsorted_segment_mean instead of vanilla mean
+        - Ideally, should be able to swap out ShiftInv/pooling convs
+    - RotInv: probably same shit
+    """
+    def __init__(self, X_in, G, M):
+        self.X = X_in
+        self.G = G
+        self.M = M
+        self.graph_conv
+
+    def graph_conv(self): # MUST BE OVERRIDDEN
+        pass
+
+class KGraphConv(GraphConv):
+    """ KNN graph convolution
+    The simplest type of graph convolution
+    Just take the mean over each node's edges
+    """
+    def __init__(self, X_in, G, M):
+        super(KGraphConv, self).__init__(X_in, G, M)
+
+    def graph_conv(self):
+        X = self.X; G = self.G; M = self.M;
+        dims = tf.shape(X)
+        mb = dims[0]; n  = dims[1]; d  = dims[2];
+        rdim = [mb,n,M,d]
+        conv = tf.reduce_mean(tf.reshape(tf.gather_nd(X, G), rdim), axis=2)
+        return conv
+
+
+
+class Layer:
+    """ Layers wrap functions (layers are functions too...)
+    What do layers need?
+      - Variables (weights, biases)
+      - a layer index, to retrieve said Variables
+        - Here we can probably use tf.get_variable within scope
+      - a variable scope, for all the above
+      - Data:
+        - input data: typically activations and an adjacency graph
+    So:
+      - Placeholders?
+    """
+    def __init__(self, h_input, adjacency):
+        self.H = h_input
+        self.A = adjacency
+
+class ShiftInvariantLayer(Layer):
+    def __init__(self,):
+
+class Network:
+    """ Network wraps all layer ops (activations)
+    ASSUME PLACEHOLDERS, can still feed as usual
+    """
+    def __init__(self, ):
+'''
