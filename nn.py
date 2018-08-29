@@ -167,7 +167,7 @@ def pool_graph_conv(h, pool_idx, num_segs, broadcast):
     """
     pooled_conv = tf.unsorted_segment_mean(h, pool_idx, num_segs)
     if broadcast:
-        pooled_conv = tf.gather_nd(X_pooled, tf.expand_dims(pool_idx, axis=1))
+        pooled_conv = tf.gather_nd(pooled_conv, tf.expand_dims(pool_idx, axis=1))
     return pooled_conv
 
 
