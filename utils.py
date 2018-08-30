@@ -199,6 +199,7 @@ def initialize_ShiftInv_params(kdims, restore=False, **kwargs):
         initialize_bias(BIAS_TAG.format(layer_idx), kdim, restore=restore)
         for w_idx in SHIFT_INV_W_IDX:
             Wname = WEIGHT_TAG.format(layer_idx, w_idx)
+#            code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
             initialize_weight(Wname, kdim, restore=restore)
     initialize_scalars(restore=restore)
 
@@ -211,8 +212,9 @@ LAYER_INIT_FUNCS = {VANILLA:   initialize_vanilla_params,
                     SHIFT_INV: initialize_ShiftInv_params,
                     ROT_INV:   initialize_RotInv_params}
 
-def initialize_model_params(layer_type, channels, scope,
-                            seed=PARAMS_SEED, restore=False, **kwargs):
+
+
+def initialize_model_params(args):
     """ Initialize model parameters, dispatch based on layer_type
     Args:
         layer_type (str): layer-type ['vanilla', 'shift-inv', 'rot-inv']
@@ -221,6 +223,12 @@ def initialize_model_params(layer_type, channels, scope,
         seed (int): RNG seed for param inits
         restore (bool): whether new params are initialized, or just placeholders
     """
+    layer_type = args.layer_type
+    channels = args.channels
+    restore = args.restore
+    scope = args.var_scope
+    seed = args.seed
+
     # Check layer_type integrity
     assert layer_type in LAYER_TYPES
 
@@ -231,9 +239,8 @@ def initialize_model_params(layer_type, channels, scope,
     tf.set_random_seed(seed)
     #with tf.variable_scope(scope, reuse=True):
     with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         layer_init_func = LAYER_INIT_FUNCS[layer_type]
-        layer_init_func(kdims, restore=restore, **kwargs)
+        layer_init_func(kdims, restore=restore)
     print('Initialized {} layer parameters'.format(layer_type))
 
 
@@ -617,9 +624,9 @@ class TrainSaver:
         self.always_write_meta = always_write_meta
 
         # Paths
-        self.model_path  = MODEL_SAVE_PATH.format(mname)
-        self.result_path = RESULTS_SAVE_PATH.format(mname)
-        self.file_path   = FILE_SAVE_PATH.format(mname)
+        self.model_path  = MODEL_SAVE_PATH.format(self.model_name)
+        self.result_path = RESULTS_SAVE_PATH.format(self.model_name)
+        self.file_path   = FILE_SAVE_PATH.format(self.model_name)
         self.make_model_dirs()
 
     def initialize_saver(self):
@@ -704,7 +711,7 @@ class Parser:
         add('--batch_size', '-b', type=int, default=4)
         add('--restore',    '-r', type=int, default=0,) # bool
         add('--pbc_graph',  '-p', type=int, default=0)
-        add('--checkpoint', '-c', type=int, default=100)
+        #add('--checkpoint', '-h', type=int, default=100)
         add('--variable',   '-q', type=int, default=0)  # bool, multi-purpose
 
     def parse_args(self):

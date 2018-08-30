@@ -337,7 +337,7 @@ def model_func_ShiftInv(X_in, COO_feats, model_specs, redshift=None):
     # ========================================
     var_scope  = model_specs.var_scope
     num_layers = model_specs.num_layers
-    activation = model_specs.activation_func # default tf.nn.relu
+    activation = model_specs.activation # default tf.nn.relu
     dims = model_specs.dims
 
     # Get graph inputs

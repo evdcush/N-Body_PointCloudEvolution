@@ -33,10 +33,10 @@ batch_size = args.batch_size
 
 # Training variables
 # ========================================
-learning_rate = args.learning_rate
+learning_rate = args.learn_rate
 multi_step = args.model_type == MULTI_STEP
-checkpoint = args.checkpoint
-num_steps  = args.num_iters
+checkpoint = 100 #args.checkpoint
+num_iters  = args.num_iters
 num_val_batches = args.num_test // batch_size
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
 get_graph_csr = lambda h: nn.get_graph_csr_list(h, args)
@@ -44,8 +44,10 @@ get_graph_csr = lambda h: nn.get_graph_csr_list(h, args)
 # Network config
 # ========================================
 network_features = AttrDict()
-network_features.num_layers = len(args.channels)
+network_features.var_scope = args.var_scope
+network_features.num_layers = len(args.channels) - 1
 network_features.dims = [batch_size, N, M]
+network_features.activation = tf.nn.relu
 loss_func = nn.get_loss_func(args)
 
 
@@ -97,7 +99,7 @@ sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 # Variables
 sess.run(tf.global_variables_initializer())
 train_saver = utils.TrainSaver(args)
-if restore:
+if args.restore:
     train_saver.restore_model_parameters(sess)
 
 
@@ -106,12 +108,13 @@ if restore:
 # Load data
 #==============================================================================
 # Load cubes
-X = utils.normalize(utils.load_simulation_data(args.rs_idx))
+rs_idx = args.rs_idx
+X = utils.normalize(utils.load_simulation_data(rs_idx))
 X_train, X_test = utils.split_data_validation(X, num_val=args.num_test)
 X = None # reduce memory overhead
 
 # Get test containers
-test_pred_shape = X_test.shape[1:-1] + (args.channels[-1])
+test_pred_shape = X_test.shape[1:-1] + (args.channels[-1],)
 test_predictions  = np.zeros(test_pred_shape).astype(np.float32)
 test_loss = np.zeros((num_val_batches,)).astype(np.float32)
 
@@ -200,7 +203,7 @@ for j in range(num_val_batches):
 
 # END Validation
 # ========================================
-utils.print_median_validation_loss(redshift_steps, test_loss)
+utils.print_median_validation_loss(rs_idx, test_loss)
 train_saver.save_model_error(test_loss)
-train_saver.save_model_cube(test_predictions, (zX, zY), ground_truth=False)
+train_saver.save_model_cube(test_predictions, ground_truth=False)
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
