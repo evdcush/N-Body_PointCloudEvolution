@@ -81,7 +81,9 @@ CUBE_NAME_PRED  = CUBE_BASE_NAME + 'prediction'
 # Model and layer names
 # ========================================
 # Model names
-MODEL_TYPES = ['multi-step', 'single-step']
+MULTI_STEP  = 'multi-step'
+SINGLE_STEP = 'single-step'
+MODEL_TYPES = [MULTI_STEP, SINGLE_STEP]
 MODEL_BASENAME = '{}_{}_{}' # {model-type}_{layer-type}_{rs1-...-rsN}_{extra-naming}
 
 # Layer names
@@ -294,12 +296,18 @@ def get_RotInv_layer_vars(layer_idx, **kwargs):
 """
 # Model name getter
 # ========================================
-def get_model_name(mtype, ltype, rs_idx, model_name=MODEL_BASENAME, suffix=''):
+def get_model_name(sess_args):
     """ Consistent model naming format
     Args:
-        mtype, ltype (str): model and layer types
-        rs_idx list(int): ordered list of indices into redshifts
+        sess_args (dict): all model and session variables
     """
+    # ==== Extract relevant args
+    model_name = sess_args.model_name
+    suffix = sess_args.name_suffix
+    rs_idx = sess_args.redshifts
+    ltype  = sess_args.layer_type
+    mtype  = sess_args.model_type
+
     # ==== Confirm valid types
     assert mtype in MODEL_TYPES and ltype in LAYER_TYPES
     if model_name != MODEL_BASENAME: # if optional model_name used
@@ -479,7 +487,7 @@ def normalize(X):
 #------------------------------------------------------------------------------
 # Data train/test split
 # ========================================
-def split_data_validation(X, num_val_samples=NUM_VAL_SAMPLES, seed=DATASET_SEED):
+def split_data_validation(X, num_val=NUM_VAL_SAMPLES, seed=DATASET_SEED):
     """ split dataset into training and validation sets
 
     Args:
@@ -491,7 +499,7 @@ def split_data_validation(X, num_val_samples=NUM_VAL_SAMPLES, seed=DATASET_SEED)
     # Seed split for consistency between models (for comparison)
     np.random.seed(seed)
     idx_list = np.random.permutation(num_cubes)
-    X_train, X_test = np.split(X[:,idx_list], [-num_val_samples], axis=1)
+    X_train, X_test = np.split(X[:,idx_list], [-num_val], axis=1)
 
     return X_train, X_test
 
@@ -599,13 +607,13 @@ class TrainSaver:
     """ TrainSaver wraps tf.train.Saver() for session,
         and interfaces all essential save/restore utilities
     """
-    def __init__(self, mname, num_iters, always_write_meta=False, restore=False):
+    def __init__(self, sess_args, always_write_meta=False):
         # Training vars
         #self.saver = tf.train.Saver() # must be done AFTER sess.run(tf.global_variables_initializer())
-        self.model_name = mname
-        self.num_iters = num_iters
+        self.model_name = get_model_name(sess_args)
+        self.num_iters = sess_args.num_iters
+        self.restore = sess_args.restore
         self.always_write_meta = always_write_meta
-        self.restore = restore
 
         # Paths
         self.model_path  = MODEL_SAVE_PATH.format(mname)
@@ -648,27 +656,22 @@ class TrainSaver:
 #------------------------------------------------------------------------------
 # Model function args
 #------------------------------------------------------------------------------
-class ModelFuncArgs():
-    def __init__(self, num_layers, var_scope, dims=None, activation_func=tf.nn.relu):
-        self.num_layers = num_layers
-        self.var_scope = var_scope
-        self.dims = dims
-        self.activation_func = activation_func
 
-
-class Trainer():
-    pass
-
-class Model():
-    pass
 
 
 
 #=============================================================================
 # New utils made for train
 #=============================================================================
+class Trainer():
+    def __init__(self, model, data, evaluation=True):
 
-#parser = argparse.ArgumentParser()
+        if evaluation:jop
+
+
+class Model():
+    pass
+
 
 class Parser:
     """ Wrapper for argparse parser
@@ -684,7 +687,7 @@ class Parser:
         add('--seed',       '-s', type=int, default=PARAMS_SEED,)
         add('--redshifts',  '-z', type=int, default=[18,19], nargs='+',)
         add('--model_name', '-m', type=str, default=MODEL_BASENAME,)
-        add('--save_suffix','-n', type=str, default='')
+        add('--name_suffix','-n', type=str, default='')
 
         # ==== Model parameter variables
         add('--layer_type', '-l', type=str, default='shift-inv')
@@ -694,16 +697,30 @@ class Parser:
         add('--learn_rate', '-a', type=float, default=LEARNING_RATE)
 
         # ==== Training variables
-        add('--num_test',   '-t', type=int, default=200)
+        add('--num_test',   '-t', type=int, default=NUM_VAL_SAMPLES)
         add('--num_iters',  '-i', type=int, default=1000)
         add('--batch_size', '-b', type=int, default=4)
         add('--restore',    '-r', type=int, default=0,) # bool
         add('--variable',   '-q', type=int, default=0)  # bool, multi-purpose
 
     def parse_args(self):
-        parsed = AttrDict(vars(self.p.parse_args()))
+        parsed = self.add_interpreted_args(AttrDict(vars(self.p.parse_args())))
         self.args = parsed
         return parsed
+
+    def add_interpreted_args(self, parsed):
+        # ==== Model-type
+        mtype = SINGLE_STEP
+        cat_rs = False
+        if len(parsed.redshifts) > 2:
+            mtype = MULTI_STEP
+            cat_rs = True
+        parsed.model_type = mtype
+        parsed.cat_rs = cat_rs
+
+        return parsed
+
+
 
     def print_args(self):
         print('SESSION CONFIG\n{}'.format('='*79))

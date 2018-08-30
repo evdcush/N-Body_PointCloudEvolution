@@ -4,36 +4,180 @@ from sklearn.neighbors import kneighbors_graph
 import tensorflow as tf
 import nn
 import utils
-from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, NUM_VAL_SAMPLES, MODEL_BASENAME
+#from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, NUM_VAL_SAMPLES, MODEL_BASENAME
+from utils import REDSHIFTS
+
 
 """ TODO:
 
 Would-be-nice:
- - have some other script handle the parse-args, instead of polluting here
+ X done - have some other script handle the parse-args, instead of polluting here
+
 """
-'''
-parser = argparse.ArgumentParser()
-# argparse not handle bools well so 0,1 used instead
-parser.add_argument('--seed', '-s', default=PARAMS_SEED,     type=int, help='initial parameter seed')
-parser.add_argument('--redshifts', '-z', default=[18,19], nargs='+', type=int, help='redshift tuple, predict z[1] from z[0]')
-parser.add_argument('--graph_var', '-k', default=14,         type=int, help='search parameter for graph model')
-parser.add_argument('--restore',   '-r', default=0,          type=int,  help='resume training from serialized params')
-parser.add_argument('--num_iters', '-i', default=1000,       type=int,  help='number of training iterations')
-parser.add_argument('--batch_size','-b', default=8,          type=int,  help='training batch size')
-parser.add_argument('--model_name', '-m', default=MODEL_BASENAME, type=str,  help='directory where model parameters are saved')
-parser.add_argument('--save_suffix','-n', default='',        type=str,  help='model name suffix')
-parser.add_argument('--variable',   '-q', default=0,  type=int, help='multi-purpose variable argument')
-parser.add_argument('--ltype',  '-c', default='shift-inv', type=str,  help='multi-purpose variable argument2')
-pargs = vars(parser.parse_args())
-'''
+start_time = time.time()
+#==============================================================================
+# Model/Session config
+#==============================================================================
+# Arg parser
+# ========================================
 parser = utils.Parser()
 args = parser.parse_args()
-start_time = time.time()
 
-#print('bool var: {}, type = {}'.format(pargs['variable'], type(pargs['variable'])))
-code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+#------------------------------------------------------------------------------
+# Data features
+#------------------------------------------------------------------------------
+# Dataset vars
+# ========================================
+redshift_idx = args.redshifts
+redshifts = [REDSHIFTS[i] for i in redshift_idx]
+zx, zy = redshifts[0], redshifts[-1]
 
-'''
+
+# Dimensionality
+# ========================================
+num_redshifts = len(redshifts)
+N = 32**3
+M = args.graph_var
+batch_size = args.batch_size
+num_test_samples = args.num_test
+#cube_dims = [batch_size, N, M, ]
+
+# Network features
+# ========================================
+channels   = args.channels
+layer_type = args.layer_type
+network_depth = len(channels) - 1
+
+
+
+# Training parameters
+# ========================================
+
+#------------------------------------------------------------------------------
+# Model structure
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# Session features
+#------------------------------------------------------------------------------
+# Session variables
+# ========================================
+var_scope  = args.var_scope.format(zx, zy)
+
+
+
+
+
+#==============================================================================
+# Setup computational graph
+#==============================================================================
+#------------------------------------------------------------------------------
+# Load data
+#------------------------------------------------------------------------------
+X = utils.normalize(utils.load_simulation_data(redshift_idx))
+X_train, X_test = utils.split_data_validation(X, num_val=num_test_samples)
+X = None # reduce memory overhead
+
+#------------------------------------------------------------------------------
+# Specify graph nodes
+#------------------------------------------------------------------------------
+# Inputs
+# ========================================
+X_input = tf.placeholder(tf.float32, shape=(None, N, 6))
+X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
+COO_feats = tf.placeholder(tf.int32, shape=(3, None,))
+
+
+# Output
+# ========================================
+dims = [batch_size,N,M]
+model_specs = utils.AttrDict()
+model_specs.num_layers = num_layers
+model_specs.var_scope = vscope
+model_specs.activation_func = tf.nn.relu
+model_specs.dims = dims
+X_pred = nn.model_func_ShiftInv(X_input, COO_feats, model_specs)
+
+# Optimization
+# ========================================
+optimizer = tf.train.AdamOptimizer(learning_rate)
+
+error = nn.pbc_loss(X_pred, X_truth, vel=False)
+train = optimizer.minimize(error)
+
+
+#------------------------------------------------------------------------------
+# Model variables
+#------------------------------------------------------------------------------
+# Data features
+# ========================================
+dims = [batch_size,N,M]
+model_specs = utils.AttrDict()
+model_specs.num_layers = num_layers
+model_specs.var_scope = vscope
+model_specs.activation_func = tf.nn.relu
+model_specs.dims = dims
+
+# Init model params
+# ----------------
+vscope = utils.VARIABLE_SCOPE.format(zX, zY)
+utils.initialize_model_params(ltype, channels, vscope, restore=restore)
+
+
+# Model static func args
+# ----------------
+#model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
+dims = [batch_size,N,M]
+model_specs = utils.AttrDict()
+model_specs.num_layers = num_layers
+model_specs.var_scope = vscope
+model_specs.activation_func = tf.nn.relu
+model_specs.dims = dims
+_X_edges, _X_nodes = nn.get_input_features_ShiftInv(X_input, COO_feats, dims)
+
+# Model outputs
+# ----------------
+# Train
+if compute_edges_nodes:
+    #X_edges, X_nodes = nn.get_input_features_ShiftInv(X_input, COO_feats, dims)
+    X_pred = nn.model_func_ShiftInv_preprocess_assumption(X_input, X_edges, X_nodes, COO_feats, model_specs)
+else:
+    X_pred = nn.model_func_ShiftInv(X_input, COO_feats, model_specs)
+
+
+
+# Loss
+# ----------------
+optimizer = tf.train.AdamOptimizer(learning_rate)
+
+error = nn.pbc_loss(X_pred, X_truth, vel=False)
+train = optimizer.minimize(error)
+#sc_error = nn.pbc_loss_scaled(X_input, X_pred, X_truth, vel=False)
+#train = tf.train.AdamOptimizer(learning_rate).minimize(sc_error)
+
+# Validation error
+#val_error   = nn.pbc_loss(X_pred_val, X_truth, vel=False)
+#inputs_diff = nn.pbc_loss(X_input,    X_truth, vel=False)
+
+
+#=============================================================================
+# Session setup
+#=============================================================================
+# Sess
+# ----------------
+gpu_frac = 0.9
+gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
+
+sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
+
+# initialize variables
+sess.run(tf.global_variables_initializer())
+train_saver.initialize_saver()
+if restore:
+    train_saver.restore_model_parameters(sess)
+    #utils.load_graph(sess, model_path)
+
+
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 #=============================================================================
 # NBODY Data
@@ -140,58 +284,7 @@ def get_list_csr(h_in):
 
 
 
-# Model static func args
-# ----------------
-#model_specs = nn.ModelFuncArgs(num_layers, vscope, dims=[batch_size,N,M])
-dims = [batch_size,N,M]
-model_specs = utils.AttrDict()
-model_specs.num_layers = num_layers
-model_specs.var_scope = vscope
-model_specs.activation_func = tf.nn.relu
-model_specs.dims = dims
-_X_edges, _X_nodes = nn.get_input_features_ShiftInv(X_input, COO_feats, dims)
 
-# Model outputs
-# ----------------
-# Train
-if compute_edges_nodes:
-    #X_edges, X_nodes = nn.get_input_features_ShiftInv(X_input, COO_feats, dims)
-    X_pred = nn.model_func_ShiftInv_preprocess_assumption(X_input, X_edges, X_nodes, COO_feats, model_specs)
-else:
-    X_pred = nn.model_func_ShiftInv(X_input, COO_feats, model_specs)
-
-
-
-# Loss
-# ----------------
-optimizer = tf.train.AdamOptimizer(learning_rate)
-
-error = nn.pbc_loss(X_pred, X_truth, vel=False)
-train = optimizer.minimize(error)
-#sc_error = nn.pbc_loss_scaled(X_input, X_pred, X_truth, vel=False)
-#train = tf.train.AdamOptimizer(learning_rate).minimize(sc_error)
-
-# Validation error
-#val_error   = nn.pbc_loss(X_pred_val, X_truth, vel=False)
-#inputs_diff = nn.pbc_loss(X_input,    X_truth, vel=False)
-
-
-#=============================================================================
-# Session setup
-#=============================================================================
-# Sess
-# ----------------
-gpu_frac = 0.9
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
-
-sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
-
-# initialize variables
-sess.run(tf.global_variables_initializer())
-train_saver.initialize_saver()
-if restore:
-    train_saver.restore_model_parameters(sess)
-    #utils.load_graph(sess, model_path)
 
 
 
@@ -325,4 +418,4 @@ train_saver.save_model_cube(test_predictions, (zX, zY), ground_truth=False)
 
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-'''
+
