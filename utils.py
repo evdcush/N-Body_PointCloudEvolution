@@ -304,7 +304,7 @@ def get_model_name(sess_args):
     # ==== Extract relevant args
     model_name = sess_args.model_name
     suffix = sess_args.name_suffix
-    rs_idx = sess_args.redshifts
+    rs_idx = sess_args.rs_idx
     ltype  = sess_args.layer_type
     mtype  = sess_args.model_type
 
@@ -609,9 +609,10 @@ class TrainSaver:
     """
     def __init__(self, sess_args, always_write_meta=False):
         # Training vars
-        #self.saver = tf.train.Saver() # must be done AFTER sess.run(tf.global_variables_initializer())
+        self.saver = tf.train.Saver() # must be done AFTER sess.run(tf.global_variables_initializer())
         self.model_name = get_model_name(sess_args)
         self.num_iters = sess_args.num_iters
+        self.rs_idx = sess_args.rs_idx
         self.restore = sess_args.restore
         self.always_write_meta = always_write_meta
 
@@ -642,7 +643,8 @@ class TrainSaver:
             save_path = self.result_path
         save_error(error, save_path, training)
 
-    def save_model_cube(self, cube, rs, save_path=None, ground_truth=False):
+    def save_model_cube(self, cube, save_path=None, ground_truth=False):
+        rs = self.rs_idx
         if save_path is None:
             save_path = self.result_path
         save_cube(cube, rs, save_path, ground_truth)
@@ -685,7 +687,7 @@ class Parser:
 
         # ==== Data variables
         add('--seed',       '-s', type=int, default=PARAMS_SEED,)
-        add('--redshifts',  '-z', type=int, default=[18,19], nargs='+',)
+        add('--rs_idx',     '-z', type=int, default=[18,19], nargs='+',)
         add('--model_name', '-m', type=str, default=MODEL_BASENAME,)
         add('--name_suffix','-n', type=str, default='')
 
@@ -698,9 +700,11 @@ class Parser:
 
         # ==== Training variables
         add('--num_test',   '-t', type=int, default=NUM_VAL_SAMPLES)
-        add('--num_iters',  '-i', type=int, default=1000)
+        add('--num_iters',  '-i', type=int, default=2000)
         add('--batch_size', '-b', type=int, default=4)
         add('--restore',    '-r', type=int, default=0,) # bool
+        add('--pbc_graph',  '-p', type=int, default=0)
+        add('--checkpoint', '-c', type=int, default=100)
         add('--variable',   '-q', type=int, default=0)  # bool, multi-purpose
 
     def parse_args(self):
@@ -709,17 +713,24 @@ class Parser:
         return parsed
 
     def add_interpreted_args(self, parsed):
+        # ==== redshifts
+        redshift_idx = parsed.rs_idx
+        redshifts = [REDSHIFTS[z] for z in redshift_idx]
+        parsed.redshifts = redshifts
+
         # ==== Model-type
         mtype = SINGLE_STEP
         cat_rs = False
-        if len(parsed.redshifts) > 2:
+        if len(redshift_idx) > 2:
             mtype = MULTI_STEP
             cat_rs = True
         parsed.model_type = mtype
         parsed.cat_rs = cat_rs
 
+        # ==== var_scope formatting
+        vscope = parsed.var_scope
+        parsed.var_scope = vscope.format(redshift_idx[0], redshift_idx[-1])
         return parsed
-
 
 
     def print_args(self):

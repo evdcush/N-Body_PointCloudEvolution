@@ -691,6 +691,15 @@ def get_pbc_kneighbors_csr(X, K, boundary_threshold, include_self=False):
     return csr_list
 
 
+def get_graph_csr_list(h_in, args):
+    M = args.graph_var
+    pbc = args.pbc_graph == 1
+    if pbc:
+        return get_pbc_kneighbors_csr(h_in, M, 0.03)
+    else:
+        return get_kneighbor_list(h_in, M)
+
+
 #=============================================================================
 # periodic boundary conditions, loss
 #=============================================================================
@@ -734,21 +743,17 @@ def periodic_boundary_dist(readout_full, x_truth):
     return dist
 
 
-def pbc_loss(readout, x_truth, vel=False):
+def pbc_loss(x_pred, x_truth, *args, **kwargs):
     """ MSE over full dims with periodic boundary conditions
     Args:
         readout (tensor): model prediction which has been remapped to inner cube
         x_truth (tensor): ground truth (mb_size, N, 6)
         vel: if vel, then include vel error in loss
     """
-    pbc_dist  = periodic_boundary_dist(readout, x_truth)
+    pbc_dist  = periodic_boundary_dist(x_pred, x_truth)
     error = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1))
-
-    if vel:
-        assert readout.get_shape().as_list()[-1] > 3
-        dist_vel = tf.squared_difference(readout[...,3:], x_truth[...,3:])
-        error += tf.reduce_mean(tf.reduce_sum(dist_vel, axis=-1))
     return error
+
 #------------------------------------------------------------------------------
 # Rescaled MSE loss functions, for velocity predictions
 #------------------------------------------------------------------------------
@@ -770,7 +775,7 @@ def mse(x, y, vel=False):
     return mean_sum_sqr_err
 
 # ==== Loss func
-def pbc_loss_scaled(x_input, x_pred, x_truth, vel=True):
+def pbc_loss_scaled(x_pred, x_truth, x_input, vel=True):
     """ MSE loss (with pbc) rescaled by difference between x_input and truth
     Args:
         x_input (tensor): (b, N, 6), input data
@@ -808,6 +813,12 @@ def pbc_loss_scaled(x_input, x_pred, x_truth, vel=True):
         vel_error = mse(vel_pred, vel_truth, vel=True)
         error += (vel_error / vel_scalar)
     return error
+
+
+def get_loss_func(args):
+    mstep = args.model_type == utils.MULTI_STEP
+    loss_func = pbc_loss_scaled if mstep else pbc_loss
+    return loss_func
 
 
 #------------------------------------------------------------------------------
