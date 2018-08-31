@@ -23,6 +23,7 @@ start_time = time.time()
 # ========================================
 parser = utils.Parser()
 args = parser.parse_args()
+parser.print_args()
 
 # Dimensionality
 # ========================================
