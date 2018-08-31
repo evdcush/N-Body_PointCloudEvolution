@@ -36,13 +36,14 @@ WMAP_3D = {'CD': 1, # col-depth
 #------------------------------------------------------------------------------
 # Network params init
 #------------------------------------------------------------------------------
-def init_RotInv_params(channels, var_scope, vcoeff=False, restore=False, seed=None):
+'''
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@ IMPLEMENTED, see utils.initialize_RotInv_params
+def init_RotInv_params(channels, var_scope, restore=False, seed=None):
     """ Init parameters for perm-equivariant, rotation-invariant model
     For every layer in this model, there are 6 weights (k, q) and 1 bias (q,)
         row-depth, row-col share weight
         depth, col share weight
     """
-    #vinit = 0.002 # best vcoeff constant for 15-19 redshifts on shiftInv model
 
     # Get (k_in, k_out) tuples from channels
     # ========================================
@@ -60,13 +61,11 @@ def init_RotInv_params(channels, var_scope, vcoeff=False, restore=False, seed=No
                 wtag = utils.MULTI_WEIGHT_TAG.format(layer_idx, w_idx)
                 utils.init_weight(*ktup, wtag, restore=restore, seed=seed)
 
-        if vcoeff:
-            assert False # don't use vcoeff yet
-            utils.init_vel_coeff(restore, vinit)
 
 #------------------------------------------------------------------------------
 # Var getters (CALLEE ASSUMES with tf.variable_scope)
 #------------------------------------------------------------------------------
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@ IMPLEMENTED both, see utils.get_RotInv_layer_vars
 def get_scoped_RotInv_weight(layer_idx, w_idx):
     W = tf.get_variable(utils.MULTI_WEIGHT_TAG.format(layer_idx, w_idx))
     return W
@@ -81,6 +80,7 @@ def get_scoped_bias(layer_idx):
 #------------------------------------------------------------------------------
 # ROTATION invariant layer ops
 #------------------------------------------------------------------------------
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@ IMPLEMENTED, see nn.pool_RotInv_graph_conv
 def pool_RotInv(X, idx, broadcast=True):
     """
     Pooling for rotation invariant model, assumes everything in row-major order
@@ -100,7 +100,7 @@ def pool_RotInv(X, idx, broadcast=True):
         X_pooled = tf.reshape(X_pooled, [tf.shape(X)[0], -1, tf.shape(X)[2]])
     return X_pooled
 
-
+# @@@@@@@@@@@@@@@@@@@@@@@@@@@ IMPLEMENTED, see nn.RotInv_layer
 def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
     """
     Args:
@@ -139,7 +139,7 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
         # pool over depth dimension: (b, e, q) --> (b, N*(M-1), q)
         H_out = pool_RotInv(H_out, segID_3D[:,3], broadcast=False)
     return H_out
-
+'''
 
 #=============================================================================
 # ROTATION INVARIANT PRE/POST PROCESSING
@@ -244,7 +244,7 @@ def get_segmentID(lst_csrs, M):
         seg_idx.append(np.array([cd, rd, rc, d, c, r, a])) # ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
     seg_idx = np.array(seg_idx)
 
-    # Offset indices # CARE, ARE YOU SURE YOU NEED TO OFFSET?
+    # Offset indices
     # ========================================
     for i in range(1, seg_idx.shape[0]): # batch_size
         for j in range(seg_idx.shape[1]): # 7
@@ -306,7 +306,7 @@ def get_RotInv_input(X, V, lst_csrs, M):
 
 # Post-process output
 # ========================================
-def get_final_position(X_in, segment_idx_2D, weights, m):
+def get_final_position(X_in, segment_idx_2D, weights, m, scalar):
     """
     Calculate displacement vectors = linear combination of neighbor relative positions, with weights = last layer
     outputs (pooled over depth), and add diplacements to initial position to get final position.
@@ -318,17 +318,22 @@ def get_final_position(X_in, segment_idx_2D, weights, m):
             0-axis is rows/cols respectively. Get it from get_segment_idx_2D()
         weights. Shape (b, N, M - 1, 1). Outputs from last layer (pooled over depth dimension).
         m (int). Number of neighbors.
-
+    dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], m - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
     Returns:
         Tensor of shape (b, N, 3). Final positions.
     """
 
     # Find relative position of neighbors (neighbor - node)
     dX = tf.gather_nd(X_in, segment_idx_2D[1]) - tf.gather_nd(X_in, segment_idx_2D[0])
+    # Note: we want to normalize the dX vectors to be of length one,
+    #  i.e. dX_reshaped[i, j, k, 0]^2 + dX_reshaped[i, j, k, 1]^2 + dX_reshaped[i, j, k, 2]^2 = 1 for any i, j, k.
     dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], m - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
 
     # Return initial position + displacement (=weighted combination of neighbor relative distances)
-    return X_in + tf.reduce_sum(tf.multiply(dX_reshaped, weights), axis=2)
+    # Note: we want to rescale the second term by a learnable scalar parameter
+    #       and add the linear displacement, same as in shift_invariant setup.
+    #return X_in + tf.reduce_sum(tf.multiply(dX_reshaped, weights), axis=2)
+    return X_in + scalar * tf.reduce_sum(tf.multiply(dX_reshaped, weights), axis=2)
 
 
 #=============================================================================

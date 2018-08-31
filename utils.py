@@ -123,8 +123,17 @@ CHANNELS_SHALLOW = [9, 32, 16, 8, 6]
 SHIFT_INV_W_IDX = [1,2,3,4]
 
 # Rotation-invariant
-ROTATION_INV_SEGMENTS = ['no-pooling', 'col-depth', 'row-depth',
-                         'row-col', 'depth', 'col', 'row', 'all']
+ROTATION_INV_SEGNAMES = ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
+ROTATION_INV_W_IDX = [1,2,3,4,5,6]
+ROTATION_INV_WMAP = {'CD': 1, # col-depth
+                     'RD': 2, # row-depth
+                     'RC': 2, # row-col
+                     'D' : 3, # depth
+                     'C' : 3, # col
+                     'R' : 4, # row
+                     'A' : 5, # all
+                     'Z' : 6} # none (no pooling)
+
 
 # Training variables
 # ========================================
@@ -199,19 +208,35 @@ def initialize_ShiftInv_params(kdims, restore=False, **kwargs):
         initialize_bias(BIAS_TAG.format(layer_idx), kdim, restore=restore)
         for w_idx in SHIFT_INV_W_IDX:
             Wname = WEIGHT_TAG.format(layer_idx, w_idx)
-#            code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
             initialize_weight(Wname, kdim, restore=restore)
     initialize_scalars(restore=restore)
 
 
 def initialize_RotInv_params(kdims, restore=False, **kwargs):
-    # TODO
-    assert False
+    """ RotInv layers have 1 bias, 6 weights, and scalar
+        Note, the following pool ops share weights (pairwise, not all 4):
+        - row-depth, row-col
+        - depth, col
+    """
+    for layer_idx, kdim in enumerate(kdims):
+        bname = BIAS_TAG.format(layer_idx)
+        initialize_bias(bname, kdim, restore=restore)
+        for w_idx in ROTATION_INV_W_IDX: # [1,2,3,4,5,6]
+            Wname = WEIGHT_TAG.format(layer_idx, w_idx)
+            initialize_weight(Wname, kdim, restore=restore)
+        initialize_scalars(restore=restore)
 
-LAYER_INIT_FUNCS = {VANILLA:   initialize_vanilla_params,
-                    SHIFT_INV: initialize_ShiftInv_params,
-                    ROT_INV:   initialize_RotInv_params}
 
+def layer_init(ltype, kdims, restore):
+    args = (kdims, restore)
+    if ltype == SHIFT_INV:
+        func = initialize_ShiftInv_params
+    elif ltype == ROT_INV:
+        func = initialize_RotInv_params
+    else:
+        func = initialize_vanlla_params
+    func(*args)
 
 
 def initialize_model_params(args):
@@ -237,10 +262,8 @@ def initialize_model_params(args):
 
     # Seed and initialize
     tf.set_random_seed(seed)
-    #with tf.variable_scope(scope, reuse=True):
     with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
-        layer_init_func = LAYER_INIT_FUNCS[layer_type]
-        layer_init_func(kdims, restore=restore)
+        layer_init(layer_type, kdims, restore)
     print('Initialized {} layer parameters'.format(layer_type))
 
 
@@ -291,8 +314,19 @@ def get_ShiftInv_layer_vars(layer_idx, **kwargs):
 
 
 def get_RotInv_layer_vars(layer_idx, **kwargs):
-    # TODO
-    assert False
+    bias = get_bias(layer_idx)
+    weights = [get_weight(layer_idx, w_idx=i) for i in ROTATION_INV_W_IDX]
+    W1, W2, W3, W4, W5, W6 = weights
+    # this is bad man, super bad coupling, need a better solution
+    wmap = {'CD': W1, # col-depth
+            'RD': W2, # row-depth
+            'RC': W2, # row-col
+            'D' : W3, # depth
+            'C' : W3, # col
+            'R' : W4, # row
+            'A' : W5, # all
+            'Z' : W6} # none (no pooling)
+    return wmap, bias
 
 
 #=============================================================================
