@@ -67,7 +67,7 @@ BASE_SAVE_PATH = './Models/{}/'
 MODEL_SAVE_PATH   = BASE_SAVE_PATH  + 'Session/'
 FILE_SAVE_PATH    = MODEL_SAVE_PATH + 'original_files/'
 RESULTS_SAVE_PATH = BASE_SAVE_PATH  + 'Results/'
-FILE_SAVE_NAMES = ['utils.py', 'nn.py', 'train_ShiftInv.py', 'train_multi_ShiftInv.py']
+FILE_SAVE_NAMES = ['utils.py', 'nn.py', 'train.py']
 
 # Model data names
 CUBE_BASE_NAME = 'X_{}-{}_'
