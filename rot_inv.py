@@ -17,6 +17,7 @@ import tensorflow as tf
 #=============================================================================
 # Globals
 #=============================================================================
+'''
 # segment labels
 SEGNAMES_3D = ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
 
@@ -36,7 +37,7 @@ WMAP_3D = {'CD': 1, # col-depth
 #------------------------------------------------------------------------------
 # Network params init
 #------------------------------------------------------------------------------
-'''
+
 # @@@@@@@@@@@@@@@@@@@@@@@@@@@ IMPLEMENTED, see utils.initialize_RotInv_params
 def init_RotInv_params(channels, var_scope, restore=False, seed=None):
     """ Init parameters for perm-equivariant, rotation-invariant model
@@ -153,7 +154,7 @@ def get_batch_2D_segmentID(batch_graph):
         Sorry, using a different indexing system from 3D adjacency case. TODO: make indexing consistent for clarity.
 
     Args:
-        batch_A_sparse. List of csr (or any other sparse format) adjacencies.
+        batch_graph. List of csr (or any other sparse format) adjacencies.
 
     Returns:
         array of shape (2, b * N * (M-1), 2). Each pair in the third axis is a batch idx - row idx or

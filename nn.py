@@ -34,9 +34,6 @@ TODO:
 SUBSCRIPT_VANILLA  = 'ijk,kq->ijq'
 SUBSCRIPT_SHIFTINV = 'ck,kq->cq'
 SUBSCRIPT_ROTINV   = 'bek,kq->beq'
-ROTATION_INV_SEGMENTS = ['no-pooling', 'col-depth', 'row-depth',
-                         'row-col', 'depth', 'col', 'row', 'all']
-ROTATION_INV_SEGMENTS = ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
 
 #==============================================================================
 # Data processing funcs
@@ -424,45 +421,6 @@ def model_func_ShiftInv(X_in, COO_feats, model_specs, redshift=None):
     # Get graph inputs
     # ========================================
     edges, nodes = get_input_features_ShiftInv(X_in, COO_feats, dims)
-
-    # Network forward
-    # ========================================
-    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        # ==== Split input
-        X_in_loc, X_in_vel = X_in[...,:3], X_in[...,3:]
-        # ==== Network output
-        net_out = network_func_ShiftInv(edges, nodes, COO_feats, num_layers,
-                                        dims[:-1], activation, redshift)
-        num_feats = net_out.get_shape().as_list()[-1]
-
-        # ==== Scale network output and compute skip connections
-        loc_scalar, vel_scalar = utils.get_scalars()
-        H_out = net_out[...,:3]*loc_scalar + X_in_loc + X_in_vel*vel_scalar
-
-        # ==== Concat velocity predictions
-        if net_out.get_shape().as_list()[-1] > 3:
-            H_vel = net_out[...,3:]*vel_scalar + X_in_vel
-            H_out = tf.concat([H_out, H_vel], axis=-1)
-        return get_readout(H_out)
-
-
-def model_func_ShiftInv_preprocess_assumption(X_in, edges, nodes, COO_feats, model_specs, redshift=None):
-    """
-    Args:
-        X_in (tensor): (b, N, 6)
-        COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
-        redshift (tensor): (b*N*M, 1) redshift broadcasted
-    """
-    # Get relevant model specs
-    # ========================================
-    var_scope  = model_specs.var_scope
-    num_layers = model_specs.num_layers
-    activation = model_specs.activation_func # default tf.nn.relu
-    dims = model_specs.dims
-
-    # Get graph inputs
-    # ========================================
-    #edges, nodes = get_input_features_ShiftInv(X_in, COO_feats, dims)
 
     # Network forward
     # ========================================
