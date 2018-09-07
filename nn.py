@@ -171,26 +171,7 @@ def pool_ShiftInv_graph_conv(h, pool_idx, num_segs, broadcast):
     return pooled_conv
 
 
-# Pooled graph conv
-# ========================================
-def pool_RotInv_graph_conv(X, idx, num_segs, broadcast=True):
-    """
-    Pooling for rotation invariant model, assumes everything in row-major order
-    Args:
-        X (tensor): (b,e,k)
-        idx (tensor): (b,e)
-        broadcast (bool): if True, after pooling re-broadcast to original shape
-    Returns:
-        tensor of shape (b,e,k) if broadcast, else (b,N*(M-1),k)
-    """
-    num_segs = tf.reduce_max(idx) + 1 # number of segments
-    X_pooled = tf.unsorted_segment_mean(X, idx, num_segs)
 
-    if broadcast: # same shape as X
-        X_pooled = tf.gather_nd(X_pooled, tf.expand_dims(idx, axis=2))
-    else:
-        X_pooled = tf.reshape(X_pooled, [tf.shape(X)[0], -1, tf.shape(X)[2]])
-    return X_pooled
 
 
 #==============================================================================
@@ -315,61 +296,7 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
         H_out = tf.reshape(_pool(H_out, row_idx, broadcast=False), (b, N, -1))
     return H_out
 
-#------------------------------------------------------------------------------
-# Rotation Invariant layers
-#------------------------------------------------------------------------------
-def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
-    """
-    Args:
-        H_in (tensor): (b, e, k)
-            b = minibatch size
-            e = N*(M-1)*(M-2), number of edges in 3D adjacency (no diagonals)
-              N = num_particles
-              M = num neighbors
-            k = input channels
-        segID_3D (tensor): (b, 7, e) segment ids for pooling, 7 total:
-            [col-depth, row-depth, row-col, depth, col, row, all]
-        layer_id (int): layer id in network, for retrieving layer vars
-    Returns:
-        tensor of shape (b, e, q) if not is_last else (b, N*(M-1), q)
-    """
-    b, N = bN
-    num_segs = b*N
-    # get layer weights
-    wmap, B = utils.get_RotInv_layer_vars(layer_id)
-    '''
-    wmap = {'CD': W1, # col-depth
-            'RD': W2, # row-depth
-            'RC': W2, # row-col
-            'D' : W3, # depth
-            'C' : W3, # col
-            'R' : W4, # row
-            'A' : W5, # all
-            'Z' : W6} # none (no pooling)
-    '''
 
-    # Helper funcs
-    # ========================================
-    def _left_mult(h, pool_op):
-        W = wmap[pool_op]
-        return left_mult(h, W, SUBSCRIPT_ROTINV) #'bek,kq->beq'
-
-    # Forward pass
-    # ========================================
-    # No pooling
-    H = _left_mult(H_in, 'Z')
-    # Pooling ops, ORDER MATTERS
-    for i, pool_op in enumerate(SEGNAMES_3D): # ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
-        pooled_H = pool_RotInv_graph_conv(H_in, segID_3D[:,i], num_segs, broadcast=True)
-        H = H + _left_mult(pooled_H, pool_op)
-
-    # Output
-    # ========================================
-    H_out = H + B # (b, e, q)
-    if is_last:
-        # pool over depth dimension: (b, e, q) --> (b, N*(M-1), q)
-        H_out = pool_RotInv_graph_conv(H_out, segID_3D[:,3], num_segs, broadcast=False)
-    return H_out
 
 
 #==============================================================================
@@ -950,3 +877,87 @@ class Network:
     """
     def __init__(self, ):
 '''
+
+#==============================================================================
+# rotinv
+#==============================================================================
+
+# Pooled graph conv
+# ========================================
+def pool_RotInv_graph_conv(X, idx, num_segs, broadcast=True):
+    """
+    Pooling for rotation invariant model, assumes everything in row-major order
+    Args:
+        X (tensor): (b,e,k)
+        idx (tensor): (b,e)
+        broadcast (bool): if True, after pooling re-broadcast to original shape
+    Returns:
+        tensor of shape (b,e,k) if broadcast, else (b,N*(M-1),k)
+    """
+    num_segs = tf.reduce_max(idx) + 1 # number of segments
+    X_pooled = tf.unsorted_segment_mean(X, idx, num_segs)
+
+    if broadcast: # same shape as X
+        X_pooled = tf.gather_nd(X_pooled, tf.expand_dims(idx, axis=2))
+    else:
+        X_pooled = tf.reshape(X_pooled, [tf.shape(X)[0], -1, tf.shape(X)[2]])
+    return X_pooled
+
+
+#------------------------------------------------------------------------------
+# Rotation Invariant layers
+#------------------------------------------------------------------------------
+def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
+    """
+    Args:
+        H_in (tensor): (b, e, k)
+            b = minibatch size
+            e = N*(M-1)*(M-2), number of edges in 3D adjacency (no diagonals)
+              N = num_particles
+              M = num neighbors
+            k = input channels
+        segID_3D (tensor): (b, 7, e) segment ids for pooling, 7 total:
+            [col-depth, row-depth, row-col, depth, col, row, all]
+        layer_id (int): layer id in network, for retrieving layer vars
+    Returns:
+        tensor of shape (b, e, q) if not is_last else (b, N*(M-1), q)
+    """
+    b, N = bN
+    num_segs = b*N
+    # get layer weights
+    wmap, B = utils.get_RotInv_layer_vars(layer_id)
+    '''
+    wmap = {'CD': W1, # col-depth
+            'RD': W2, # row-depth
+            'RC': W2, # row-col
+            'D' : W3, # depth
+            'C' : W3, # col
+            'R' : W4, # row
+            'A' : W5, # all
+            'Z' : W6} # none (no pooling)
+    '''
+
+    # Helper funcs
+    # ========================================
+    def _left_mult(h, pool_op):
+        W = wmap[pool_op]
+        return left_mult(h, W, SUBSCRIPT_ROTINV) #'bek,kq->beq'
+
+    # Forward pass
+    # ========================================
+    # No pooling
+    H = _left_mult(H_in, 'Z')
+    # Pooling ops, ORDER MATTERS
+    for i, pool_op in enumerate(SEGNAMES_3D): # ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
+        pooled_H = pool_RotInv_graph_conv(H_in, segID_3D[:,i], num_segs, broadcast=True)
+        H = H + _left_mult(pooled_H, pool_op)
+
+    # Output
+    # ========================================
+    H_out = H + B # (b, e, q)
+    if is_last:
+        # pool over depth dimension: (b, e, q) --> (b, N*(M-1), q)
+        H_out = pool_RotInv_graph_conv(H_out, segID_3D[:,3], num_segs, broadcast=False)
+    return H_out
+
+
