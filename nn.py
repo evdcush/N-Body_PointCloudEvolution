@@ -1000,17 +1000,8 @@ def get_segmentID(lst_csrs, M):
 
 
 
-# Offset indices
+# Pre-process input
 # ========================================
-a1 = ([_norm(dist_cr), _project(V[r], dist_cr), _project(V[c], -dist_cr)])
-a2 = ([_norm(dist_dr), _project(V[r], dist_dr), _project(V[d], -dist_dr)])
-a3 = ([_norm(dist_dc), _project(V[c], dist_dc), _project(V[d], -dist_dc)])
-def get_RotInv_features(X, V, adj):
-    _norm    = lambda      v: np.linalg.norm(v)
-    _angle   = lambda v1, v2: np.dot(v1, v2) / (_norm(v1) * _norm(v2))
-    _project = lambda v1, v2: np.dot(v1, v2) / _norm(v2)
-
-
 def get_RotInv_input(X, V, lst_csrs, M):
     """
     Args:
@@ -1026,10 +1017,16 @@ def get_RotInv_input(X, V, lst_csrs, M):
             down into 3 surfaces x (1 scalar distance + 1 row velocity projected onto cols + 1 col velocity
             projected onto rows)
     """
+    # Helpers
+    _norm    = lambda dist: np.linalg.norm(dist)
+    _angle   = lambda dist1, dist2: np.dot(dist1, dist2) / (_norm(dist1) * _norm(dist2))
+    _project = lambda v, dist: np.dot(v, dist) / _norm(dist)
+
     # out dims
     batch_size, N = X.shape[:2]
     e = N*(M-1)*(M-2)
-    X_out = np.zeros((batch_size, e, 10)).astype(np.float32)
+    #X_out = np.zeros((batch_size, e, 10)).astype(np.float32)
+    X_out = []
 
     # Iterate over each cube in batch
     # ========================================
@@ -1046,20 +1043,31 @@ def get_RotInv_input(X, V, lst_csrs, M):
         dist_dr = x[depth] - x[rows]
         dist_dc = x[depth] - x[cols]
 
-        # Edge features
+        # Velocities
+        v_rows  = V[rows]
+        v_cols  = V[cols]
+        v_depth = V[depth]
+
+        #   Input features
+        #-------------------
+        #===== Edge
         features = [_angle(dist_cr, dist_dr)]
 
-        # rc surface features
+        #===== RC surface
         # scalar distance + projection of row vel to rc vectors + projection of col vel to cr vectors
-        features.extend([_norm(dist_cr), _project(V[r], dist_cr), _project(V[c], -dist_cr)])            # rd surface features
+        features.extend([_norm(dist_cr), _project(v_rows, dist_cr), _project(v_cols, -dist_cr)])
 
+        #===== RD surface
         # scalar distance + projection of row vel to rd vectors + projection of depth vel to dr vectors
-        features.extend([_norm(dist_dr), _project(V[r], dist_dr), _project(V[d], -dist_dr)])            # cd surface features
+        features.extend([_norm(dist_dr), _project(v_rows, dist_dr), _project(v_depth, -dist_dr)])
 
+        #===== CD surface
         # scalar distance + projection of col vel to cd vectors + projection of depth vel to dc vectors
-        features.extend([_norm(dist_dc), _project(V[c], dist_dc), _project(V[d], -dist_dc)])
+        features.extend([_norm(dist_dc), _project(v_cols, dist_dc), _project(v_depth, -dist_dc)])
 
         X_out.append(features)
+
+    return np.array(X_out)
 
 
 #------------------------------------------------------------------------------
@@ -1090,11 +1098,14 @@ def get_final_position(X_in, segment_idx_2D, weights, m, scalar):
     # Note: we want to normalize the dX vectors to be of length one,
     #  i.e. dX_reshaped[i, j, k, 0]^2 + dX_reshaped[i, j, k, 1]^2 + dX_reshaped[i, j, k, 2]^2 = 1 for any i, j, k.
     dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], m - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
+    dX_norm = tf.reshape(tf.linalg.norm(dX_reshaped[-1,3], axis=1), tf.shape(dX_shaped)[:-1] + (1,))
+    dX_out = dX_reshape / dX_norm
+
 
     # Return initial position + displacement (=weighted combination of neighbor relative distances)
     # Note: we want to rescale the second term by a learnable scalar parameter
     #       and add the linear displacement, same as in shift_invariant setup.
-    return X_in + tf.reduce_sum(tf.multiply(dX_reshaped, weights), axis=2)
+    return X_in + scalar * tf.reduce_sum(tf.multiply(dX_out, weights), axis=2)
 
 #------------------------------------------------------------------------------
 # ROTINV layer ops

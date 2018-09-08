@@ -176,9 +176,9 @@ def get_batch_2D_segmentID(batch_graph): #@@@@@@@@@@@@@@@@@@@@@@@@@@@ IMPLEMENTE
     cols = np.reshape(np.array(cols), (-1, 2))
 
     return np.array([rows, cols])
-'''
 
-def get_3D_segmentID(adj_graph, M):
+
+def get_3D_segmentID(adj_graph, M):#@@@@@@@@@@@@@@@@@@@@@@@@@@@ IMPLEMENTED, see nn.get_3D_segmentID
     """ Build 3D adjacency from csr_matrix (though any matrix from scipy.sparse works)
     Args:
         adj_graph (csr_matrix): neighbor graph (assumes kneighbors_graph)
@@ -206,7 +206,7 @@ def get_3D_segmentID(adj_graph, M):
     return r, c, d
 
 
-def get_segmentID(lst_csrs, M):
+def get_segmentID(lst_csrs, M):#@@@@@@@@@@@@@@@@@@@@@@@@@@@ IMPLEMENTED, see nn.get_segmentID
     """ preprocess batch of adjacency matrices for segment ids
     Total of 7 segments for 3D graph, in order:
     col-depth, row-depth, row-col, depth, col, row, all
@@ -256,13 +256,7 @@ def get_segmentID(lst_csrs, M):
 #------------------------------------------------------------------------------
 # Make rotational invariant input
 #------------------------------------------------------------------------------
-def get_RotInv_features(X, V, adj):
-    _norm = lambda v: np.linalg.norm(v)
-    _angle   = lambda v1, v2: np.dot(v1, v2) / (_norm(v1) * _norm(v2))
-    _project = lambda v1, v2: np.dot(v1, v2) / _norm(v2)
-
-
-def get_RotInv_input(X, V, lst_csrs, M):
+def get_RotInv_input(X, V, lst_csrs, M):#@@@@@@@@@@@@@@@@@@@@@@@@@@@ IMPLEMENTED, see nn.get_RotInv_features
     """
     Args:
          X. Shape (b, N, 3). Coordinates.
@@ -298,7 +292,7 @@ def get_RotInv_input(X, V, lst_csrs, M):
         dist_dc = x[depth] - x[cols]
 
         # Edge features
-
+'''
 
 
 # STOPPED HERE
