@@ -726,6 +726,28 @@ if __name__ == "__main__":
     toy_example()
 
 
+
+
+def network_func_RotInv(X_in, segID_3D, num_layers, dims, activation, redshift=None):
+    """
+    Args:
+        X_in (tensor): (b, e, k)
+            b = minibatch size
+            e = N*(M-1)*(M-2), number of edges in 3D adjacency (no diagonals)
+              N = num_particles
+              M = num neighbors
+            k = input channels
+        segID_3D (tensor): (b, 7, e) segment ids for pooling, 7 total:
+            [col-depth, row-depth, row-col, depth, col, row, all]
+        num_layers (int): network depth, for retrieving layer variables
+        dims tuple(int): (b, N)
+        activation (tf.function): activation function, (defaults tf.nn.relu)
+        redshift (tensor): (-1, 1) vector of broadcasted redshifts
+    Returns:
+        tensor of shape (b, e, q) if not is_last else (b, N*(M-1), q)
+    """
+    pass
+
 '''
 #############
 

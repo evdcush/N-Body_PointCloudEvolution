@@ -1118,6 +1118,7 @@ def pool_RotInv_graph_conv(X, idx, num_segs, broadcast=True):
     Args:
         X (tensor): (b,e,k)
         idx (tensor): (b,e)
+        num_segs (int): b * N
         broadcast (bool): if True, after pooling re-broadcast to original shape
     Returns:
         tensor of shape (b,e,k) if broadcast, else (b,N*(M-1),k)
@@ -1175,6 +1176,7 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
     # ========================================
     # No pooling
     H = _left_mult(H_in, 'Z')
+
     # Pooling ops, ORDER MATTERS
     for i, pool_op in enumerate(SEGNAMES_3D): # ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
         pooled_H = pool_RotInv_graph_conv(H_in, segID_3D[:,i], num_segs, broadcast=True)
@@ -1189,17 +1191,14 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
     return H_out
 
 
-#------------------------------------------------------------------------------
-# Layer wrappers
-#------------------------------------------------------------------------------
 
-H_in, segID_3D, bN, layer_id, is_last=False
-# Rotation invariant network
-# ========================================
+#------------------------------------------------------------------------------
+#                # Rotation Invariant Network function #
+#------------------------------------------------------------------------------
 def network_func_RotInv(X_in, segID_3D, num_layers, dims, activation, redshift=None):
     """
     Args:
-        H_in (tensor): (b, e, k)
+        X_in (tensor): (b, e, k)
             b = minibatch size
             e = N*(M-1)*(M-2), number of edges in 3D adjacency (no diagonals)
               N = num_particles
@@ -1207,14 +1206,17 @@ def network_func_RotInv(X_in, segID_3D, num_layers, dims, activation, redshift=N
             k = input channels
         segID_3D (tensor): (b, 7, e) segment ids for pooling, 7 total:
             [col-depth, row-depth, row-col, depth, col, row, all]
-        layer_id (int): layer id in network, for retrieving layer vars
+        num_layers (int): network depth, for retrieving layer variables
+        dims tuple(int): (b, N)
+        activation (tf.function): activation function, (defaults tf.nn.relu)
+        redshift (tensor): (-1, 1) vector of broadcasted redshifts
     Returns:
         tensor of shape (b, e, q) if not is_last else (b, N*(M-1), q)
     """
 
     # Input layer
     # ========================================
-    H = activation(RotInv_layer(X_in, segID_3D, dims, 0))
+    H = activation(RotInv_layer(X_in, segID_3D, dims, 0))  # (H_in, segID_3D, bN, layer_id, is_last=False)
 
     # Hidden layers
     # ========================================
@@ -1226,8 +1228,9 @@ def network_func_RotInv(X_in, segID_3D, num_layers, dims, activation, redshift=N
     return H
 
 
-# Rotation invariant model
-# ========================================
+#------------------------------------------------------------------------------
+#                # Rotation Invariant Model function #
+#------------------------------------------------------------------------------
 def model_func_RotInv(X_in, COO_feats, model_specs, redshift=None):
     """
     Args:
