@@ -1002,8 +1002,11 @@ def get_segmentID(lst_csrs, M):
 
 # Offset indices
 # ========================================
+a1 = ([_norm(dist_cr), _project(V[r], dist_cr), _project(V[c], -dist_cr)])
+a2 = ([_norm(dist_dr), _project(V[r], dist_dr), _project(V[d], -dist_dr)])
+a3 = ([_norm(dist_dc), _project(V[c], dist_dc), _project(V[d], -dist_dc)])
 def get_RotInv_features(X, V, adj):
-    _norm = lambda v: np.linalg.norm(v)
+    _norm    = lambda      v: np.linalg.norm(v)
     _angle   = lambda v1, v2: np.dot(v1, v2) / (_norm(v1) * _norm(v2))
     _project = lambda v1, v2: np.dot(v1, v2) / _norm(v2)
 
@@ -1031,19 +1034,32 @@ def get_RotInv_input(X, V, lst_csrs, M):
     # Iterate over each cube in batch
     # ========================================
     for i in range(batch_size):
-        x = X[i]
-        v = V[i]
+        x = X[i] # (N, 3)
+        v = V[i] # (N, 3)
         adj = lst_csrs[i]
 
         # Get 3D seg ID (coo features)
         rows, cols, depth = get_3D_segmentID(adj, M)
 
         # Relative dist vectors
-        dist_cr = x[cols] - x[rows]
+        dist_cr = x[cols]  - x[rows]
         dist_dr = x[depth] - x[rows]
         dist_dc = x[depth] - x[cols]
 
         # Edge features
+        features = [_angle(dist_cr, dist_dr)]
+
+        # rc surface features
+        # scalar distance + projection of row vel to rc vectors + projection of col vel to cr vectors
+        features.extend([_norm(dist_cr), _project(V[r], dist_cr), _project(V[c], -dist_cr)])            # rd surface features
+
+        # scalar distance + projection of row vel to rd vectors + projection of depth vel to dr vectors
+        features.extend([_norm(dist_dr), _project(V[r], dist_dr), _project(V[d], -dist_dr)])            # cd surface features
+
+        # scalar distance + projection of col vel to cd vectors + projection of depth vel to dc vectors
+        features.extend([_norm(dist_dc), _project(V[c], dist_dc), _project(V[d], -dist_dc)])
+
+        X_out.append(features)
 
 
 #------------------------------------------------------------------------------
