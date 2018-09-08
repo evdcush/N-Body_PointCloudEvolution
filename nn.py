@@ -1232,7 +1232,14 @@ def network_func_RotInv(X_in, segID_3D, num_layers, dims, activation, redshift=N
 #                # Rotation Invariant Model function #
 #------------------------------------------------------------------------------
 def model_func_RotInv(X_in, COO_feats, model_specs, redshift=None):
-    """
+    """ Rotation invariant model function
+
+
+    numpy array of shape (b, e, 10)
+            e=N*(M-1)*(M-2), number of edges in 3D adjacency (diagonals removed), N=num of particles, M=num of neighbors
+            10 input channels corresponding to 1 edge feature + 9 broadcasted surface features, those are broken
+            down into 3 surfaces x (1 scalar distance + 1 row velocity projected onto cols + 1 col velocity
+            projected onto rows)
     Args:
         X_in (tensor): (b, N, 6)
         COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
