@@ -140,7 +140,7 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
         # pool over depth dimension: (b, e, q) --> (b, N*(M-1), q)
         H_out = pool_RotInv(H_out, segID_3D[:,3], broadcast=False)
     return H_out
-'''
+
 
 #=============================================================================
 # ROTATION INVARIANT PRE/POST PROCESSING
@@ -148,7 +148,7 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
 #------------------------------------------------------------------------------
 # Segment IDs
 #------------------------------------------------------------------------------
-def get_batch_2D_segmentID(batch_graph):
+def get_batch_2D_segmentID(batch_graph): #@@@@@@@@@@@@@@@@@@@@@@@@@@@ IMPLEMENTED
     """
     Return row, col, indices of a list of 2D sparse adjacencies with batch indices too.
         Sorry, using a different indexing system from 3D adjacency case. TODO: make indexing consistent for clarity.
@@ -176,7 +176,7 @@ def get_batch_2D_segmentID(batch_graph):
     cols = np.reshape(np.array(cols), (-1, 2))
 
     return np.array([rows, cols])
-
+'''
 
 def get_3D_segmentID(adj_graph, M):
     """ Build 3D adjacency from csr_matrix (though any matrix from scipy.sparse works)
@@ -299,6 +299,8 @@ def get_RotInv_input(X, V, lst_csrs, M):
 
         # Edge features
 
+
+
 # STOPPED HERE
 #=============================================================================
 #=============================================================================
@@ -325,10 +327,15 @@ def get_final_position(X_in, segment_idx_2D, weights, m, scalar):
     """
 
     # Find relative position of neighbors (neighbor - node)
+    # (b, E, )
     dX = tf.gather_nd(X_in, segment_idx_2D[1]) - tf.gather_nd(X_in, segment_idx_2D[0])
+
+
     # Note: we want to normalize the dX vectors to be of length one,
     #  i.e. dX_reshaped[i, j, k, 0]^2 + dX_reshaped[i, j, k, 1]^2 + dX_reshaped[i, j, k, 2]^2 = 1 for any i, j, k.
-    dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], m - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
+    dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], m - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)[-1, 3]  --> (b*N*M, )
+    # dX_norm = np.linalg.norm([b*N*M, 3], axis=1) --> resshape (b, N, M-1, 1)
+    dX_out = dX_reshaped / dX_norm
 
     # Return initial position + displacement (=weighted combination of neighbor relative distances)
     # Note: we want to rescale the second term by a learnable scalar parameter
@@ -343,7 +350,7 @@ def get_final_position(X_in, segment_idx_2D, weights, m, scalar):
 #=============================================================================
 # ROTATION INVARIANT PRE/POST PROCESSING
 #=============================================================================
-#=============================================================================
+#================================s============================================
 # ROTATION INVARIANT PRE/POST PROCESSING
 #=============================================================================
 #=============================================================================

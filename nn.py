@@ -879,9 +879,210 @@ class Network:
 '''
 
 #==============================================================================
-# rotinv
+#==============================================================================
+#==============================================================================
+#==============================================================================
+#==============================================================================
+#                       ## Rotation Invariant ##
+#==============================================================================
+#==============================================================================
+#==============================================================================
+#==============================================================================
 #==============================================================================
 
+
+#------------------------------------------------------------------------------
+# PREPROCESSING
+#------------------------------------------------------------------------------
+def get_batch_2D_segmentID(batch_graph):
+    """
+    Return row, col, indices of a list of 2D sparse adjacencies with batch indices too.
+        Sorry, using a different indexing system from 3D adjacency case. TODO: make indexing consistent for clarity.
+
+    Args:
+        batch_graph. List of csr (or any other sparse format) adjacencies.
+
+    Returns:
+        array of shape (2, b * N * (M-1), 2). Each pair in the third axis is a batch idx - row idx or
+            batch idx - col idx for non-zero entries of 2D adjacency. 0-axis is rows/cols respectively.
+    """
+    b = len(batch_graph)
+    rows = []
+    cols = []
+
+    for i in range(b):
+        adj = batch_graph[i]
+        adj.setdiag(0)
+        r, c = adj.nonzero()
+        batch_idx = np.zeros_like(r) + i
+        rows.append(np.transpose([batch_idx, r]))
+        cols.append(np.transpose([batch_idx, c]))
+
+    rows = np.reshape(np.array(rows), (-1, 2))
+    cols = np.reshape(np.array(cols), (-1, 2))
+
+    return np.array([rows, cols])
+
+
+def get_3D_segmentID(adj_graph, M):
+    """ Build 3D adjacency from csr_matrix (though any matrix from scipy.sparse works)
+    Args:
+        adj_graph (csr_matrix): neighbor graph (assumes kneighbors_graph)
+        M (int): number of neighbors
+    Returns:
+        row, col, depth. npy arrays for indices of non-zero entries. Diagonals removed.
+    """
+    adj_graph.setdiag(0)  # Don't need diagonal elements
+    m_eff = M - 1 # Wouldn't need this if include_self=False, but keep for now
+
+    # get COO features
+    # NB: this is not the same as COO conversion, since nonzero() will return neighbor indices sorted
+    rows, cols = adj_graph.nonzero()
+    num_elements = rows.size # N*(M-1)
+
+    # 3D-projected features for row, col, depth
+    r = np.repeat(rows, m_eff-1) # tested equivalent
+    c = np.repeat(cols, m_eff-1) # tested equivalent
+
+    # depth indexing algebra is more complicated, # tested equivalent
+    d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1)
+    del_idx = np.array([(i%m_eff) + (i*m_eff) for i in range(num_elements)])
+    d = np.delete(d, del_idx)
+
+    return r, c, d
+
+
+def get_segmentID(lst_csrs, M):
+    """ preprocess batch of adjacency matrices for segment ids
+    Total of 7 segments for 3D graph, in order:
+    col-depth, row-depth, row-col, depth, col, row, all
+
+    Args:
+        lst_csrs (list(csr_matrix)): list of csr_matrix for neighbor graph, of len num_batches
+        M (int): number of neighbors
+    Returns:
+        ndarray (b, 7, e)
+          where e=N*(M-1)*(M-2), num of edges in 3D adjacency matrix (no diags)
+          N: num_particles
+    """
+    # Helper funcs
+    # ========================================
+    def _combine_segment_idx(idx1, idx2):
+        combined_idx = np.transpose(np.array([idx1, idx2])) # pair idx
+        vals, idx = np.unique(combined_idx, axis=0, return_inverse=True) # why not return_index?
+        return idx
+
+    # process each adjacency in batch
+    # ========================================
+    seg_idx = []
+    for adj in batch:
+        # get row, col, depth segment idx (pools col-depth, row-depth, row-col, respectively)
+        r, c, d = get_3D_segmentID(adj, M)
+
+        # combine segment idx (pools rc->d, rd->c, cd->r, respectively)
+        rc = _combine_segment_idx(r, c)
+        rd = _combine_segment_idx(r, d)
+        cd = _combine_segment_idx(c, d)
+
+        # idx for pooling over all
+        a = np.zeros_like(r)
+
+        # order seg ids
+        seg_idx.append(np.array([cd, rd, rc, d, c, r, a])) # ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
+    seg_idx = np.array(seg_idx)
+
+    # Offset indices
+    # ========================================
+    for i in range(1, seg_idx.shape[0]): # batch_size
+        for j in range(seg_idx.shape[1]): # 7
+            seg_idx[i][j] += np.max(seg_idx[i-1][j]) + 1
+    return seg_idx
+
+
+
+# Offset indices
+# ========================================
+def get_RotInv_features(X, V, adj):
+    _norm = lambda v: np.linalg.norm(v)
+    _angle   = lambda v1, v2: np.dot(v1, v2) / (_norm(v1) * _norm(v2))
+    _project = lambda v1, v2: np.dot(v1, v2) / _norm(v2)
+
+
+def get_RotInv_input(X, V, lst_csrs, M):
+    """
+    Args:
+         X. Shape (b, N, 3). Coordinates.
+         V. Shape (b, N, 3), Velocties.
+         batch_A. List of csr adjacencies.
+         m (int). Number of neighbors.
+
+    Returns:
+        numpy array of shape (b, e, 10)
+            e=N*(M-1)*(M-2), number of edges in 3D adjacency (diagonals removed), N=num of particles, M=num of neighbors
+            10 input channels corresponding to 1 edge feature + 9 broadcasted surface features, those are broken
+            down into 3 surfaces x (1 scalar distance + 1 row velocity projected onto cols + 1 col velocity
+            projected onto rows)
+    """
+    # out dims
+    batch_size, N = X.shape[:2]
+    e = N*(M-1)*(M-2)
+    X_out = np.zeros((batch_size, e, 10)).astype(np.float32)
+
+    # Iterate over each cube in batch
+    # ========================================
+    for i in range(batch_size):
+        x = X[i]
+        v = V[i]
+        adj = lst_csrs[i]
+
+        # Get 3D seg ID (coo features)
+        rows, cols, depth = get_3D_segmentID(adj, M)
+
+        # Relative dist vectors
+        dist_cr = x[cols] - x[rows]
+        dist_dr = x[depth] - x[rows]
+        dist_dc = x[depth] - x[cols]
+
+        # Edge features
+
+
+#------------------------------------------------------------------------------
+# POST-PROCESSING OUTPUT
+#------------------------------------------------------------------------------
+
+# Post-process output
+# ========================================
+def get_final_position(X_in, segment_idx_2D, weights, m, scalar):
+    """
+    Calculate displacement vectors = linear combination of neighbor relative positions, with weights = last layer
+    outputs (pooled over depth), and add diplacements to initial position to get final position.
+
+    Args:
+        X_in. Shape (b, N, 3). Initial positions.
+        segment_idx_2D . Shape (2, b * N * (M-1), 2). Each pair in the third axis is a batch idx - row idx or
+            batch idx - col idx for non-zero entries of 2D adjacency.
+            0-axis is rows/cols respectively. Get it from get_segment_idx_2D()
+        weights. Shape (b, N, M - 1, 1). Outputs from last layer (pooled over depth dimension).
+        m (int). Number of neighbors.
+    dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], m - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
+    Returns:
+        Tensor of shape (b, N, 3). Final positions.
+    """
+
+    # Find relative position of neighbors (neighbor - node)
+    dX = tf.gather_nd(X_in, segment_idx_2D[1]) - tf.gather_nd(X_in, segment_idx_2D[0])
+    # Note: we want to normalize the dX vectors to be of length one,
+    #  i.e. dX_reshaped[i, j, k, 0]^2 + dX_reshaped[i, j, k, 1]^2 + dX_reshaped[i, j, k, 2]^2 = 1 for any i, j, k.
+    dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], m - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
+
+    # Return initial position + displacement (=weighted combination of neighbor relative distances)
+    # Note: we want to rescale the second term by a learnable scalar parameter
+    #       and add the linear displacement, same as in shift_invariant setup.
+    return X_in + tf.reduce_sum(tf.multiply(dX_reshaped, weights), axis=2)
+
+#------------------------------------------------------------------------------
+# ROTINV layer ops
+#------------------------------------------------------------------------------
 # Pooled graph conv
 # ========================================
 def pool_RotInv_graph_conv(X, idx, num_segs, broadcast=True):
@@ -961,3 +1162,79 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
     return H_out
 
 
+#------------------------------------------------------------------------------
+# Layer wrappers
+#------------------------------------------------------------------------------
+
+H_in, segID_3D, bN, layer_id, is_last=False
+# Rotation invariant network
+# ========================================
+def network_func_RotInv(X_in, segID_3D, num_layers, dims, activation, redshift=None):
+    """
+    Args:
+        H_in (tensor): (b, e, k)
+            b = minibatch size
+            e = N*(M-1)*(M-2), number of edges in 3D adjacency (no diagonals)
+              N = num_particles
+              M = num neighbors
+            k = input channels
+        segID_3D (tensor): (b, 7, e) segment ids for pooling, 7 total:
+            [col-depth, row-depth, row-col, depth, col, row, all]
+        layer_id (int): layer id in network, for retrieving layer vars
+    Returns:
+        tensor of shape (b, e, q) if not is_last else (b, N*(M-1), q)
+    """
+
+    # Input layer
+    # ========================================
+    H = activation(RotInv_layer(X_in, segID_3D, dims, 0))
+
+    # Hidden layers
+    # ========================================
+    for layer_idx in range(1, num_layers):
+        is_last = layer_idx == num_layers - 1
+        H = RotInv_layer(H, segID_3D, dims, layer_idx, is_last=is_last)
+        if not is_last:
+            H = activation(H)
+    return H
+
+
+# Rotation invariant model
+# ========================================
+def model_func_RotInv(X_in, COO_feats, model_specs, redshift=None):
+    """
+    Args:
+        X_in (tensor): (b, N, 6)
+        COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
+        redshift (tensor): (b*N*M, 1) redshift broadcasted
+    """
+    # Get relevant model specs
+    # ========================================
+    var_scope  = model_specs.var_scope
+    num_layers = model_specs.num_layers
+    activation = model_specs.activation # default tf.nn.relu
+    dims = model_specs.dims
+
+    # Get graph inputs
+    # ========================================
+    edges, nodes = get_input_features_ShiftInv(X_in, COO_feats, dims)
+
+    # Network forward
+    # ========================================
+    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
+        # ==== Split input
+        X_in_loc, X_in_vel = X_in[...,:3], X_in[...,3:]
+        # ==== Network output
+        net_out = network_func_ShiftInv(edges, nodes, COO_feats, num_layers,
+                                        dims[:-1], activation, redshift)
+        num_feats = net_out.get_shape().as_list()[-1]
+
+        # ==== Scale network output and compute skip connections
+        loc_scalar, vel_scalar = utils.get_scalars()
+        H_out = net_out[...,:3]*loc_scalar + X_in_loc + X_in_vel*vel_scalar
+
+        # ==== Concat velocity predictions
+        if net_out.get_shape().as_list()[-1] > 3:
+            H_vel = net_out[...,3:]*vel_scalar + X_in_vel
+            H_out = tf.concat([H_out, H_vel], axis=-1)
+        return get_readout(H_out)
