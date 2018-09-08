@@ -1,4 +1,5 @@
 import os, glob, struct, shutil, code, sys, time, argparse
+from functools import wraps
 import numpy as np
 import tensorflow as tf
 import matplotlib
@@ -39,6 +40,11 @@ class AttrDict(dict): # just a dict mutated/accessed by attribute instead index
     __getattr__ = dict.__getitem__
     __setattr__ = dict.__setitem__
 
+def TODO(f):
+    @wraps(f)
+    def not_implemented(*args, **kwargs):
+        print('\n  FUNCTION NOT IMPLEMENTED: <{}>'.format(f.__name__))
+    return not_implemented
 
 
 #=============================================================================
@@ -98,7 +104,7 @@ LAYER_TYPES = [VANILLA, SHIFT_INV, ROT_INV]
 # Scope naming
 VARIABLE_SCOPE = 'params_{}-{}' # eg. 'params_0-7' for rs 9.0000 --> 1.1212
 
-# Model variable names
+# Parameter names
 WEIGHT_TAG = 'W{}_{}'
 BIAS_TAG   = 'B_{}'
 SCALAR_TAG = 'T_{}'
@@ -183,10 +189,10 @@ def initialize_bias(name, kdims, restore=False):
     initialize_var(args_init, initializer)
 
 
-def initialize_scalars(init_val=0.002, restore=False):
+def initialize_scalars(num_scalars=2, init_val=0.002, restore=False):
     """ 1D scalars used to scale network outputs """
     initializer = tf.constant([init_val])
-    for i in range(2):
+    for i in range(num_scalars):
         initialize_var((SCALAR_TAG.format(i),), initializer)
 
 
@@ -225,18 +231,18 @@ def initialize_RotInv_params(kdims, restore=False, **kwargs):
         for w_idx in ROTATION_INV_W_IDX: # [1,2,3,4,5,6]
             Wname = WEIGHT_TAG.format(layer_idx, w_idx)
             initialize_weight(Wname, kdim, restore=restore)
-        initialize_scalars(restore=restore)
+    initialize_scalars(num_scalars=1, restore=restore)
 
 
 def layer_init(ltype, kdims, restore):
-    args = (kdims, restore)
+    layer_args = (kdims, restore)
     if ltype == SHIFT_INV:
         func = initialize_ShiftInv_params
     elif ltype == ROT_INV:
         func = initialize_RotInv_params
     else:
         func = initialize_vanlla_params
-    func(*args)
+    func(*layer_args)
 
 
 def initialize_model_params(args):
@@ -288,8 +294,8 @@ def get_bias(layer_idx):
     return get_var(name)
 
 
-def get_scalars():
-    scalars = [get_var(SCALAR_TAG.format(i)) for i in range(2)]
+def get_scalars(num_scalars=2):
+    scalars = [get_var(SCALAR_TAG.format(i)) for i in range(num_scalars)]
     return scalars
 
 

@@ -357,7 +357,7 @@ def model_func_ShiftInv(X_in, COO_feats, model_specs, redshift=None):
         # ==== Network output
         net_out = network_func_ShiftInv(edges, nodes, COO_feats, num_layers,
                                         dims[:-1], activation, redshift)
-        num_feats = net_out.get_shape().as_list()[-1]
+        #num_feats = net_out.get_shape().as_list()[-1]
 
         # ==== Scale network output and compute skip connections
         loc_scalar, vel_scalar = utils.get_scalars()
@@ -1076,8 +1076,12 @@ def get_RotInv_input(X, V, lst_csrs, M):
 
 # Post-process output
 # ========================================
-def get_final_position(X_in, segment_idx_2D, weights, m, scalar):
-    """
+def get_final_position(X_in, segment_idx_2D, H_out, M):
+    """ Calculates the final position of particles, where
+
+    final_position : displacement_vectors + initial_position
+        displacement_vectors : linear_combination(relative_pos_neighbors, H_out)
+
     Calculate displacement vectors = linear combination of neighbor relative positions, with weights = last layer
     outputs (pooled over depth), and add diplacements to initial position to get final position.
 
@@ -1086,26 +1090,34 @@ def get_final_position(X_in, segment_idx_2D, weights, m, scalar):
         segment_idx_2D . Shape (2, b * N * (M-1), 2). Each pair in the third axis is a batch idx - row idx or
             batch idx - col idx for non-zero entries of 2D adjacency.
             0-axis is rows/cols respectively. Get it from get_segment_idx_2D()
-        weights. Shape (b, N, M - 1, 1). Outputs from last layer (pooled over depth dimension).
-        m (int). Number of neighbors.
-    dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], m - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
+        H_out. Shape (b, N, M - 1, 1). Outputs from last layer (pooled over depth dimension).
+        N (int). Number of neighbors.
+    dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], M - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
     Returns:
         Tensor of shape (b, N, 3). Final positions.
     """
 
-    # Find relative position of neighbors (neighbor - node)
+    # Relative position of neighbors (neighbor - node)
+    # ========================================
     dX = tf.gather_nd(X_in, segment_idx_2D[1]) - tf.gather_nd(X_in, segment_idx_2D[0])
-    # Note: we want to normalize the dX vectors to be of length one,
-    #  i.e. dX_reshaped[i, j, k, 0]^2 + dX_reshaped[i, j, k, 1]^2 + dX_reshaped[i, j, k, 2]^2 = 1 for any i, j, k.
-    dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], m - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
+
+
+    # Normalize relative positions (dX)
+    # ========================================
+    # Note: we want to normalize the dX vectors to be of length one
+    #  ie, for any i,j,k  : dX[i,j,k,0]^2 + dX[i,j,k,1]^2 + dX[i,j,k,2]^2 = 1
+    dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], M - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
     dX_norm = tf.reshape(tf.linalg.norm(dX_reshaped[-1,3], axis=1), tf.shape(dX_shaped)[:-1] + (1,))
     dX_out = dX_reshape / dX_norm
 
+    # Final position of particles
+    # ========================================
+    # Return initial pos, plus scaled and weighted (by H_out) displacement
+    scalar = utils.get_scalars(1)[0] # single scalar
+    displacement = tf.reduce_sum(tf.multiply(dX_out, H_out), axis=2)
+    return X_in + scalar * displacement
 
-    # Return initial position + displacement (=weighted combination of neighbor relative distances)
-    # Note: we want to rescale the second term by a learnable scalar parameter
-    #       and add the linear displacement, same as in shift_invariant setup.
-    return X_in + scalar * tf.reduce_sum(tf.multiply(dX_out, weights), axis=2)
+
 
 #------------------------------------------------------------------------------
 # ROTINV layer ops
@@ -1195,10 +1207,10 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
 #------------------------------------------------------------------------------
 #                # Rotation Invariant Network function #
 #------------------------------------------------------------------------------
-def network_func_RotInv(X_in, segID_3D, num_layers, dims, activation, redshift=None):
+def network_func_RotInv(edges, segID_3D, num_layers, dims, activation, redshift=None):
     """
     Args:
-        X_in (tensor): (b, e, k)
+        edges (tensor): (b, e, k)
             b = minibatch size
             e = N*(M-1)*(M-2), number of edges in 3D adjacency (no diagonals)
               N = num_particles
@@ -1216,7 +1228,7 @@ def network_func_RotInv(X_in, segID_3D, num_layers, dims, activation, redshift=N
 
     # Input layer
     # ========================================
-    H = activation(RotInv_layer(X_in, segID_3D, dims, 0))  # (H_in, segID_3D, bN, layer_id, is_last=False)
+    H = activation(RotInv_layer(edges, segID_3D, dims, 0))
 
     # Hidden layers
     # ========================================
@@ -1231,19 +1243,52 @@ def network_func_RotInv(X_in, segID_3D, num_layers, dims, activation, redshift=N
 #------------------------------------------------------------------------------
 #                # Rotation Invariant Model function #
 #------------------------------------------------------------------------------
-def model_func_RotInv(X_in, COO_feats, model_specs, redshift=None):
-    """ Rotation invariant model function
+def model_func_RotInv(X_in, edges, segID_3D, segID_2D, model_specs, redshift=None):
+    """ Rotation invariant model function, wraps network function
+    Inputs
+    ------
+    X_in  : tensor, original input data
+        shape : (b, N, 3)
+              : b batch_size, N particles
 
+    edges : tensor, processed input data
+        shape : (b, e, 10)
+            b : batch size
+            e : N*(M-1)*(M-2), num of edges in 3D adjacency
+                : N particles, M neighbors
+           10 : input channels
+                [0]  : 1 edge feature
+                [1:] : 9 broadcasted surface features
+                        : 3 surfaces
+                            : 1 scalar distance
+                            : 1 row velocity projected onto cols
+                            : 1 col velocity projected onto rows
 
-    numpy array of shape (b, e, 10)
-            e=N*(M-1)*(M-2), number of edges in 3D adjacency (diagonals removed), N=num of particles, M=num of neighbors
-            10 input channels corresponding to 1 edge feature + 9 broadcasted surface features, those are broken
-            down into 3 surfaces x (1 scalar distance + 1 row velocity projected onto cols + 1 col velocity
-            projected onto rows)
-    Args:
-        X_in (tensor): (b, N, 6)
-        COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
-        redshift (tensor): (b*N*M, 1) redshift broadcasted
+    segID_3D : tensor, segment ids for pooling
+        shape : (b, 7, e)
+            7 : number of segment ids, ordered
+                : [col-depth, row-depth, row-col, depth, col, row, all]
+
+    segID_2D : tensor, row and col indices of 2D sparse adjacency matrix
+        shape : (2, b*N*(M-1), 2)
+            shape[i] : row, col indices, respectively
+            shape[:, :, j] : batch offset for nonzero entries in  rows, cols
+
+    model_specs : utils.AttrDict (dict), container for network configuration
+         var_scope : str, the variable scope of this model, used for getting vars
+        num_layers : int, number of layers (depth) of network
+              dims : tuple int, dimensions of original data
+                       : (b, N, M)
+        activation : tf func, defaults to tf.nn.relu
+
+    redshift : tensor, optional tensor vector of broadcasted reshift values
+        shape : UNDETERMINED ???
+
+    Returns
+    -------
+    tensor : (b, N, 3)
+        Final positions (displacement ???) of particles
+
     """
     # Get relevant model specs
     # ========================================
@@ -1251,27 +1296,19 @@ def model_func_RotInv(X_in, COO_feats, model_specs, redshift=None):
     num_layers = model_specs.num_layers
     activation = model_specs.activation # default tf.nn.relu
     dims = model_specs.dims
+    b, N, M = dims
 
-    # Get graph inputs
-    # ========================================
-    edges, nodes = get_input_features_ShiftInv(X_in, COO_feats, dims)
 
     # Network forward
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        # ==== Split input
-        X_in_loc, X_in_vel = X_in[...,:3], X_in[...,3:]
-        # ==== Network output
-        net_out = network_func_ShiftInv(edges, nodes, COO_feats, num_layers,
-                                        dims[:-1], activation, redshift)
-        num_feats = net_out.get_shape().as_list()[-1]
+        #==== Network output
+        net_out = network_func_RotInv(edges, segID_3D, num_layers, (b, N),
+                                      activation, redshift=Redshift)
 
-        # ==== Scale network output and compute skip connections
-        loc_scalar, vel_scalar = utils.get_scalars()
-        H_out = net_out[...,:3]*loc_scalar + X_in_loc + X_in_vel*vel_scalar
+        #==== Final position of particles
+        H_out = get_final_position(X_in, segID_2D, net_out, M)
 
-        # ==== Concat velocity predictions
-        if net_out.get_shape().as_list()[-1] > 3:
-            H_vel = net_out[...,3:]*vel_scalar + X_in_vel
-            H_out = tf.concat([H_out, H_vel], axis=-1)
-        return get_readout(H_out)
+        return H_out
+
+

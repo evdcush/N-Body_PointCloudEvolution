@@ -748,6 +748,25 @@ def network_func_RotInv(X_in, segID_3D, num_layers, dims, activation, redshift=N
     """
     pass
 
+
+def get_final_position(X_in, segment_idx_2D, weights, m, scalar):
+    """
+    Calculate displacement vectors = linear combination of neighbor relative positions, with weights = last layer
+    outputs (pooled over depth), and add diplacements to initial position to get final position.
+
+    Args:
+        X_in. Shape (b, N, 3). Initial positions.
+        segment_idx_2D . Shape (2, b * N * (M-1), 2). Each pair in the third axis is a batch idx - row idx or
+            batch idx - col idx for non-zero entries of 2D adjacency.
+            0-axis is rows/cols respectively. Get it from get_segment_idx_2D()
+        weights. Shape (b, N, M - 1, 1). Outputs from last layer (pooled over depth dimension).
+        m (int). Number of neighbors.
+    dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], m - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
+    Returns:
+        Tensor of shape (b, N, 3). Final positions.
+    """
+    pass
+
 def model_func_ShiftInv(X_in, COO_feats, model_specs, redshift=None):
     """
     Args:
