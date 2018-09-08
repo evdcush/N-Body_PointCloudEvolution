@@ -952,7 +952,7 @@ def get_3D_segmentID(adj_graph, M):
     return r, c, d
 
 
-def get_segmentID(lst_csrs, M):
+def get_batch_3D_segmentID(lst_csrs, M):
     """ preprocess batch of adjacency matrices for segment ids
     Total of 7 segments for 3D graph, in order:
     col-depth, row-depth, row-col, depth, col, row, all
@@ -1002,13 +1002,13 @@ def get_segmentID(lst_csrs, M):
 
 # Pre-process input
 # ========================================
-def get_RotInv_input(X, V, lst_csrs, M):
+def get_RotInv_input_edges(X, V, lst_csrs, M):
     """
     Args:
          X. Shape (b, N, 3). Coordinates.
          V. Shape (b, N, 3), Velocties.
-         batch_A. List of csr adjacencies.
-         m (int). Number of neighbors.
+         lst_csrs. List of csr adjacencies.
+         M (int). Number of neighbors.
 
     Returns:
         numpy array of shape (b, e, 10)
