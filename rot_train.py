@@ -108,8 +108,8 @@ X_truth = tf.placeholder(tf.float32, shape=data_shape)
 #==== Graph
 e = batch_size * (M-1) * (M-2)
 edges_in = tf.placeholder(tf.float32, shape=(None, e, 10))
-segID_3D = tf.placeholder(tf.float32, shape=(None, 7, e))
-segID_2D = tf.placeholder(tf.float32, shape=(2, None, 2)) # (2, b*N*(M-1), 2)
+segID_3D = tf.placeholder(tf.int32, shape=(None, 7, e))
+segID_2D = tf.placeholder(tf.int32, shape=(2, None, 2)) # (2, b*N*(M-1), 2)
 #RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
 
 

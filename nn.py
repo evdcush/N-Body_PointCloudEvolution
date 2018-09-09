@@ -7,6 +7,7 @@ import tensorflow as tf
 
 import utils
 from utils import VARIABLE_SCOPE as VAR_SCOPE
+from utils import ROTATION_INV_SEGNAMES as SEGNAMES_3D
 #from utils import VARIABLE_SCOPE, SEGNAMES_3D
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
@@ -944,8 +945,10 @@ def get_3D_segmentID(adj_graph, M):
     r = np.repeat(rows, m_eff-1) # tested equivalent
     c = np.repeat(cols, m_eff-1) # tested equivalent
 
-    # depth indexing algebra is more complicated, # tested equivalent
-    d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1)
+    # depth indexing algebra is more complicated, # tested equivalent #  cannot reshape array of size 262144 into shape (7)
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+    #d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1) # ORIGINAL, BAD DIMS???
+    d = np.reshape(np.repeat(np.reshape(cols, [-1, M]), m_eff, axis=0), -1)
     del_idx = np.array([(i%m_eff) + (i*m_eff) for i in range(num_elements)])
     d = np.delete(d, del_idx)
 
@@ -975,7 +978,7 @@ def get_batch_3D_segmentID(lst_csrs, M):
     # process each adjacency in batch
     # ========================================
     seg_idx = []
-    for adj in batch:
+    for adj in lst_csrs:
         # get row, col, depth segment idx (pools col-depth, row-depth, row-col, respectively)
         r, c, d = get_3D_segmentID(adj, M)
 
@@ -1020,8 +1023,18 @@ def get_RotInv_input_edges(x_input, lst_csrs, M):
     X, V = x_input[...,:3], x_input[...,3:]
 
     # Helpers
+    '''
+    NOTE:
+    ------------
+    # np.dot(dist1, dist2) is not a valid dot call since dist1, dist2 are the same shape
+    # one must be "transposed" for this to work, so I made _dot
+    #  PLEASE double check this is fine
+    '''
+
+    _dot     = lambda x, y: np.dot(x, y.reshape(y.shape[-1], -1))
     _norm    = lambda dist: np.linalg.norm(dist)
     _angle   = lambda dist1, dist2: np.dot(dist1, dist2) / (_norm(dist1) * _norm(dist2))
+                                     #  np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
     _project = lambda v, dist: np.dot(v, dist) / _norm(dist)
 
     # out dims
@@ -1046,13 +1059,14 @@ def get_RotInv_input_edges(x_input, lst_csrs, M):
         dist_dc = x[depth] - x[cols]
 
         # Velocities
-        v_rows  = V[rows]
-        v_cols  = V[cols]
-        v_depth = V[depth]
+        v_rows  = v[rows]
+        v_cols  = v[cols]
+        v_depth = v[depth]
 
         #   Input features
         #-------------------
         #===== Edge
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         features = [_angle(dist_cr, dist_dr)]
 
         #===== RC surface
@@ -1109,8 +1123,8 @@ def get_final_position(X_in, segment_idx_2D, H_out, M):
     # Note: we want to normalize the dX vectors to be of length one
     #  ie, for any i,j,k  : dX[i,j,k,0]^2 + dX[i,j,k,1]^2 + dX[i,j,k,2]^2 = 1
     dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], M - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
-    dX_norm = tf.reshape(tf.linalg.norm(dX_reshaped[-1,3], axis=1), tf.shape(dX_shaped)[:-1] + (1,))
-    dX_out = dX_reshape / dX_norm
+    dX_norm = tf.reshape(tf.linalg.norm(dX_reshaped[-1,3], axis=1), tf.shape(dX_reshaped)[:-1] + (1,))
+    dX_out = dX_reshaped / dX_norm
 
     # Final position of particles
     # ========================================
@@ -1306,7 +1320,7 @@ def model_func_RotInv(X_in, edges, segID_3D, segID_2D, model_specs, redshift=Non
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         #==== Network output
         net_out = network_func_RotInv(edges, segID_3D, num_layers, (b, N),
-                                      activation, redshift=Redshift)
+                                      activation, redshift=redshift)
 
         #==== Final position of particles
         H_out = get_final_position(X_in, segID_2D, net_out, M)
