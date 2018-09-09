@@ -63,6 +63,40 @@ utils.initialize_model_params(args)
 
 # Inputs
 # ========================================
+
+#              RotInv
+# ----------------------------------------
+'''
+e : N*(M-1)*(M-2), num of edges in 3D adjacency
+
+
+#==== nn.model_func_RotInv
+X_input.shape  = (b, N, 3)
+
+edges.shape    = (b, e, 10)
+    |----- # get_RotInv_input_edges(X, V, lst_csrs, M)
+                X, V : (b,N,3) location, velocities
+                lst_csrs : (b,)-len list of csrs
+                M : num neighbors
+
+segID_3D.shape = (b, 7, e)
+    |----- # get_batch_3D_segmentID(lst_csrs, M)
+                lst_csrs : (b,)-len list of csrs
+
+segID_2D.shape = (2, b*N*(M-1), 2)
+    |----- # get_batch_2D_segmentID(lst_csrs)
+                lst_csrs : (b,)-len list of csrs
+
+
+#==== Variable
+model_specs
+ var_scope :
+num_layers :
+      dims : (b, N, M)
+activation :
+'''
+
+
 # Placeholders
 in_shape = (None, 32**3, 6)
 X_input = tf.placeholder(tf.float32, shape=in_shape)

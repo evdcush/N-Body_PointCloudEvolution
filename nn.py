@@ -894,24 +894,24 @@ class Network:
 #------------------------------------------------------------------------------
 # PREPROCESSING
 #------------------------------------------------------------------------------
-def get_batch_2D_segmentID(batch_graph):
+def get_batch_2D_segmentID(lst_csrs):
     """
     Return row, col, indices of a list of 2D sparse adjacencies with batch indices too.
         Sorry, using a different indexing system from 3D adjacency case. TODO: make indexing consistent for clarity.
 
     Args:
-        batch_graph. List of csr (or any other sparse format) adjacencies.
+        lst_csrs. List of csr (or any other sparse format) adjacencies.
 
     Returns:
         array of shape (2, b * N * (M-1), 2). Each pair in the third axis is a batch idx - row idx or
             batch idx - col idx for non-zero entries of 2D adjacency. 0-axis is rows/cols respectively.
     """
-    b = len(batch_graph)
+    b = len(lst_csrs)
     rows = []
     cols = []
 
     for i in range(b):
-        adj = batch_graph[i]
+        adj = lst_csrs[i]
         adj.setdiag(0)
         r, c = adj.nonzero()
         batch_idx = np.zeros_like(r) + i
