@@ -71,57 +71,6 @@ RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
 COO_feats = tf.placeholder(tf.int32, shape=(3, None,))
 
 
-'''
-def model_func_RotInv(X_in, edges, segID_3D, segID_2D, model_specs, redshift=None):
-    """ Rotation invariant model function, wraps network function
-    Inputs
-    ------
-    X_in  : tensor, original input data
-        shape : (b, N, 3)
-              : b batch_size, N particles
-
-    edges : tensor, processed input data
-        shape : (b, e, 10)
-            b : batch size
-            e : N*(M-1)*(M-2), num of edges in 3D adjacency
-                : N particles, M neighbors
-           10 : input channels
-                [0]  : 1 edge feature
-                [1:] : 9 broadcasted surface features
-                        : 3 surfaces
-                            : 1 scalar distance
-                            : 1 row velocity projected onto cols
-                            : 1 col velocity projected onto rows
-
-    segID_3D : tensor, segment ids for pooling
-        shape : (b, 7, e)
-            7 : number of segment ids, ordered
-                : [col-depth, row-depth, row-col, depth, col, row, all]
-
-    segID_2D : tensor, row and col indices of 2D sparse adjacency matrix
-        shape : (2, b*N*(M-1), 2)
-            shape[i] : row, col indices, respectively
-            shape[:, :, j] : batch offset for nonzero entries in  rows, cols
-
-    model_specs : utils.AttrDict (dict), container for network configuration
-         var_scope : str, the variable scope of this model, used for getting vars
-        num_layers : int, number of layers (depth) of network
-              dims : tuple int, dimensions of original data
-                       : (b, N, M)
-        activation : tf func, defaults to tf.nn.relu
-
-    redshift : tensor, optional tensor vector of broadcasted reshift values
-        shape : UNDETERMINED ???
-
-    Returns
-    -------
-    tensor : (b, N, 3)
-        Final positions (displacement ???) of particles
-
-    """
-'''
-
-
 
 # Input args
 model_args = (X_input, COO_feats, network_features)
