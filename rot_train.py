@@ -23,6 +23,8 @@ start_time = time.time()
 # ========================================
 parser = utils.Parser()
 args = parser.parse_args()
+args.channels[0] = 10
+args.channels[-1] = 3
 parser.print_args()
 
 # Dimensionality
@@ -71,19 +73,19 @@ e : N*(M-1)*(M-2), num of edges in 3D adjacency
 
 
 #==== nn.model_func_RotInv
-X_input.shape  = (b, N, 3)
+X_input : (b, N, 3)
 
-edges.shape    = (b, e, 10)
+edges : (b, e, 10)
     |----- # get_RotInv_input_edges(X, V, lst_csrs, M)
                 X, V : (b,N,3) location, velocities
                 lst_csrs : (b,)-len list of csrs
                 M : num neighbors
 
-segID_3D.shape = (b, 7, e)
+segID_3D : (b, 7, e)
     |----- # get_batch_3D_segmentID(lst_csrs, M)
                 lst_csrs : (b,)-len list of csrs
 
-segID_2D.shape = (2, b*N*(M-1), 2)
+segID_2D : (2, b*N*(M-1), 2)
     |----- # get_batch_2D_segmentID(lst_csrs)
                 lst_csrs : (b,)-len list of csrs
 
@@ -98,23 +100,31 @@ activation :
 
 
 # Placeholders
-in_shape = (None, 32**3, 6)
-X_input = tf.placeholder(tf.float32, shape=in_shape)
-X_truth = tf.placeholder(tf.float32, shape=in_shape)
-RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
-COO_feats = tf.placeholder(tf.int32, shape=(3, None,))
+#==== Data cube
+data_shape = (None, 32**3, 3)
+X_input = tf.placeholder(tf.float32, shape=data_shape)
+X_truth = tf.placeholder(tf.float32, shape=data_shape)
 
+#==== Graph
+e = batch_size * (M-1) * (M-2)
+edges_in = tf.placeholder(tf.float32, shape=(None, e, 10))
+segID_3D = tf.placeholder(tf.float32, shape=(None, 7, e))
+segID_2D = tf.placeholder(tf.float32, shape=(2, None, 2)) # (2, b*N*(M-1), 2)
+#RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
 
 
 # Input args
-model_args = (X_input, COO_feats, network_features)
-loss_args = (X_truth, X_input) if multi_step else (X_truth,)
-rs = RS_in if args.cat_rs else None
+#model_args = (X_input, COO_feats, network_features)
+model_args = (X_input, edges_in, segID_3D, segID_2D, network_features)
+loss_args  = (X_truth,)
+#loss_args = (X_truth, X_input) if multi_step else (X_truth,)
+#rs = RS_in if args.cat_rs else None
 
 
 # Outputs
 # ========================================
-X_pred = nn.model_func_ShiftInv(*model_args, redshift=rs)
+#X_pred = nn.model_func_ShiftInv(*model_args, redshift=None)#rs)
+X_pred = nn.model_func_RotInv(*model_args, redshift=None)#rs)
 
 
 # Optimization
@@ -171,20 +181,28 @@ for step in range(num_iters):
     # ----------------
     _x_batch = utils.next_minibatch(X_train, batch_size) # shape (2, b, N, 6)
 
-    # split data
+    # Split data
+    # ----------------
+    # input and truth
     x_in    = _x_batch[0] # (b, N, 6)
     x_truth = _x_batch[1] # (b, N, 6)
 
     # Graph data
     # ----------------
     csr_list = get_graph_csr(x_in) # len b list of (N,N) csrs
-    coo_feats = nn.to_coo_batch(csr_list)
+
+    #==== Rot inv pre-processing
+    seg_id_2D = nn.get_batch_2D_segmentID(csr_list)
+    seg_id_3D = nn.get_batch_3D_segmentID(csr_list, M)
+    edges = nn.get_RotInv_input_edges(x_in, csr_list, M)
 
     # Feed data to tensors
     # ----------------
-    fdict = {X_input: x_in,
+    fdict = {X_input: x_in[...,:3],
              X_truth: x_truth,
-             COO_feats: coo_feats,
+             edges_in : edges,
+             segID_2D : seg_id_2D,
+             segID_3D : seg_id_3D,
              }
 
     # Train
@@ -221,13 +239,19 @@ for j in range(num_val_batches):
     # Graph data
     # ----------------
     csr_list = get_graph_csr(x_in) # len b list of (N,N) csrs
-    coo_feats = nn.to_coo_batch(csr_list)
+
+    #==== Rot inv pre-processing
+    seg_id_2D = nn.get_batch_2D_segmentID(csr_list)
+    seg_id_3D = nn.get_batch_3D_segmentID(csr_list, M)
+    edges = nn.get_RotInv_input_edges(x_in, csr_list, M)
 
     # Feed data to tensors
     # ----------------
-    fdict = {X_input: x_in,
+    fdict = {X_input: x_in[...,:3],
              X_truth: x_truth,
-             COO_feats: coo_feats,
+             edges_in : edges,
+             segID_2D : seg_id_2D,
+             segID_3D : seg_id_3D,
              }
 
     # Validation output

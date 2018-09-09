@@ -1002,7 +1002,7 @@ def get_batch_3D_segmentID(lst_csrs, M):
 
 # Pre-process input
 # ========================================
-def get_RotInv_input_edges(X, V, lst_csrs, M):
+def get_RotInv_input_edges(x_input, lst_csrs, M):
     """
     Args:
          X. Shape (b, N, 3). Coordinates.
@@ -1017,6 +1017,8 @@ def get_RotInv_input_edges(X, V, lst_csrs, M):
             down into 3 surfaces x (1 scalar distance + 1 row velocity projected onto cols + 1 col velocity
             projected onto rows)
     """
+    X, V = x_input[...,:3], x_input[...,3:]
+
     # Helpers
     _norm    = lambda dist: np.linalg.norm(dist)
     _angle   = lambda dist1, dist2: np.dot(dist1, dist2) / (_norm(dist1) * _norm(dist2))
