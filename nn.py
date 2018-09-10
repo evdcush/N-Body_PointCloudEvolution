@@ -1002,7 +1002,7 @@ def get_batch_3D_segmentID(lst_csrs, M):
     return seg_idx
 
 
-
+'''
 # Pre-process input
 # ========================================
 def get_RotInv_input_edges(x_input, lst_csrs, M):
@@ -1023,13 +1023,6 @@ def get_RotInv_input_edges(x_input, lst_csrs, M):
     X, V = x_input[...,:3], x_input[...,3:]
 
     # Helpers
-    '''
-    NOTE:
-    ------------
-    # np.dot(dist1, dist2) is not a valid dot call since dist1, dist2 are the same shape
-    # one must be "transposed" for this to work, so I made _dot
-    #  PLEASE double check this is fine
-    '''
 
     _dot     = lambda x, y: np.dot(x, y.reshape(y.shape[-1], -1))
     _norm    = lambda dist: np.linalg.norm(dist)
@@ -1084,6 +1077,74 @@ def get_RotInv_input_edges(x_input, lst_csrs, M):
         X_out.append(features)
 
     return np.array(X_out)
+'''
+
+# Pre-process input
+#  Double-loop ---> No fat dots
+# ========================================
+def get_RotInv_input_edges(x_input, lst_csrs, M):
+    """
+    Args:
+         X. Shape (b, N, 3). Coordinates.
+         V. Shape (b, N, 3), Velocties.
+         lst_csrs. List of csr adjacencies.
+         M (int). Number of neighbors.
+
+    Returns:
+        numpy array of shape (b, e, 10)
+            e=N*(M-1)*(M-2), number of edges in 3D adjacency (diagonals removed), N=num of particles, M=num of neighbors
+            10 input channels corresponding to 1 edge feature + 9 broadcasted surface features, those are broken
+            down into 3 surfaces x (1 scalar distance + 1 row velocity projected onto cols + 1 col velocity
+            projected onto rows)
+    """
+    def _process(X_in, A):
+        X, V = X_in[...,:3], X_in[...,3:]
+        X_out = []
+
+        # helpers
+        _norm    = lambda dist: np.linalg.norm(dist)
+        _project = lambda v, dist: np.dot(v, dist) / _norm(dist)
+        _angle   = lambda dist1, dist2: np.dot(dist1, dist2) / (_norm(dist1) * _norm(dist2))
+
+        # get 3D seg IDs
+        rows, cols, depth = get_3D_segmentID(A, M)
+
+
+        # Iterate over each particle in cube
+        # ========================================
+        for r, c, d in zip(rows, cols, depth):
+            # Relative distance vecs
+            dist_cr = X[c] - X[r]
+            dist_dr = X[d] - X[r]
+            dist_dc = X[d] - X[c]
+
+            # Velocities
+            v_r = V[r]
+            v_c = V[c]
+            v_d = V[d]
+
+            # Input features
+            #-------------------
+            #===== Edge
+            features = [_angle(dist_cr, dist_dr)]
+
+            #===== RC surface
+            # scalar distance + projection of row vel to rc vectors + projection of col vel to cr vectors
+            features.extend([_norm(dist_cr), _project(v_r, dist_cr), _project(v_c, -dist_cr)])
+
+            #===== RD surface
+            # scalar distance + projection of row vel to rd vectors + projection of depth vel to dr vectors
+            features.extend([_norm(dist_dr), _project(v_r, dist_dr), _project(v_d, -dist_dr)])
+
+            #===== CD surface
+            # scalar distance + projection of col vel to cd vectors + projection of depth vel to dc vectors
+            features.extend([_norm(dist_dc), _project(v_c, dist_dc), _project(v_d, -dist_dc)])
+
+            # Accumulate features
+            X_out.append(features)
+            #-------------------
+        return X_out
+    return np.array([_process(x_input[i], lst_csrs[i]) for i in range(len(lst_csrs))])
 
 
 #------------------------------------------------------------------------------
