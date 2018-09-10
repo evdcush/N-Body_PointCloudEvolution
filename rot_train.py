@@ -101,14 +101,13 @@ activation :
 
 # Placeholders
 #==== Data cube
-data_shape = (None, 32**3, 3)
-X_input = tf.placeholder(tf.float32, shape=data_shape)
-X_truth = tf.placeholder(tf.float32, shape=data_shape)
+X_input = tf.placeholder(tf.float32, shape=(None, N, 3))
+X_truth = tf.placeholder(tf.float32, shape=(None, N, 6))
 
 #==== Graph
-e = batch_size * (M-1) * (M-2)
-edges_in = tf.placeholder(tf.float32, shape=(None, e, 10))
-segID_3D = tf.placeholder(tf.int32, shape=(None, 7, e))
+#e = batch_size * (M-1) * (M-2)
+edges_in = tf.placeholder(tf.float32, shape=(None, None, 10))
+segID_3D = tf.placeholder(tf.int32, shape=(None, 7, None))
 segID_2D = tf.placeholder(tf.int32, shape=(2, None, 2)) # (2, b*N*(M-1), 2)
 #RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
 

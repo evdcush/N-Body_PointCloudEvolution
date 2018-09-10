@@ -991,7 +991,8 @@ def get_batch_3D_segmentID(lst_csrs, M):
         a = np.zeros_like(r)
 
         # order seg ids
-        seg_idx.append(np.array([cd, rd, rc, d, c, r, a])) # ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
+        # BADD!!!! NO! ----> seg_idx.append(np.array([cd, rd, rc, d, c, r, a])) # ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
+        seg_idx.append(np.array([r, c, d, rc, rd, cd, a])) # ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
     seg_idx = np.array(seg_idx)
 
     # Offset indices
