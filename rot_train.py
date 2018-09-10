@@ -194,6 +194,7 @@ for step in range(num_iters):
     seg_id_2D = nn.get_batch_2D_segmentID(csr_list)
     seg_id_3D = nn.get_batch_3D_segmentID(csr_list, M)
     edges = nn.get_RotInv_input_edges(x_in, csr_list, M)
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
     # Feed data to tensors
     # ----------------
@@ -243,6 +244,7 @@ for j in range(num_val_batches):
     seg_id_2D = nn.get_batch_2D_segmentID(csr_list)
     seg_id_3D = nn.get_batch_3D_segmentID(csr_list, M)
     edges = nn.get_RotInv_input_edges(x_in, csr_list, M)
+
 
     # Feed data to tensors
     # ----------------

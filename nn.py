@@ -461,11 +461,11 @@ def to_coo_batch(A):
 #------------------------------------------------------------------------------
 # Graph gets
 # ========================================
-def get_kneighbor_list(X_in, M, offset_idx=False, inc_self=False):
+def get_kneighbor_list(X_in, M, offset_idx=False, include_self=False):
     b, N, D = X_in.shape
     lst_csrs = []
     for i in range(b):
-        kgraph = kneighbors_graph(X_in[i,:,:3], M, include_self=inc_self).astype(np.float32)
+        kgraph = kneighbors_graph(X_in[i,:,:3], M, include_self=include_self).astype(np.float32)
         if offset_idx:
             kgraph.indices = kgraph.indices + (N * i)
         lst_csrs.append(kgraph)
@@ -661,10 +661,11 @@ def get_pbc_kneighbors_csr(X, K, boundary_threshold, include_self=False):
 def get_graph_csr_list(h_in, args):
     M = args.graph_var
     pbc = args.pbc_graph == 1
+    include_self = args.layer_type == 'rot-inv'
     if pbc:
         return get_pbc_kneighbors_csr(h_in, M, 0.03)
     else:
-        return get_kneighbor_list(h_in, M)
+        return get_kneighbor_list(h_in, M, include_self=include_self)
 
 
 #=============================================================================
@@ -947,8 +948,8 @@ def get_3D_segmentID(adj_graph, M):
 
     # depth indexing algebra is more complicated, # tested equivalent #  cannot reshape array of size 262144 into shape (7)
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    #d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1) # ORIGINAL, BAD DIMS???
-    d = np.reshape(np.repeat(np.reshape(cols, [-1, M]), m_eff, axis=0), -1)
+    d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1) # ORIGINAL, BAD DIMS???
+    #d = np.reshape(np.repeat(np.reshape(cols, [-1, M]), m_eff, axis=0), -1)
     del_idx = np.array([(i%m_eff) + (i*m_eff) for i in range(num_elements)])
     d = np.delete(d, del_idx)
 
@@ -1186,6 +1187,8 @@ def get_final_position(X_in, segment_idx_2D, H_out, M):
     #  ie, for any i,j,k  : dX[i,j,k,0]^2 + dX[i,j,k,1]^2 + dX[i,j,k,2]^2 = 1
     #  ERROR: Input to reshape is a tensor with 294912 values, but the requested shape has 196608
     dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], M - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
+
+
     dX_norm = tf.reshape(tf.linalg.norm(dX_reshaped[-1,3], axis=1), tf.shape(dX_reshaped)[:-1] + (1,))
     dX_out = dX_reshaped / dX_norm
 
