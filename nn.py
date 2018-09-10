@@ -1184,6 +1184,7 @@ def get_final_position(X_in, segment_idx_2D, H_out, M):
     # ========================================
     # Note: we want to normalize the dX vectors to be of length one
     #  ie, for any i,j,k  : dX[i,j,k,0]^2 + dX[i,j,k,1]^2 + dX[i,j,k,2]^2 = 1
+    #  ERROR: Input to reshape is a tensor with 294912 values, but the requested shape has 196608
     dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], M - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
     dX_norm = tf.reshape(tf.linalg.norm(dX_reshaped[-1,3], axis=1), tf.shape(dX_reshaped)[:-1] + (1,))
     dX_out = dX_reshaped / dX_norm
