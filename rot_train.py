@@ -207,6 +207,7 @@ for step in range(num_iters):
 
     # Train
     train.run(feed_dict=fdict)
+    print('step: {}'.format(step))
 
 
     # Save

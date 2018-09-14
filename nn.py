@@ -1,4 +1,5 @@
 import os, code, sys, time
+from functools import wraps
 
 import numpy as np
 from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
@@ -10,6 +11,39 @@ from utils import VARIABLE_SCOPE as VAR_SCOPE
 from utils import ROTATION_INV_SEGNAMES as SEGNAMES_3D
 #from utils import VARIABLE_SCOPE, SEGNAMES_3D
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+
+def TODO(f):
+    """ Serves as a convenient, clear flag for developers and insures
+        wrapee func will not be called """
+    @wraps(f)
+    def not_finished(*args, **kwargs):
+        print('\n  {} IS INCOMPLETE'.format(f.__name__))
+    return not_finished
+
+def NOTIMPLEMENTED(f):
+    """ Like TODO, but for functions in a class
+        raises error when wrappee is called """
+    @wraps(f)
+    def not_implemented(*args, **kwargs):
+        func_class = args[0]
+        f_class_name = func_class.get_class_name()
+        f_name = f.__name__
+        msg = '\n  Class: {}, function: {} has not been implemented!\n'
+        print(msg.format(f_class_name, f_name))
+        raise NotImplementedError
+    return not_implemented
+
+
+def INSPECT(f):
+    @wraps(f)
+    def inspector(*args, **kwargs):
+        print('\n Inspecting function: <{}>'.format(f.__name__))
+        x = args
+        y = kwargs
+        z = f(*args, **kwargs)
+        code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+        return z
+    return inspector
 
 
 '''
@@ -464,6 +498,7 @@ def to_coo_batch(A):
 def get_kneighbor_list(X_in, M, offset_idx=False, include_self=False):
     b, N, D = X_in.shape
     lst_csrs = []
+    #print('nn.get_kneighbor_list\n M: {}, include_self: {}'.format(M, include_self))
     for i in range(b):
         kgraph = kneighbors_graph(X_in[i,:,:3], M, include_self=include_self).astype(np.float32)
         if offset_idx:
@@ -662,6 +697,7 @@ def get_graph_csr_list(h_in, args):
     M = args.graph_var
     pbc = args.pbc_graph == 1
     include_self = args.layer_type != 'rot-inv'
+    #print('In the graph_csr list func\nLayer-type is {} and include_self={}'.format(args.layer_type, include_self))
     if pbc:
         return get_pbc_kneighbors_csr(h_in, M, 0.03)
     else:
@@ -948,8 +984,14 @@ def get_3D_segmentID(adj_graph, M):
 
     # depth indexing algebra is more complicated, # tested equivalent #  cannot reshape array of size 262144 into shape (7)
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1) # ORIGINAL, BAD DIMS???
-    #d = np.reshape(np.repeat(np.reshape(cols, [-1, M]), m_eff, axis=0), -1)
+
+    #    ;;;;;                                                                   ;;;;;     #
+    #    ;;;;;      ____   _____   _____  _____     __     _____    __  __       ;;;;;     #
+    #  ..;;;;;..   |  _ \ |  _  \ /     \ |  __ \  |  |    |  ___| |  \/  |    ..;;;;;..   #
+    #   ':::::'    |  __/ |     / |  |  | |  __ <  |  |__  |  ___| |      |     ':::::'    #
+    #     ':`      |__|   |__|__\ \_____/ |_____/  |_____| |_____| |_|\/|_|       ':`      #
+    #d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1) # ORIGINAL, BAD DIMS???
+    d = np.reshape(np.repeat(np.reshape(cols, [-1, M]), m_eff, axis=0), -1)
     del_idx = np.array([(i%m_eff) + (i*m_eff) for i in range(num_elements)])
     d = np.delete(d, del_idx)
 
@@ -1185,10 +1227,24 @@ def get_final_position(X_in, segment_idx_2D, H_out, M):
     # ========================================
     # Note: we want to normalize the dX vectors to be of length one
     #  ie, for any i,j,k  : dX[i,j,k,0]^2 + dX[i,j,k,1]^2 + dX[i,j,k,2]^2 = 1
-    #  ERROR: Input to reshape is a tensor with 294912 values, but the requested shape has 196608
+
+    #    ;;;;;                                                                   ;;;;;     #
+    #    ;;;;;      ____   _____   _____  _____     __     _____    __  __       ;;;;;     #
+    #  ..;;;;;..   |  _ \ |  _  \ /     \ |  __ \  |  |    |  ___| |  \/  |    ..;;;;;..   #
+    #   ':::::'    |  __/ |     / |  |  | |  __ <  |  |__  |  ___| |      |     ':::::'    #
+    #     ':`      |__|   |__|__\ \_____/ |_____/  |_____| |_____| |_|\/|_|       ':`      #
     dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], M - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
+    #dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], M, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
 
 
+
+
+    #    ;;;;;                                                                   ;;;;;     #
+    #    ;;;;;      ____   _____   _____  _____     __     _____    __  __       ;;;;;     #
+    #  ..;;;;;..   |  _ \ |  _  \ /     \ |  __ \  |  |    |  ___| |  \/  |    ..;;;;;..   #
+    #   ':::::'    |  __/ |     / |  |  | |  __ <  |  |__  |  ___| |      |     ':::::'    #
+    #     ':`      |__|   |__|__\ \_____/ |_____/  |_____| |_____| |_|\/|_|       ':`      #
+    # MAYBE??
     #dX_norm = tf.reshape(tf.linalg.norm(dX_reshaped[-1,3], axis=1), tf.shape(dX_reshaped)[:-1] + (1,))
     dX_norm = tf.reshape(tf.linalg.norm(tf.reshape(dX_reshaped, [-1, 3]), axis=1), tf.concat([tf.shape(dX_reshaped)[:-1], [1]], axis=0))
     dX_out = dX_reshaped / dX_norm
