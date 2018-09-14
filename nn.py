@@ -661,7 +661,7 @@ def get_pbc_kneighbors_csr(X, K, boundary_threshold, include_self=False):
 def get_graph_csr_list(h_in, args):
     M = args.graph_var
     pbc = args.pbc_graph == 1
-    include_self = args.layer_type == 'rot-inv'
+    include_self = args.layer_type != 'rot-inv'
     if pbc:
         return get_pbc_kneighbors_csr(h_in, M, 0.03)
     else:
@@ -1189,7 +1189,8 @@ def get_final_position(X_in, segment_idx_2D, H_out, M):
     dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], M - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
 
 
-    dX_norm = tf.reshape(tf.linalg.norm(dX_reshaped[-1,3], axis=1), tf.shape(dX_reshaped)[:-1] + (1,))
+    #dX_norm = tf.reshape(tf.linalg.norm(dX_reshaped[-1,3], axis=1), tf.shape(dX_reshaped)[:-1] + (1,))
+    dX_norm = tf.reshape(tf.linalg.norm(tf.reshape(dX_reshaped, [-1, 3]), axis=1), tf.concat([tf.shape(dX_reshaped)[:-1], [1]], axis=0))
     dX_out = dX_reshaped / dX_norm
 
     # Final position of particles
