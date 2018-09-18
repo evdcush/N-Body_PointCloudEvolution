@@ -971,7 +971,7 @@ def get_3D_segmentID(adj_graph, M):
         row, col, depth. npy arrays for indices of non-zero entries. Diagonals removed.
     """
     adj_graph.setdiag(0)  # Don't need diagonal elements
-    m_eff = M - 1 # Wouldn't need this if include_self=False, but keep for now
+    m_eff = M - 1
 
     # get COO features
     # NB: this is not the same as COO conversion, since nonzero() will return neighbor indices sorted
@@ -990,8 +990,8 @@ def get_3D_segmentID(adj_graph, M):
     #  ..;;;;;..   |  _ \ |  _  \ /     \ |  __ \  |  |    |  ___| |  \/  |    ..;;;;;..   #
     #   ':::::'    |  __/ |     / |  |  | |  __ <  |  |__  |  ___| |      |     ':::::'    #
     #     ':`      |__|   |__|__\ \_____/ |_____/  |_____| |_____| |_|\/|_|       ':`      #
-    #d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1) # ORIGINAL, BAD DIMS???
-    d = np.reshape(np.repeat(np.reshape(cols, [-1, M]), m_eff, axis=0), -1)
+    d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1) # ORIGINAL, BAD DIMS???
+    #d = np.reshape(np.repeat(np.reshape(cols, [-1, M]), m_eff, axis=0), -1)
     del_idx = np.array([(i%m_eff) + (i*m_eff) for i in range(num_elements)])
     d = np.delete(d, del_idx)
 
@@ -1195,6 +1195,27 @@ def get_RotInv_input_edges(x_input, lst_csrs, M):
 # POST-PROCESSING OUTPUT
 #------------------------------------------------------------------------------
 
+'''
+ISSUES:
+-------
+X 1 - In get_segmentID_3D : depth ID
+    This is the PROPER LINE:
+    d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1)
+    USE IT
+
+2 - get_final_position : H_out shape
+        Need to reshape:
+        (b, N*(M - 1), 1)  <------ Actual shape of H_out
+        (b, N, (M - 1), 1) <------ How you use
+
+X 3 - `pool_RotInv_graph_conv` and `RotInv_layer` : num_segs
+        num_segs is NOT EQUAL to b*N for all segments,
+        change it
+
+
+
+'''
+
 # Post-process output
 # ========================================
 def get_final_position(X_in, segment_idx_2D, H_out, M):
@@ -1206,17 +1227,32 @@ def get_final_position(X_in, segment_idx_2D, H_out, M):
     Calculate displacement vectors = linear combination of neighbor relative positions, with weights = last layer
     outputs (pooled over depth), and add diplacements to initial position to get final position.
 
-    Args:
-        X_in. Shape (b, N, 3). Initial positions.
-        segment_idx_2D . Shape (2, b * N * (M-1), 2). Each pair in the third axis is a batch idx - row idx or
-            batch idx - col idx for non-zero entries of 2D adjacency.
-            0-axis is rows/cols respectively. Get it from get_segment_idx_2D()
-        H_out. Shape (b, N, M - 1, 1). Outputs from last layer (pooled over depth dimension).
-        N (int). Number of neighbors.
-    dX_reshaped = tf.reshape(dX, [tf.shape(X_in)[0], tf.shape(X_in)[1], M - 1, tf.shape(X_in)[2]])  # (b, N, M - 1, 3)
-    Returns:
-        Tensor of shape (b, N, 3). Final positions.
+    Params
+    ------
+    X_in : tensor (b, N, 3)
+        input tensor (initial positions)
+
+    segment_idx_2D : tensor (2, b * N * (M-1), 2)
+        non-zero entries of 2D adjacency
+            each pair in the third axis is batch_idx - row_idx or batch_idx - col_idx
+            0th axis is rows/cols respectively. from get_batch_2D_segmentID()
+
+    H_out : tensor, (b, N*(M - 1), 1)
+        Network output (from last layer), poooled over depth dimension (may need to reshape to (b, N, (M-1), 1))
+
+    M : int
+        Number of neighbors
+
+    Returns
+    -------
+    Tensor of shape (b, N, 3). Final positions.
     """
+    # Reshape H_Out: (b, N * (M - 1), 1) ---> (b, N, (M - 1), 1)
+    # ========================================
+    #H_out = tf.reshape(H_out, )
+
+
+
 
     # Relative position of neighbors (neighbor - node)
     # ========================================
@@ -1263,13 +1299,12 @@ def get_final_position(X_in, segment_idx_2D, H_out, M):
 #------------------------------------------------------------------------------
 # Pooled graph conv
 # ========================================
-def pool_RotInv_graph_conv(X, idx, num_segs, broadcast=True):
+def pool_RotInv_graph_conv(X, idx, broadcast=True):
     """
     Pooling for rotation invariant model, assumes everything in row-major order
     Args:
         X (tensor): (b,e,k)
         idx (tensor): (b,e)
-        num_segs (int): b * N
         broadcast (bool): if True, after pooling re-broadcast to original shape
     Returns:
         tensor of shape (b,e,k) if broadcast, else (b,N*(M-1),k)
@@ -1287,7 +1322,7 @@ def pool_RotInv_graph_conv(X, idx, num_segs, broadcast=True):
 #------------------------------------------------------------------------------
 # Rotation Invariant layers
 #------------------------------------------------------------------------------
-def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
+def RotInv_layer(H_in, segID_3D, layer_id, is_last=False):
     """
     Args:
         H_in (tensor): (b, e, k)
@@ -1302,8 +1337,7 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
     Returns:
         tensor of shape (b, e, q) if not is_last else (b, N*(M-1), q)
     """
-    b, N = bN
-    num_segs = b*N
+    #b, N = bN
     # get layer weights
     wmap, B = utils.get_RotInv_layer_vars(layer_id)
     '''
@@ -1330,7 +1364,7 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
 
     # Pooling ops, ORDER MATTERS
     for i, pool_op in enumerate(SEGNAMES_3D): # ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
-        pooled_H = pool_RotInv_graph_conv(H_in, segID_3D[:,i], num_segs, broadcast=True)
+        pooled_H = pool_RotInv_graph_conv(H_in, segID_3D[:,i], broadcast=True)
         H = H + _left_mult(pooled_H, pool_op)
 
     # Output
@@ -1338,7 +1372,7 @@ def RotInv_layer(H_in, segID_3D, bN, layer_id, is_last=False):
     H_out = H + B # (b, e, q)
     if is_last:
         # pool over depth dimension: (b, e, q) --> (b, N*(M-1), q)
-        H_out = pool_RotInv_graph_conv(H_out, segID_3D[:,3], num_segs, broadcast=False)
+        H_out = pool_RotInv_graph_conv(H_out, segID_3D[:,3], broadcast=False)
     return H_out
 
 
@@ -1367,13 +1401,13 @@ def network_func_RotInv(edges, segID_3D, num_layers, dims, activation, redshift=
 
     # Input layer
     # ========================================
-    H = activation(RotInv_layer(edges, segID_3D, dims, 0))
+    H = activation(RotInv_layer(edges, segID_3D, 0))
 
     # Hidden layers
     # ========================================
     for layer_idx in range(1, num_layers):
         is_last = layer_idx == num_layers - 1
-        H = RotInv_layer(H, segID_3D, dims, layer_idx, is_last=is_last)
+        H = RotInv_layer(H, segID_3D, layer_idx, is_last=is_last)
         if not is_last:
             H = activation(H)
     return H
@@ -1386,47 +1420,42 @@ def model_func_RotInv(X_in, edges, segID_3D, segID_2D, model_specs, redshift=Non
     """ Rotation invariant model function, wraps network function
     Inputs
     ------
-    X_in  : tensor, original input data
-        shape : (b, N, 3)
-              : b batch_size, N particles
+    X_in : tensor, (b, N, 3)
+        original input data, b = batch_size, N = num_particles
 
-    edges : tensor, processed input data
-        shape : (b, e, 10)
-            b : batch size
-            e : N*(M-1)*(M-2), num of edges in 3D adjacency
-                : N particles, M neighbors
-           10 : input channels
-                [0]  : 1 edge feature
-                [1:] : 9 broadcasted surface features
-                        : 3 surfaces
-                            : 1 scalar distance
-                            : 1 row velocity projected onto cols
-                            : 1 col velocity projected onto rows
+    edges : tensor, (b, e, 10)
+        processed input data
+        e : N*(M-1)*(M-2)
+            num of edges in 3D adjacency: N particles, M neighbors
+        10 : input channels
+            [0:10] 1 edge feature
+            [1:10] 9 broadcasted surface features
+                3 surfaces :
+                    1 scalar distance
+                    1 row velocity projected onto cols
+                    1 col velocity projected onto rows
 
-    segID_3D : tensor, segment ids for pooling
-        shape : (b, 7, e)
-            7 : number of segment ids, ordered
-                : [col-depth, row-depth, row-col, depth, col, row, all]
+    segID_3D : tensor, (b, 7, e)
+        segment ids for pooling
+            7 segment ids, ordered:
+            [col-depth, row-depth, row-col, depth, col, row, all]
 
-    segID_2D : tensor, row and col indices of 2D sparse adjacency matrix
-        shape : (2, b*N*(M-1), 2)
-            shape[i] : row, col indices, respectively
-            shape[:, :, j] : batch offset for nonzero entries in  rows, cols
+    segID_2D : tensor, (2, b*N*(M-1), 2)
+        row and col indices of 2D sparse adjacency matrix
+        shape[i] row, col indices, respectively
+        shape[:, :, j] batch offset for nonzero entries in  rows, cols
 
-    model_specs : utils.AttrDict (dict), container for network configuration
-         var_scope : str, the variable scope of this model, used for getting vars
-        num_layers : int, number of layers (depth) of network
-              dims : tuple int, dimensions of original data
-                       : (b, N, M)
-        activation : tf func, defaults to tf.nn.relu
+    model_specs : utils.AttrDict (dict)
+        container for network configuration
 
-    redshift : tensor, optional tensor vector of broadcasted reshift values
-        shape : UNDETERMINED ???
+    redshift : tensor
+        optional tensor vector of broadcasted reshift values
+        NOT IN USE
 
     Returns
     -------
     tensor : (b, N, 3)
-        Final positions (displacement ???) of particles
+        Final positions of particles
 
     """
     # Get relevant model specs
