@@ -970,13 +970,14 @@ def get_3D_segmentID(adj_graph, M):
     Returns:
         row, col, depth. npy arrays for indices of non-zero entries. Diagonals removed.
     """
-    adj_graph.setdiag(0)  # Don't need diagonal elements
+    #adj_graph.setdiag(0)  # Don't need diagonal elements
     m_eff = M - 1
 
     # get COO features
     # NB: this is not the same as COO conversion, since nonzero() will return neighbor indices sorted
     rows, cols = adj_graph.nonzero()
     num_elements = rows.size # N*(M-1)
+    # PROBLEM : num_elements actuall N*M
 
     # 3D-projected features for row, col, depth
     r = np.repeat(rows, m_eff-1) # tested equivalent
@@ -990,6 +991,7 @@ def get_3D_segmentID(adj_graph, M):
     #  ..;;;;;..   |  _ \ |  _  \ /     \ |  __ \  |  |    |  ___| |  \/  |    ..;;;;;..   #
     #   ':::::'    |  __/ |     / |  |  | |  __ <  |  |__  |  ___| |      |     ':::::'    #
     #     ':`      |__|   |__|__\ \_____/ |_____/  |_____| |_____| |_|\/|_|       ':`      #
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1) # ORIGINAL, BAD DIMS???
     #d = np.reshape(np.repeat(np.reshape(cols, [-1, M]), m_eff, axis=0), -1)
     del_idx = np.array([(i%m_eff) + (i*m_eff) for i in range(num_elements)])
@@ -1011,6 +1013,8 @@ def get_batch_3D_segmentID(lst_csrs, M):
           where e=N*(M-1)*(M-2), num of edges in 3D adjacency matrix (no diags)
           N: num_particles
     """
+    #M = M - 1 # "`-._,-'"`-._,-'"`-._,-'"`-._,-'"`-._,-'"`-._,-'"`-._,-'"`-._,-'
+
     # Helper funcs
     # ========================================
     def _combine_segment_idx(idx1, idx2):
@@ -1024,6 +1028,8 @@ def get_batch_3D_segmentID(lst_csrs, M):
     for adj in lst_csrs:
         # get row, col, depth segment idx (pools col-depth, row-depth, row-col, respectively)
         r, c, d = get_3D_segmentID(adj, M)
+        #r, c, d = get_3D_segmentID(adj, M-1)
+        # "`-._,-'"`-._,-'"`-._,-'"`-._,-'"`-._,-'"`-._,-'"`-._,-'"`-._,-' HACKY
 
         # combine segment idx (pools rc->d, rd->c, cd->r, respectively)
         rc = _combine_segment_idx(r, c)
@@ -1046,82 +1052,6 @@ def get_batch_3D_segmentID(lst_csrs, M):
     return seg_idx
 
 
-'''
-# Pre-process input
-# ========================================
-def get_RotInv_input_edges(x_input, lst_csrs, M):
-    """
-    Args:
-         X. Shape (b, N, 3). Coordinates.
-         V. Shape (b, N, 3), Velocties.
-         lst_csrs. List of csr adjacencies.
-         M (int). Number of neighbors.
-
-    Returns:
-        numpy array of shape (b, e, 10)
-            e=N*(M-1)*(M-2), number of edges in 3D adjacency (diagonals removed), N=num of particles, M=num of neighbors
-            10 input channels corresponding to 1 edge feature + 9 broadcasted surface features, those are broken
-            down into 3 surfaces x (1 scalar distance + 1 row velocity projected onto cols + 1 col velocity
-            projected onto rows)
-    """
-    X, V = x_input[...,:3], x_input[...,3:]
-
-    # Helpers
-
-    _dot     = lambda x, y: np.dot(x, y.reshape(y.shape[-1], -1))
-    _norm    = lambda dist: np.linalg.norm(dist)
-    _angle   = lambda dist1, dist2: np.dot(dist1, dist2) / (_norm(dist1) * _norm(dist2))
-                                     #  np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-    _project = lambda v, dist: np.dot(v, dist) / _norm(dist)
-
-    # out dims
-    batch_size, N = X.shape[:2]
-    e = N*(M-1)*(M-2)
-    #X_out = np.zeros((batch_size, e, 10)).astype(np.float32)
-    X_out = []
-
-    # Iterate over each cube in batch
-    # ========================================
-    for i in range(batch_size):
-        x = X[i] # (N, 3)
-        v = V[i] # (N, 3)
-        adj = lst_csrs[i]
-
-        # Get 3D seg ID (coo features)
-        rows, cols, depth = get_3D_segmentID(adj, M)
-
-        # Relative dist vectors
-        dist_cr = x[cols]  - x[rows]
-        dist_dr = x[depth] - x[rows]
-        dist_dc = x[depth] - x[cols]
-
-        # Velocities
-        v_rows  = v[rows]
-        v_cols  = v[cols]
-        v_depth = v[depth]
-
-        #   Input features
-        #-------------------
-        #===== Edge
-        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-        features = [_angle(dist_cr, dist_dr)]
-
-        #===== RC surface
-        # scalar distance + projection of row vel to rc vectors + projection of col vel to cr vectors
-        features.extend([_norm(dist_cr), _project(v_rows, dist_cr), _project(v_cols, -dist_cr)])
-
-        #===== RD surface
-        # scalar distance + projection of row vel to rd vectors + projection of depth vel to dr vectors
-        features.extend([_norm(dist_dr), _project(v_rows, dist_dr), _project(v_depth, -dist_dr)])
-
-        #===== CD surface
-        # scalar distance + projection of col vel to cd vectors + projection of depth vel to dc vectors
-        features.extend([_norm(dist_dc), _project(v_cols, dist_dc), _project(v_depth, -dist_dc)])
-
-        X_out.append(features)
-
-    return np.array(X_out)
-'''
 
 # Pre-process input
 #  Double-loop ---> No fat dots
@@ -1250,6 +1180,8 @@ def get_final_position(X_in, segment_idx_2D, H_out, M):
     # Reshape H_Out: (b, N * (M - 1), 1) ---> (b, N, (M - 1), 1)
     # ========================================
     #H_out = tf.reshape(H_out, )
+      # (b, N, M - 1, 3)
+    H_out = tf.reshape(H_out, [tf.shape(X_in)[0], tf.shape(X_in)[1], M - 1, tf.shape(X_in)[2]])
 
 
 

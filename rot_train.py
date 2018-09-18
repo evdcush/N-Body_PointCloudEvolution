@@ -42,7 +42,16 @@ checkpoint = 100 #args.checkpoint
 num_iters  = args.num_iters
 num_val_batches = args.num_test // batch_size
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
-get_graph_csr = lambda h: nn.get_graph_csr_list(h, args)
+
+layer_type = args.layer_type
+
+
+def get_graph_csr_rotinv(h_in):
+    # "`-._,-'"`-._,-'"`-._,-'"`-._,-'"`-._,-'"`-._,-'"`-._,-'"`-._,-'
+    M_GRAPH_GET = M #- 1
+    return nn.get_kneighbor_list(h_in, M_GRAPH_GET, include_self=True)
+
+#get_graph_csr = lambda h: nn.get_graph_csr_list(h, args)
 
 # Network config
 # ========================================
@@ -65,39 +74,6 @@ utils.initialize_model_params(args)
 
 # Inputs
 # ========================================
-
-#              RotInv
-# ----------------------------------------
-'''
-e : N*(M-1)*(M-2), num of edges in 3D adjacency
-
-
-#==== nn.model_func_RotInv
-X_input : (b, N, 3)
-
-edges : (b, e, 10)
-    |----- # get_RotInv_input_edges(X, V, lst_csrs, M)
-                X, V : (b,N,3) location, velocities
-                lst_csrs : (b,)-len list of csrs
-                M : num neighbors
-
-segID_3D : (b, 7, e)
-    |----- # get_batch_3D_segmentID(lst_csrs, M)
-                lst_csrs : (b,)-len list of csrs
-
-segID_2D : (2, b*N*(M-1), 2)
-    |----- # get_batch_2D_segmentID(lst_csrs)
-                lst_csrs : (b,)-len list of csrs
-
-
-#==== Variable
-model_specs
- var_scope :
-num_layers :
-      dims : (b, N, M)
-activation :
-'''
-
 
 # Placeholders
 #==== Data cube
@@ -138,7 +114,7 @@ train = optimizer.minimize(error)
 # Initialize session and variables
 # ========================================
 # Session
-gpu_frac = 0.85
+gpu_frac = 0.8
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
 sess = tf.InteractiveSession(config=tf.ConfigProto(gpu_options=gpu_options))
 
@@ -188,11 +164,12 @@ for step in range(num_iters):
 
     # Graph data
     # ----------------
-    csr_list = get_graph_csr(x_in) # len b list of (N,N) csrs
+    csr_list = get_graph_csr_rotinv(x_in) # len b list of (N,N) csrs
 
     #==== Rot inv pre-processing
     seg_id_2D = nn.get_batch_2D_segmentID(csr_list)
     seg_id_3D = nn.get_batch_3D_segmentID(csr_list, M)
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     edges = nn.get_RotInv_input_edges(x_in, csr_list, M)
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
@@ -207,7 +184,9 @@ for step in range(num_iters):
 
     # Train
     train.run(feed_dict=fdict)
-    print('step: {}'.format(step))
+    err = sess.run(error, feed_dict=fdict)
+    utils.print_checkpoint(step, err)
+    #print('step: {}'.format(step))
 
 
     # Save
@@ -239,7 +218,7 @@ for j in range(num_val_batches):
 
     # Graph data
     # ----------------
-    csr_list = get_graph_csr(x_in) # len b list of (N,N) csrs
+    csr_list = get_graph_csr_rotinv(x_in) # len b list of (N,N) csrs
 
     #==== Rot inv pre-processing
     seg_id_2D = nn.get_batch_2D_segmentID(csr_list)
