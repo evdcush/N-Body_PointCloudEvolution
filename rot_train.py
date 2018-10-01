@@ -169,9 +169,7 @@ for step in range(num_iters):
     #==== Rot inv pre-processing
     seg_id_2D = nn.get_batch_2D_segmentID(csr_list)
     seg_id_3D = nn.get_batch_3D_segmentID(csr_list, M)
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     edges = nn.get_RotInv_input_edges(x_in, csr_list, M)
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
     # Feed data to tensors
     # ----------------
@@ -185,7 +183,7 @@ for step in range(num_iters):
     # Train
     train.run(feed_dict=fdict)
     err = sess.run(error, feed_dict=fdict)
-    utils.print_checkpoint(step, err)
+    #utils.print_checkpoint(step, err)
     #print('step: {}'.format(step))
 
 

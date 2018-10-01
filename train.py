@@ -78,7 +78,8 @@ rs = RS_in if args.cat_rs else None
 
 # Outputs
 # ========================================
-X_pred = nn.model_func_ShiftInv(*model_args, redshift=rs)
+#X_pred = nn.model_func_ShiftInv(*model_args, redshift=rs)
+X_pred = nn.model_func_ShiftInv_readoutK(*model_args, redshift=rs)
 
 
 # Optimization
@@ -110,7 +111,8 @@ if args.restore:
 #==============================================================================
 # Load cubes
 rs_idx = args.rs_idx
-X = utils.normalize(utils.load_simulation_data(rs_idx))
+#X = utils.normalize(utils.load_simulation_data(rs_idx))
+X = utils.load_simulation_data(rs_idx)
 X_train, X_test = utils.split_data_validation(X, num_val=args.num_test)
 X = None # reduce memory overhead
 
