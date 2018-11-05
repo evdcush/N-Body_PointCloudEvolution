@@ -61,7 +61,7 @@ REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
 
 # Data load paths (must be changed for your machine!)
 # ========================================
-DATA_ROOT_PATH = '/home/evan/Data/nbody_simulations/N_uniform/{}'
+DATA_ROOT_PATH = '/home/evan/.Data/nbody_simulations/N_uniform/{}'
 DATA_PATH_BINARIES = DATA_ROOT_PATH.format('binaries/run*/xv_dm.z=0{:.4f}') # not in use
 DATA_PATH_NPY      = DATA_ROOT_PATH.format('npy_data/X_{:.4f}_.npy')
 
