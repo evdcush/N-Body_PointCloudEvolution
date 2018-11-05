@@ -327,7 +327,7 @@ def rad_graph_layer(h, layer_idx, spT, *args):
 
 # Updated/Corrected Shiftinv layer
 # ===================================
-def ShiftInv_layer(H_in, adj, b, N, layer_id, is_last=False):
+def ShiftInv_layer(H_in, adj, bN, layer_id, is_last=False):
     """New basis with 15 independent weights, see: https://openreview.net/pdf?id=Syx72jC9tm.
 
     Let S = sum_i( symmetrized_i ) for i = 0...b-1, where b = batch size.
@@ -417,89 +417,92 @@ def ShiftInv_layer(H_in, adj, b, N, layer_id, is_last=False):
     #B = tf.constant(np.ones(shape=(2, W.shape[2])))
     # -------------------------
 
-    # -------------------------
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~
     # FIX:
     # S = sum_i( symmetrized_i ) for i = 0...b-1, where b = batch size.
-    # Updated: H_in, idx, b, N, layer_id, is_last=False
+    # Updated: H_in, adj, bN, layer_id, is_last=False
+    #     H_in: (S, k_in)
     # Prev:    H_in, COO_feats, bN, layer_id, is_last=False
         # COO_feats (tensor): (3, c), of row, column, cube-wise indices respectively
         # COO_feats (tensor): (3, c), of row, column, cube-wise indices respectively
-    # Prepare data and parameters
-    # split inputs
-    b, N = bN
-    row_idx  = COO_feats[0]
-    col_idx  = COO_feats[1]
-    cube_idx = COO_feats[2]
-
-    # get layer weights
-    weights, B = utils.get_ShiftInv_layer_vars(layer_id)
-    W1, W2, W3, W4 = weights
+    # 
+    # Get layer vars
     # -------------------------
+    #==== Data dims
+    b, N = bN # batch_size, num_particles
 
-    out_shape = (H_in.shape[0], W.shape[2])
+    #==== Weights and Biases
+    # W : (15, k_in, k_out)
+    # B : (2, k_out)
+    W, B = utils.get_ShiftInv_layer_vars(layer_id)
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    out_shape = (H_in.shape[0], W.shape[-1]) # (S, k_out)
     H_all = []
 
-    # 1. No pooling
+    #==== 1. No pooling
     H_all.append(tf.matmul(H_in, W[0]))
 
-    # 2. Transpose
+    #==== 2. Transpose
     H2 = tf.gather(H_in, adj["tra"])
     H_all.append(tf.matmul(H2, W[1]))
 
-    # 3. Diagonal
+    #==== 3. Diagonal
     Hd = tf.gather(H_in, adj["dia"])
     H_all.append(_broadcast_to_diag(tf.matmul(Hd, W[2]), adj["dia"], out_shape))
 
-    # 4. Pool rows, broadcast to rows
+    #==== 4. Pool rows, broadcast to rows
     Hr = _pool(H_in, adj["col"], b * N)
     H_all.append(_broadcast(tf.matmul(Hr, W[3]), adj["col"]))
 
-    # 5. Pool rows, broadcast to cols
+    #==== 5. Pool rows, broadcast to cols
     H_all.append(_broadcast(tf.matmul(Hr, W[4]), adj["row"]))
 
-    # 6. Pool rows, broadcast to diag
+    #==== 6. Pool rows, broadcast to diag
     H_all.append(_broadcast_to_diag(tf.matmul(Hr, W[5]), adj["dia"], out_shape))
 
-    # 7. Pool cols, broadcast to cols
+    #==== 7. Pool cols, broadcast to cols
     Hc = _pool(H_in, adj["row"], b * N)
     H_all.append(_broadcast(tf.matmul(Hc, W[6]), adj["row"]))
 
-    # 8. Pool cols, broadcast to rows
+    #==== 8. Pool cols, broadcast to rows
     H_all.append(_broadcast(tf.matmul(Hc, W[7]), adj["col"]))
 
-    # 9. Pool cols, broadcast to diag
+    #==== 9. Pool cols, broadcast to diag
     H_all.append(_broadcast_to_diag(tf.matmul(Hc, W[8]), adj["dia"], out_shape))
 
-    # 10. Pool all, broadcast all
+    #==== 10. Pool all, broadcast all
     Ha = _pool(H_in, adj["all"], b)
     H_all.append(_broadcast(tf.matmul(Ha, W[9]), adj["all"]))
 
-    # 11. Pool all, broadcast diagonal
+    #==== 11. Pool all, broadcast diagonal
     Ha_broad = _broadcast(tf.matmul(Ha, W[10]), adj["dal"])
     H_all.append(_broadcast_to_diag(Ha_broad, adj["dia"], out_shape))
 
-    # 12. Pool diagonal, broadcast all
+    #==== 12. Pool diagonal, broadcast all
     Hp = _pool(Hd, adj["dal"], b)
     H_all.append(_broadcast(tf.matmul(Hp, W[11]), adj["all"]))
 
-    # 13. Pool diagonal, broadcast diagonal
+    #==== 13. Pool diagonal, broadcast diagonal
     Hp_broad = _broadcast(tf.matmul(Hp, W[12]), adj["dal"])
     H_all.append(_broadcast_to_diag(Hp_broad, adj["dia"], out_shape))
 
-    # 14. Broadcast diagonal to rows
+    #==== 14. Broadcast diagonal to rows
     H_all.append(_broadcast(tf.matmul(Hd, W[13]), adj["col"]))
 
-    # 15. Broadcast diagonal to cols
+    #==== 15. Broadcast diagonal to cols
     H_all.append(_broadcast(tf.matmul(Hd, W[14]), adj["row"]))
 
     # Diagonal and off diagonal bias
-    # For simplicity will have a bias applied to all and a separate one to diagonal only (which is equivalent
-    # to diagonal and off-diagonal)
+    # For simplicity will have a bias applied to all and a 
+    #  separate one to diagonal only 
+    #  (which is equivalent to diagonal and off-diagonal)
     B_diag = _broadcast_to_diag(tf.broadcast_to(B[0], (b * N, B[0].shape[0])), adj["dia"], out_shape)
     B_all = B[1]
 
+    # Output
+    #------------------------
     H = tf.add_n(H_all) + B_diag + B_all
-
     if is_last:
         return tf.reshape(_pool(H, adj["row"], b * N), (b, N, -1))
     else:
@@ -1019,7 +1022,6 @@ def get_graph_csr_list(h_in, args):
     M = args.graph_var
     pbc = args.pbc_graph == 1
     include_self = args.layer_type != 'rot-inv'
-    #print('In the graph_csr list func\nLayer-type is {} and include_self={}'.format(args.layer_type, include_self))
     if pbc:
         return get_pbc_kneighbors_csr(h_in, M, 0.03)
     else:

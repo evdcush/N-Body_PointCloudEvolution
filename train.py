@@ -5,7 +5,7 @@ import tensorflow as tf
 import nn
 import utils
 #from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, NUM_VAL_SAMPLES, MODEL_BASENAME
-from utils import REDSHIFTS, AttrDict, SINGLE_STEP, MULTI_STEP
+#from utils import REDSHIFTS, AttrDict
 
 
 """ TODO:
@@ -35,16 +35,15 @@ batch_size = args.batch_size
 # Training variables
 # ========================================
 learning_rate = args.learn_rate
-multi_step = args.model_type == MULTI_STEP
 checkpoint = 100 #args.checkpoint
 num_iters  = args.num_iters
 num_val_batches = args.num_test // batch_size
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
-get_graph_csr = lambda h: nn.get_graph_csr_list(h, args)
+get_graph_csr   = lambda h: nn.get_graph_csr_list(h, args)
 
 # Network config
 # ========================================
-network_features = AttrDict()
+network_features = utils.AttrDict()
 network_features.var_scope = args.var_scope
 network_features.num_layers = len(args.channels) - 1
 network_features.dims = [batch_size, N, M]
@@ -68,7 +67,8 @@ in_shape = (None, 32**3, 6)
 X_input = tf.placeholder(tf.float32, shape=in_shape)
 X_truth = tf.placeholder(tf.float32, shape=in_shape)
 RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
-COO_feats = tf.placeholder(tf.int32, shape=(3, None,))
+#COO_feats = tf.placeholder(tf.int32, shape=(3, None,))
+graph_feats = tf.placeholder(tf.float32, shape=())
 
 # Input args
 model_args = (X_input, COO_feats, network_features)
