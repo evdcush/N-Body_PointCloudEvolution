@@ -67,19 +67,23 @@ in_shape = (None, 32**3, 6)
 X_input = tf.placeholder(tf.float32, shape=in_shape)
 X_truth = tf.placeholder(tf.float32, shape=in_shape)
 RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
-#COO_feats = tf.placeholder(tf.int32, shape=(3, None,))
-A_input = tf.placeholder(tf.int32, shape=())
 
-"""
-adj : tf.Tensor.int32, (4, S)
-    adjacency indices for "row" "col" "all" "tra" elements
-adj_diags : tf.Tensor.int32 (2, b*N)
-    adjacency indices for "dia", "dal"
-    (diagonal elements, and diagonal pool indices)
-"""
+# Adjacency indices, symmetrized
+# =======================================
+row_in = tf.placeholder(tf.int32, shape=(None,))
+col_in = tf.placeholder(tf.int32, shape=(None,))
+all_in = tf.placeholder(tf.int32, shape=(None,))
+tra_in = tf.placeholder(tf.int32, shape=(None,))
+dia_in = tf.placeholder(tf.int32, shape=(None,))
+dal_in = tf.placeholder(tf.int32, shape=(None,))
+
+# Insert adj into dict
+adj_symm_in = dict(row=row_in, col=col_in, all=all_in,
+                   tra=tra_in, dia=dia_in, dal=dal_in)
 
 # Input args
-model_args = (X_input, COO_feats, network_features)
+# ShiftInv_layer_AdjTensor(H_in, adj, bN, layer_id, is_last=False):
+model_args = (X_input, adj_symm_in, network_features)
 loss_args = (X_truth, X_input) if multi_step else (X_truth,)
 rs = RS_in if args.cat_rs else None
 
@@ -87,7 +91,7 @@ rs = RS_in if args.cat_rs else None
 # Outputs
 # ========================================
 #X_pred = nn.model_func_ShiftInv(*model_args, redshift=rs)
-X_pred = nn.model_func_ShiftInv_readoutK(*model_args, redshift=rs)
+X_pred = shift_inv.model_func_ShiftInv(*model_args, redshift=rs)
 
 
 # Optimization
