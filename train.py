@@ -68,7 +68,15 @@ X_input = tf.placeholder(tf.float32, shape=in_shape)
 X_truth = tf.placeholder(tf.float32, shape=in_shape)
 RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
 #COO_feats = tf.placeholder(tf.int32, shape=(3, None,))
-graph_feats = tf.placeholder(tf.float32, shape=())
+A_input = tf.placeholder(tf.int32, shape=())
+
+"""
+adj : tf.Tensor.int32, (4, S)
+    adjacency indices for "row" "col" "all" "tra" elements
+adj_diags : tf.Tensor.int32 (2, b*N)
+    adjacency indices for "dia", "dal"
+    (diagonal elements, and diagonal pool indices)
+"""
 
 # Input args
 model_args = (X_input, COO_feats, network_features)
