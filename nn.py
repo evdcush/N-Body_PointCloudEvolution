@@ -131,58 +131,7 @@ def get_input_features_ShiftInv(X_in, coo, dims):
     edges = edges - tf.expand_dims(X_in[...,:3], axis=2) # (b, N, M, 3) - (b, N, 1, 3)
     return tf.reshape(edges, [-1, 3]), nodes
 
-# Updated Shift invariant input features
-#   Asymmetrical adjacency
-# ========================================
-def get_input_features_ShiftInv_numpy(X_in, A, N, redshift):
-    """Generate input for first layer.
 
-    # DANIELE Notes
-    #-----------------
-    This is doing what https://github.com/evdcush/NBPCE/blob/master/nn.py#L81-L129
-    were doing, **with the crucial difference** that the adjacency is
-    symmetrized and zero features are associated with new entries coming
-    from symmetrization.
-      Even if number of neighbors is fixed, different matrices in the batch
-    can have a different number of non-zero symmetrized entries.
-      Even different rows within same adjacency can have different number of
-    non-zero entries. So I have to do explicit loops.
-
-    I implemented this in numpy which I think it's fine because it's a
-    preprocessing step.
-
-    Args:
-        X_in(array). (b, N, 6) coord and velocities.
-        A(list). Batch of csr adjacency.
-        N(int). Number of particles.
-        redshift(float).
-
-    Returns:
-        array of shape (S, 9) or (S, 10) if redshift is not None.
-        S is defined above in new_ShiftInv_layer.
-    """
-    shiftinv_input = []
-    for k, a in enumerate(A):
-        a_symm = a + a.transpose()
-        # split input coo/vel
-        coordinates = X_in[k][:, :3]
-        velocities  = X_in[k][:, 3:]
-
-        for i in range(N):
-            node_coordinates = X_in[k][i, :3]
-            #==== get neighbor idx
-            neighbors_idx_symm = a_symm.getrow(i).nonzero()[1]
-            neighbors_idx = a.getrow(i).nonzero()[1]
-            for j in neighbors_idx_symm:
-                if j in neighbors_idx:
-                    features = coordinates[j] - node_coordinates
-                    features = np.concatenate((features, velocities[i], velocities[j]), axis=0)
-                else:
-                    features = np.zeros(9)
-                if redshift is not None:
-                    features = np.append(features, redshift)
-                shiftinv_input.append(features)
-    return np.array(shiftinv_input)
 
 
 #==============================================================================

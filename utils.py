@@ -126,7 +126,8 @@ CHANNELS_SHALLOW = [9, 32, 16, 8, 6]
 # Layer variables
 # ========================================
 # Shift-invariant
-SHIFT_INV_W_IDX = [1,2,3,4]
+#SHIFT_INV_W_IDX = [1,2,3,4]
+SHIFT_INV_W_IDX = list(range(15))
 
 # Rotation-invariant
 ROTATION_INV_SEGNAMES = ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
@@ -207,7 +208,7 @@ def initialize_vanilla_params(kdims, restore=False, **kwargs):
         initialize_weight(Wname, kdim, restore=restore)
     initialize_scalars(restore=restore)
 
-
+''' # Previous shift-inv
 def initialize_ShiftInv_params(kdims, restore=False, **kwargs):
     """ ShiftInv layers have 1 bias, 4 weights, scalars """
     for layer_idx, kdim in enumerate(kdims):
@@ -217,7 +218,18 @@ def initialize_ShiftInv_params(kdims, restore=False, **kwargs):
             #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
             initialize_weight(Wname, kdim, restore=restore)
     initialize_scalars(restore=restore)
-
+'''
+def initialize_ShiftInv_params(kdims, restore=False, **kwargs):
+    """ ShiftInv layers have 2 bias, 14 weights, scalars
+    """
+    for layer_idx, kdim in enumerate(kdims):
+        initialize_bias(BIAS_TAG.format(f'{layer_idx}:1'), kdim, restore=restore)
+        initialize_bias(BIAS_TAG.format(f'{layer_idx}:2'), kdim, restore=restore)
+        for w_idx in SHIFT_INV_W_IDX:
+            Wname = WEIGHT_TAG.format(layer_idx, w_idx)
+            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+            initialize_weight(Wname, kdim, restore=restore)
+    initialize_scalars(restore=restore)
 
 def initialize_RotInv_params(kdims, restore=False, **kwargs):
     """ RotInv layers have 1 bias, 6 weights, and scalar
@@ -289,8 +301,8 @@ def get_weight(layer_idx, w_idx=0):
     return get_var(name)
 
 
-def get_bias(layer_idx):
-    name = BIAS_TAG.format(layer_idx)
+def get_bias(layer_idx, suffix=''):
+    name = BIAS_TAG.format(f'{layer_idx}{suffix}')
     return get_var(name)
 
 
@@ -315,7 +327,8 @@ def get_ShiftInv_layer_vars(layer_idx, **kwargs):
     weights = []
     for w_idx in SHIFT_INV_W_IDX:
         weights.append(get_weight(layer_idx, w_idx=w_idx))
-    bias = get_bias(layer_idx)
+    bias1 = get_bias(layer_idx, 1)
+    bias2 = get_bias(layer_idx, 2)
     return weights, bias
 
 

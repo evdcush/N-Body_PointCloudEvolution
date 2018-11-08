@@ -4,6 +4,7 @@ from sklearn.neighbors import kneighbors_graph
 import tensorflow as tf
 import nn
 import utils
+from shift_inv import get_symmetrized_idx, model_func_ShiftInv_symm
 #from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, NUM_VAL_SAMPLES, MODEL_BASENAME
 #from utils import REDSHIFTS, AttrDict
 
@@ -39,7 +40,8 @@ checkpoint = 100 #args.checkpoint
 num_iters  = args.num_iters
 num_val_batches = args.num_test // batch_size
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
-get_graph_csr   = lambda h: nn.get_graph_csr_list(h, args)
+# UPDATED #####################################################################
+get_graph_csr   = lambda h: get_symmetrized_idx(nn.get_graph_csr_list(h, args))
 
 # Network config
 # ========================================

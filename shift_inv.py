@@ -9,6 +9,61 @@ from utils import VARIABLE_SCOPE as VAR_SCOPE
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
+# Updated Shift invariant input features
+#   Asymmetrical adjacency
+# ========================================
+def get_input_features_ShiftInv_numpy(X_in, A, N, redshift):
+    """Generate input for first layer.
+
+    # DANIELE Notes
+    #-----------------
+    This is doing what
+    https://github.com/evdcush/NBPCE/blob/master/nn.py#L81-L129
+    were doing, **with the crucial difference** that the adjacency is
+    symmetrized and zero features are associated with new entries coming
+    from symmetrization.
+      Even if number of neighbors is fixed, different matrices in the batch
+    can have a different number of non-zero symmetrized entries.
+      Even different rows within same adjacency can have different number of
+    non-zero entries. So I have to do explicit loops.
+
+    I implemented this in numpy which I think it's fine because it's a
+    preprocessing step.
+
+    Args:
+        X_in(array). (b, N, 6) coord and velocities.
+        A(list). Batch of csr adjacency.
+        N(int). Number of particles.
+        redshift(float).
+
+    Returns:
+        array of shape (S, 9) or (S, 10) if redshift is not None.
+        S is defined above in new_ShiftInv_layer.
+    """
+    shiftinv_input = []
+    for k, a in enumerate(A):
+        a_symm = a + a.transpose()
+        # split input coo/vel
+        coordinates = X_in[k][:, :3]
+        velocities  = X_in[k][:, 3:]
+
+        for i in range(N):
+            node_coordinates = X_in[k][i, :3]
+            #==== get neighbor idx
+            neighbors_idx_symm = a_symm.getrow(i).nonzero()[1]
+            neighbors_idx = a.getrow(i).nonzero()[1]
+            for j in neighbors_idx_symm:
+                if j in neighbors_idx:
+                    features = coordinates[j] - node_coordinates
+                    features = np.concatenate((features, velocities[i],
+                                                         velocities[j]), axis=0)
+                else:
+                    features = np.zeros(9)
+                if redshift is not None:
+                    features = np.append(features, redshift)
+                shiftinv_input.append(features)
+    return np.array(shiftinv_input)
+
 
 # Updated/Corrected Shiftinv layer
 # ===================================
@@ -74,9 +129,10 @@ def ShiftInv_layer(H_in, adj, bN, layer_id, is_last=False):
     def _broadcast(h, broadcast_idx):
         """Broadcast based on indices.
 
-        Given row idx, it corresponds to broadcast over columns, given col idx it corresponds
-        to broadcast over rows, etc...
-        Note: in the old implementation _pool and _broadcast were done together in pool_ShiftInv_graph_conv.
+        Given row idx, it corresponds to broadcast over columns,
+        given col idx it corresponds to broadcast over rows, etc...
+        Note: in the old implementation _pool and _broadcast were
+        done together in pool_ShiftInv_graph_conv.
 
         Args:
             h (tensor). Pooled data.
@@ -208,18 +264,17 @@ def ShiftInv_layer(H_in, adj, bN, layer_id, is_last=False):
 
 # Shift invariant network
 # ========================================
-def network_func_ShiftInv(X_in_edges, X_in_nodes, COO_feats,
-                          num_layers, dims, activation, redshift=None):
+def network_func_ShiftInv(X_input_features, adj_map, num_layers, dims,
+                          activation, redshift=None):
     # Input layer
     # -----------
-    H_in = include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=redshift)
-    H = activation(ShiftInv_layer(H_in, COO_feats, dims, 0))
+    H = activation(ShiftInv_layer(X_input_features, adj_map, dims, 0))
 
     # Hidden layers
     # -------------
     for layer_idx in range(1, num_layers):
         is_last = layer_idx == num_layers - 1
-        H = ShiftInv_layer(H, COO_feats, dims, layer_idx, is_last=is_last)
+        H = ShiftInv_layer(H, adj_map, dims, layer_idx, is_last=is_last)
         if not is_last:
             H = activation(H)
     return H
@@ -228,13 +283,13 @@ def network_func_ShiftInv(X_in_edges, X_in_nodes, COO_feats,
 
 # Shift invariant model func
 # ========================================
-def model_func_ShiftInv_symm(X_in, adj_map, model_specs, redshift=None):
+# get_input_features_ShiftInv_numpy(X_in, A, N, redshift)
+def model_func_ShiftInv_symm(X_in_features, adj_map, model_specs, redshift=None):
     """ # Shiftinv model func for symmetrical adjacency indices
 
     Params
     ------
-    X_in : tf.Tensor, (b, N, 6)
-        input data
+    X_in_features : (S, 9)
 
     adj_map : dict(tf.Tensor)
         dictionary mapping shift-inv op tags to corresponding adjacency indices
@@ -266,9 +321,28 @@ def model_func_ShiftInv_symm(X_in, adj_map, model_specs, redshift=None):
     activation = model_specs.activation # default tf.nn.relu
     dims = model_specs.dims
 
-    # Get graph inputs
+    # Now a numpy preprocessing step
+    # X Get graph inputs
     # ========================================
-    edges, nodes = get_input_features_ShiftInv(X_in, adj_map, dims)
+    #edges, nodes = get_input_features_ShiftInv(X_in, adj_map, dims)
+    '''
+    Args:
+        X_in(array). (b, N, 6) coord and velocities.
+        A(list). Batch of csr adjacency.
+        N(int). Number of particles.
+        redshift(float).
+
+    Returns:
+    #    ;;;;;                                                                   ;;;;;     #
+    #    ;;;;;      ____   _____   _____   _____    __      _____   __  __       ;;;;;     #
+    #  ..;;;;;..   |  _ \ |  _  \ /     \ |  __ \  |  |    |  ___| |  \/  |    ..;;;;;..   #
+    #   ':::::'    |  __/ |     / |  |  | |  __ <  |  |__  |  ___| |      |     ':::::'    #
+    #     ':`      |__|   |__|__\ \_____/ |_____/  |_____| |_____| |_|\/|_|       ':`      #
+        array of shape (S, 9) or (S, 10) if redshift is not None.
+        S is defined above in new_ShiftInv_layer.
+
+    ## NOTE: cannot have array shape (S, 9) if S is not static int
+    '''
 
     # Network forward
     # ========================================
@@ -299,7 +373,7 @@ def model_func_ShiftInv_symm(X_in, adj_map, model_specs, redshift=None):
 #                       Symmeterized graph search
 #==============================================================================
 
-def get_idx(A):
+def get_symmetrized_idx(A):
     """Generates idx given a batch of sparse matrices (adjacencies will be symmetrized!).
 
     Args:
