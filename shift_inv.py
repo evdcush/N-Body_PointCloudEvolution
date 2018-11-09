@@ -100,7 +100,22 @@ def ShiftInv_layer(H_in, adj, bN, layer_id, is_last=False):
         Returns:
             tensor with specified shape
         """
+        #==================================================================
+        #  ██╗ ███████╗ ███████╗ ██╗   ██╗ ███████╗
+        #  ██║ ██╔════╝ ██╔════╝ ██║   ██║ ██╔════╝
+        #  ██║ ███████╗ ███████╗ ██║   ██║ █████╗
+        #  ██║ ╚════██║ ╚════██║ ██║   ██║ ██╔══╝
+        #  ██║ ███████║ ███████║ ╚██████╔╝ ███████╗
+        #  ╚═╝ ╚══════╝ ╚══════╝  ╚═════╝  ╚══════╝
+        # FROM: out_shape = (H_in.shape[0], W[0].shape[-1]) # (S, k_out)
+        #TypeError: Expected int32 passed to parameter 'shape' of op 'ScatterNd',
+        #  got (Dimension(None), Dimension(32)) of type 'tuple' instead.
+        # NOTE: Like `tf.gather_nd` before, `tf.scatter_nd` may not accept
+        #       arbitrary shaped data--only concrete ints
         return tf.scatter_nd(tf.expand_dims(broadcast_idx, axis=1), h, shape)
+        #==================================================================
+
+
 
     # -------------------------
     # FIXME: this paragraph is a placeholder for weights and biases
@@ -134,8 +149,18 @@ def ShiftInv_layer(H_in, adj, bN, layer_id, is_last=False):
     W, B = utils.get_ShiftInv_layer_vars(layer_id)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-    out_shape = (H_in.shape[0], W.shape[-1]) # (S, k_out)
+    #==================================================================
+    #  ██╗ ███████╗ ███████╗ ██╗   ██╗ ███████╗
+    #  ██║ ██╔════╝ ██╔════╝ ██║   ██║ ██╔════╝
+    #  ██║ ███████╗ ███████╗ ██║   ██║ █████╗
+    #  ██║ ╚════██║ ╚════██║ ██║   ██║ ██╔══╝
+    #  ██║ ███████║ ███████║ ╚██████╔╝ ███████╗
+    #  ╚═╝ ╚══════╝ ╚══════╝  ╚═════╝  ╚══════╝
+    # out_shape not true ints, but abstract tf data type (Dimension)
+    #  tf.scatter_nd might need true ints
+    #out_shape = (H_in.shape[0], W[0].shape[-1]) # (S, k_out)
+    out_shape = None, 32
+    #==================================================================
     H_all = []
 
     #==== 1. No pooling
@@ -211,7 +236,7 @@ def ShiftInv_layer(H_in, adj, bN, layer_id, is_last=False):
 
 # Shift invariant network
 # ========================================
-def network_func_ShiftInv(X_in_features, adj_map, num_layers, dims,
+def network_func_ShiftInv_symm(X_in_features, adj_map, num_layers, dims,
                           activation, redshift=None):
     # Input layer
     # -----------
@@ -292,7 +317,7 @@ def model_func_ShiftInv_symm(X_in_features, adj_map, model_specs, redshift=None)
         # ==== Split input
         #X_in_loc, X_in_vel = X_in[...,:3], X_in[...,3:]
         # ==== Network output
-        net_out = network_func_ShiftInv(X_in_features, adj_map, num_layers,
+        net_out = network_func_ShiftInv_symm(X_in_features, adj_map, num_layers,
                                         dims[:-1], activation, redshift)
         #num_feats = net_out.get_shape().as_list()[-1]
 
@@ -320,12 +345,17 @@ def model_func_ShiftInv_symm(X_in_features, adj_map, model_specs, redshift=None)
 # Updated Shift invariant input features
 #   Asymmetrical adjacency
 # ========================================
-# WAYYYYYYYYYYYYYYYY TOO INEFFICIENT
-#
-# >>> %timeit xin = shift_inv.get_input_features_ShiftInv_numpy(np.copy(x), csrs, 32**3, None)
+#==================================================================
+#  ██╗ ███████╗ ███████╗ ██╗   ██╗ ███████╗
+#  ██║ ██╔════╝ ██╔════╝ ██║   ██║ ██╔════╝
+#  ██║ ███████╗ ███████╗ ██║   ██║ █████╗
+#  ██║ ╚════██║ ╚════██║ ██║   ██║ ██╔══╝
+#  ██║ ███████║ ███████║ ╚██████╔╝ ███████╗
+#  ╚═╝ ╚══════╝ ╚══════╝  ╚═════╝  ╚══════╝
+#  Too slow to use once we get everything working
+# >>> %timeit get_input_features_ShiftInv_numpy(np.copy(x), csrs, 32**3, None)
 # 41.7 s ± 41.6 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
-
-#
+#==================================================================
 def get_input_features_ShiftInv_numpy(X_in, A, N, redshift):
     """Generate input for first layer.
 

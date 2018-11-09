@@ -223,8 +223,8 @@ def initialize_ShiftInv_params(kdims, restore=False, **kwargs):
     """ ShiftInv layers have 2 bias, 14 weights, scalars
     """
     for layer_idx, kdim in enumerate(kdims):
-        initialize_bias(BIAS_TAG.format(f'{layer_idx}-1'), kdim, restore=restore)
-        initialize_bias(BIAS_TAG.format(f'{layer_idx}-2'), kdim, restore=restore)
+        initialize_bias(BIAS_TAG.format(f'{layer_idx}1'), kdim, restore=restore)
+        initialize_bias(BIAS_TAG.format(f'{layer_idx}2'), kdim, restore=restore)
         for w_idx in SHIFT_INV_W_IDX:
             Wname = WEIGHT_TAG.format(layer_idx, w_idx)
             #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
@@ -329,7 +329,7 @@ def get_ShiftInv_layer_vars(layer_idx, **kwargs):
         weights.append(get_weight(layer_idx, w_idx=w_idx))
     bias1 = get_bias(layer_idx, 1)
     bias2 = get_bias(layer_idx, 2)
-    return weights, bias
+    return weights, [bias1, bias2]
 
 
 def get_RotInv_layer_vars(layer_idx, **kwargs):
