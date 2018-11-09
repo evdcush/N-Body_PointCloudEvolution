@@ -9,60 +9,7 @@ from utils import VARIABLE_SCOPE as VAR_SCOPE
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
-# Updated Shift invariant input features
-#   Asymmetrical adjacency
-# ========================================
-def get_input_features_ShiftInv_numpy(X_in, A, N, redshift):
-    """Generate input for first layer.
 
-    # DANIELE Notes
-    #-----------------
-    This is doing what
-    https://github.com/evdcush/NBPCE/blob/master/nn.py#L81-L129
-    were doing, **with the crucial difference** that the adjacency is
-    symmetrized and zero features are associated with new entries coming
-    from symmetrization.
-      Even if number of neighbors is fixed, different matrices in the batch
-    can have a different number of non-zero symmetrized entries.
-      Even different rows within same adjacency can have different number of
-    non-zero entries. So I have to do explicit loops.
-
-    I implemented this in numpy which I think it's fine because it's a
-    preprocessing step.
-
-    Args:
-        X_in(array). (b, N, 6) coord and velocities.
-        A(list). Batch of csr adjacency.
-        N(int). Number of particles.
-        redshift(float).
-
-    Returns:
-        array of shape (S, 9) or (S, 10) if redshift is not None.
-        S is defined above in new_ShiftInv_layer.
-    """
-    shiftinv_input = []
-    for k, a in enumerate(A):
-        a_symm = a + a.transpose()
-        # split input coo/vel
-        coordinates = X_in[k][:, :3]
-        velocities  = X_in[k][:, 3:]
-
-        for i in range(N):
-            node_coordinates = X_in[k][i, :3]
-            #==== get neighbor idx
-            neighbors_idx_symm = a_symm.getrow(i).nonzero()[1]
-            neighbors_idx = a.getrow(i).nonzero()[1]
-            for j in neighbors_idx_symm:
-                if j in neighbors_idx:
-                    features = coordinates[j] - node_coordinates
-                    features = np.concatenate((features, velocities[i],
-                                                         velocities[j]), axis=0)
-                else:
-                    features = np.zeros(9)
-                if redshift is not None:
-                    features = np.append(features, redshift)
-                shiftinv_input.append(features)
-    return np.array(shiftinv_input)
 
 
 # Updated/Corrected Shiftinv layer
@@ -264,11 +211,11 @@ def ShiftInv_layer(H_in, adj, bN, layer_id, is_last=False):
 
 # Shift invariant network
 # ========================================
-def network_func_ShiftInv(X_input_features, adj_map, num_layers, dims,
+def network_func_ShiftInv(X_in_features, adj_map, num_layers, dims,
                           activation, redshift=None):
     # Input layer
     # -----------
-    H = activation(ShiftInv_layer(X_input_features, adj_map, dims, 0))
+    H = activation(ShiftInv_layer(X_in_features, adj_map, dims, 0))
 
     # Hidden layers
     # -------------
@@ -333,11 +280,6 @@ def model_func_ShiftInv_symm(X_in_features, adj_map, model_specs, redshift=None)
         redshift(float).
 
     Returns:
-    #    ;;;;;                                                                   ;;;;;     #
-    #    ;;;;;      ____   _____   _____   _____    __      _____   __  __       ;;;;;     #
-    #  ..;;;;;..   |  _ \ |  _  \ /     \ |  __ \  |  |    |  ___| |  \/  |    ..;;;;;..   #
-    #   ':::::'    |  __/ |     / |  |  | |  __ <  |  |__  |  ___| |      |     ':::::'    #
-    #     ':`      |__|   |__|__\ \_____/ |_____/  |_____| |_____| |_|\/|_|       ':`      #
         array of shape (S, 9) or (S, 10) if redshift is not None.
         S is defined above in new_ShiftInv_layer.
 
@@ -348,21 +290,24 @@ def model_func_ShiftInv_symm(X_in_features, adj_map, model_specs, redshift=None)
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         # ==== Split input
-        X_in_loc, X_in_vel = X_in[...,:3], X_in[...,3:]
+        #X_in_loc, X_in_vel = X_in[...,:3], X_in[...,3:]
         # ==== Network output
-        net_out = network_func_ShiftInv(edges, nodes, adj_map, num_layers,
+        net_out = network_func_ShiftInv(X_in_features, adj_map, num_layers,
                                         dims[:-1], activation, redshift)
         #num_feats = net_out.get_shape().as_list()[-1]
 
         # ==== Scale network output and compute skip connections
-        loc_scalar, vel_scalar = utils.get_scalars()
-        H_out = net_out[...,:3]*loc_scalar + X_in_loc + X_in_vel*vel_scalar
+        #loc_scalar, vel_scalar = utils.get_scalars()
+        #H_out = net_out[...,:3]*loc_scalar + X_in_loc + X_in_vel*vel_scalar
 
         # ==== Concat velocity predictions
+        '''
         if net_out.get_shape().as_list()[-1] > 3:
             H_vel = net_out[...,3:]*vel_scalar + X_in_vel
             H_out = tf.concat([H_out, H_vel], axis=-1)
-        return get_readout(H_out)
+        '''
+        #return get_readout(H_out)
+        return get_readout(net_out)
 
 
 
@@ -372,6 +317,66 @@ def model_func_ShiftInv_symm(X_in_features, adj_map, model_specs, redshift=None)
 #==============================================================================
 #                       Symmeterized graph search
 #==============================================================================
+# Updated Shift invariant input features
+#   Asymmetrical adjacency
+# ========================================
+# WAYYYYYYYYYYYYYYYY TOO INEFFICIENT
+#
+# >>> %timeit xin = shift_inv.get_input_features_ShiftInv_numpy(np.copy(x), csrs, 32**3, None)
+# 41.7 s ± 41.6 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+
+#
+def get_input_features_ShiftInv_numpy(X_in, A, N, redshift):
+    """Generate input for first layer.
+
+    # DANIELE Notes
+    #-----------------
+    This is doing what
+    https://github.com/evdcush/NBPCE/blob/master/nn.py#L81-L129
+    were doing, **with the crucial difference** that the adjacency is
+    symmetrized and zero features are associated with new entries coming
+    from symmetrization.
+      Even if number of neighbors is fixed, different matrices in the batch
+    can have a different number of non-zero symmetrized entries.
+      Even different rows within same adjacency can have different number of
+    non-zero entries. So I have to do explicit loops.
+
+    I implemented this in numpy which I think it's fine because it's a
+    preprocessing step.
+
+    Args:
+        X_in(array). (b, N, 6) coord and velocities.
+        A(list). Batch of csr adjacency.
+        N(int). Number of particles.
+        redshift(float).
+
+    Returns:
+        array of shape (S, 9) or (S, 10) if redshift is not None.
+        S is defined above in new_ShiftInv_layer.
+    """
+    shiftinv_input = []
+    for k, a in enumerate(A):
+        a_symm = a + a.transpose()
+        # split input coo/vel
+        coordinates = X_in[k][:, :3]
+        velocities  = X_in[k][:, 3:]
+
+        for i in range(N):
+            node_coordinates = X_in[k][i, :3]
+            #==== get neighbor idx
+            neighbors_idx_symm = a_symm.getrow(i).nonzero()[1]
+            neighbors_idx = a.getrow(i).nonzero()[1]
+            for j in neighbors_idx_symm:
+                if j in neighbors_idx:
+                    features = coordinates[j] - node_coordinates
+                    features = np.concatenate((features, velocities[i],
+                                                         velocities[j]), axis=0)
+                else:
+                    features = np.zeros(9)
+                if redshift is not None:
+                    features = np.append(features, redshift)
+                shiftinv_input.append(features)
+    return np.array(shiftinv_input)
 
 def get_symmetrized_idx(A):
     """Generates idx given a batch of sparse matrices (adjacencies will be symmetrized!).
@@ -414,4 +419,12 @@ def get_symmetrized_idx(A):
         dia.extend(d + i * len(r))
         dal.extend(np.zeros_like(d) + i)
 
-    return {"row": row, "col": col, "all": all_, "tra": tra, "dia": dia, "dal": dal}
+    #return {"row": row, "col": col, "all": all_, "tra": tra, "dia": dia, "dal": dal}
+    row = np.array(row)
+    col = np.array(col)
+    all_ = np.array(all_)
+    tra = np.array(tra)
+    dia = np.array(dia)
+    dal = np.array(dal)
+    return row, col, all_, tra, dia, dal
+

@@ -4,7 +4,8 @@ from sklearn.neighbors import kneighbors_graph
 import tensorflow as tf
 import nn
 import utils
-from shift_inv import get_symmetrized_idx, model_func_ShiftInv_symm
+
+from shift_inv import get_symmetrized_idx, model_func_ShiftInv_symm, get_input_features_ShiftInv_numpy
 #from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, NUM_VAL_SAMPLES, MODEL_BASENAME
 #from utils import REDSHIFTS, AttrDict
 
@@ -40,6 +41,7 @@ checkpoint = 100 #args.checkpoint
 num_iters  = args.num_iters
 num_val_batches = args.num_test // batch_size
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
+
 # UPDATED #####################################################################
 get_graph_csr   = lambda h: get_symmetrized_idx(nn.get_graph_csr_list(h, args))
 
@@ -50,7 +52,8 @@ network_features.var_scope = args.var_scope
 network_features.num_layers = len(args.channels) - 1
 network_features.dims = [batch_size, N, M]
 network_features.activation = tf.nn.relu
-loss_func = nn.get_loss_func(args)
+#loss_func = nn.get_loss_func(args)
+loss_func = nn.pbc_loss
 
 
 #==============================================================================
@@ -66,9 +69,10 @@ utils.initialize_model_params(args)
 # ========================================
 # Placeholders
 in_shape = (None, 32**3, 6)
-X_input = tf.placeholder(tf.float32, shape=in_shape)
+#X_input = tf.placeholder(tf.float32, shape=in_shape)
 X_truth = tf.placeholder(tf.float32, shape=in_shape)
-RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
+#RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
+X_input_features = tf.placeholder(tf.float32, shape=None)
 
 # Adjacency indices, symmetrized
 # =======================================
@@ -82,25 +86,25 @@ dal_in = tf.placeholder(tf.int32, shape=(None,))
 # Insert adj into dict
 adj_symm_in = dict(row=row_in, col=col_in, all=all_in,
                    tra=tra_in, dia=dia_in, dal=dal_in)
-
+#get_input_features_ShiftInv_numpy(X_in, A, N, redshift)
 # Input args
 # ShiftInv_layer_AdjTensor(H_in, adj, bN, layer_id, is_last=False):
-model_args = (X_input, adj_symm_in, network_features)
-loss_args = (X_truth, X_input) if multi_step else (X_truth,)
+model_args = (X_input_features, adj_symm_in, network_features)
+#loss_args = (X_truth, X_input) if multi_step else (X_truth,)
 rs = RS_in if args.cat_rs else None
 
 
 # Outputs
 # ========================================
 #X_pred = nn.model_func_ShiftInv(*model_args, redshift=rs)
-X_pred = shift_inv.model_func_ShiftInv(*model_args, redshift=rs)
+X_pred = model_func_ShiftInv_symm(*model_args, redshift=rs)
 
 
 # Optimization
 # ========================================
 optimizer = tf.train.AdamOptimizer(learning_rate)
-loss_args = (X_pred,) + loss_args
-error = loss_func(*loss_args)
+#loss_args = (X_pred,) + loss_args
+error = loss_func(X_pred, X_truth)
 train = optimizer.minimize(error)
 
 
@@ -157,15 +161,30 @@ for step in range(num_iters):
 
     # Graph data
     # ----------------
-    csr_list = get_graph_csr(x_in) # len b list of (N,N) csrs
-    coo_feats = nn.to_coo_batch(csr_list)
+    csr_list = nn.get_graph_csr_list(x_in, args)
+    #csr_list = get_graph_csr(x_in) # len b list of (N,N) csrs
+    #coo_feats = nn.to_coo_batch(csr_list)
+    x_in_feats = get_input_features_ShiftInv_numpy(x_in, csr_list, 32**3, None)
+    symm_idx = get_symmetrized_idx(csr_list)
+
+    fdict = {
+        X_input_features: x_in_feats,
+        X_truth: x_truth,
+        row_in : symm_idx[0],
+        col_in : symm_idx[1],
+        all_in : symm_idx[2],
+        tra_in : symm_idx[3],
+        dia_in : symm_idx[4],
+        dal_in : symm_idx[5],
+    }
+
 
     # Feed data to tensors
     # ----------------
-    fdict = {X_input: x_in,
-             X_truth: x_truth,
-             COO_feats: coo_feats,
-             }
+    #fdict = {X_input: x_in,
+    #         X_truth: x_truth,
+    #         X_input: coo_feats,
+    #         }
 
     # Train
     train.run(feed_dict=fdict)
@@ -200,15 +219,29 @@ for j in range(num_val_batches):
 
     # Graph data
     # ----------------
-    csr_list = get_graph_csr(x_in) # len b list of (N,N) csrs
-    coo_feats = nn.to_coo_batch(csr_list)
+    csr_list = nn.get_graph_csr_list(x_in, args)
+    #csr_list = get_graph_csr(x_in) # len b list of (N,N) csrs
+    #coo_feats = nn.to_coo_batch(csr_list)
+    x_in_feats = get_input_features_ShiftInv_numpy(x_in, csr_list, 32**3, None)
+    symm_idx = get_symmetrized_idx(csr_list)
 
     # Feed data to tensors
     # ----------------
-    fdict = {X_input: x_in,
-             X_truth: x_truth,
-             COO_feats: coo_feats,
-             }
+    #fdict = {X_input: x_in,
+    #         X_truth: x_truth,
+    #         COO_feats: coo_feats,
+    #         }
+    fdict = {
+        X_input_features: x_in_feats,
+        X_truth: x_truth,
+        row_in : symm_idx[0],
+        col_in : symm_idx[1],
+        all_in : symm_idx[2],
+        tra_in : symm_idx[3],
+        dia_in : symm_idx[4],
+        dal_in : symm_idx[5],
+    }
+
 
     # Validation output
     # ----------------
