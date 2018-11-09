@@ -6,6 +6,7 @@ import tensorflow as tf
 
 import utils
 from utils import VARIABLE_SCOPE as VAR_SCOPE
+from nn import get_readout
 
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
@@ -100,20 +101,7 @@ def ShiftInv_layer(H_in, adj, bN, layer_id, is_last=False):
         Returns:
             tensor with specified shape
         """
-        #==================================================================
-        #  ██╗ ███████╗ ███████╗ ██╗   ██╗ ███████╗
-        #  ██║ ██╔════╝ ██╔════╝ ██║   ██║ ██╔════╝
-        #  ██║ ███████╗ ███████╗ ██║   ██║ █████╗
-        #  ██║ ╚════██║ ╚════██║ ██║   ██║ ██╔══╝
-        #  ██║ ███████║ ███████║ ╚██████╔╝ ███████╗
-        #  ╚═╝ ╚══════╝ ╚══════╝  ╚═════╝  ╚══════╝
-        # FROM: out_shape = (H_in.shape[0], W[0].shape[-1]) # (S, k_out)
-        #TypeError: Expected int32 passed to parameter 'shape' of op 'ScatterNd',
-        #  got (Dimension(None), Dimension(32)) of type 'tuple' instead.
-        # NOTE: Like `tf.gather_nd` before, `tf.scatter_nd` may not accept
-        #       arbitrary shaped data--only concrete ints
         return tf.scatter_nd(tf.expand_dims(broadcast_idx, axis=1), h, shape)
-        #==================================================================
 
 
 
@@ -149,18 +137,7 @@ def ShiftInv_layer(H_in, adj, bN, layer_id, is_last=False):
     W, B = utils.get_ShiftInv_layer_vars(layer_id)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #==================================================================
-    #  ██╗ ███████╗ ███████╗ ██╗   ██╗ ███████╗
-    #  ██║ ██╔════╝ ██╔════╝ ██║   ██║ ██╔════╝
-    #  ██║ ███████╗ ███████╗ ██║   ██║ █████╗
-    #  ██║ ╚════██║ ╚════██║ ██║   ██║ ██╔══╝
-    #  ██║ ███████║ ███████║ ╚██████╔╝ ███████╗
-    #  ╚═╝ ╚══════╝ ╚══════╝  ╚═════╝  ╚══════╝
-    # out_shape not true ints, but abstract tf data type (Dimension)
-    #  tf.scatter_nd might need true ints
-    #out_shape = (H_in.shape[0], W[0].shape[-1]) # (S, k_out)
-    out_shape = None, 32
-    #==================================================================
+    out_shape = tf.shape(H_in)[0], W[0].shape[-1]
     H_all = []
 
     #==== 1. No pooling

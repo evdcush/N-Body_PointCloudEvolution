@@ -72,7 +72,7 @@ in_shape = (None, 32**3, 6)
 #X_input = tf.placeholder(tf.float32, shape=in_shape)
 X_truth = tf.placeholder(tf.float32, shape=in_shape)
 #RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
-X_input_features = tf.placeholder(tf.float32, shape=None)
+X_input_features = tf.placeholder(tf.float32, shape=(None, 9))
 
 # Adjacency indices, symmetrized
 # =======================================
@@ -90,7 +90,6 @@ adj_symm_in = dict(row=row_in, col=col_in, all=all_in,
 # Input args
 # ShiftInv_layer_AdjTensor(H_in, adj, bN, layer_id, is_last=False):
 model_args = (X_input_features, adj_symm_in, network_features)
-#loss_args = (X_truth, X_input) if multi_step else (X_truth,)
 rs = RS_in if args.cat_rs else None
 
 
@@ -205,7 +204,7 @@ print('elapsed time: {}'.format(time.time() - start_time))
 train_saver.save_model_params(sess, num_iters)
 X_train = None # reduce memory overhead
 
-
+eval_time = time.time()
 #=============================================================================
 # EVALUATION
 #=============================================================================
@@ -257,3 +256,4 @@ utils.print_median_validation_loss(rs_idx, test_loss)
 train_saver.save_model_error(test_loss)
 train_saver.save_model_cube(test_predictions, ground_truth=False)
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+print(f'elapsed eval time: {time.time() - eval_time}')
