@@ -128,8 +128,8 @@ if args.restore:
 #==============================================================================
 # Load cubes
 rs_idx = args.rs_idx
-#X = utils.normalize(utils.load_simulation_data(rs_idx))
-X = utils.load_simulation_data(rs_idx)
+X = utils.normalize(utils.load_simulation_data(rs_idx))
+#X = utils.load_simulation_data(rs_idx)
 X_train, X_test = utils.split_data_validation(X, num_val=args.num_test)
 X = None # reduce memory overhead
 
