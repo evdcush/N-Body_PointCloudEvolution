@@ -233,7 +233,7 @@ def network_func_ShiftInv_symm(X_in_features, adj_map, num_layers, dims,
 # Shift invariant model func
 # ========================================
 # get_input_features_ShiftInv_numpy(X_in, A, N, redshift)
-def model_func_ShiftInv_symm(X_in_features, adj_map, model_specs, redshift=None):
+def model_func_ShiftInv_symm(X_input, X_in_features, adj_map, model_specs, redshift=None):
     """ # Shiftinv model func for symmetrical adjacency indices
 
     Params
@@ -270,37 +270,20 @@ def model_func_ShiftInv_symm(X_in_features, adj_map, model_specs, redshift=None)
     activation = model_specs.activation # default tf.nn.relu
     dims = model_specs.dims
 
-    # Now a numpy preprocessing step
-    # X Get graph inputs
-    # ========================================
-    #edges, nodes = get_input_features_ShiftInv(X_in, adj_map, dims)
-    '''
-    Args:
-        X_in(array). (b, N, 6) coord and velocities.
-        A(list). Batch of csr adjacency.
-        N(int). Number of particles.
-        redshift(float).
-
-    Returns:
-        array of shape (S, 9) or (S, 10) if redshift is not None.
-        S is defined above in new_ShiftInv_layer.
-
-    ## NOTE: cannot have array shape (S, 9) if S is not static int
-    '''
 
     # Network forward
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         # ==== Split input
-        #X_in_loc, X_in_vel = X_in[...,:3], X_in[...,3:]
+        X_in_loc, X_in_vel = X_input[...,:3], X_input[...,3:]
         # ==== Network output
         net_out = network_func_ShiftInv_symm(X_in_features, adj_map, num_layers,
                                         dims[:-1], activation, redshift)
         #num_feats = net_out.get_shape().as_list()[-1]
 
         # ==== Scale network output and compute skip connections
-        #loc_scalar, vel_scalar = utils.get_scalars()
-        #H_out = net_out[...,:3]*loc_scalar + X_in_loc + X_in_vel*vel_scalar
+        loc_scalar, vel_scalar = utils.get_scalars()
+        H_out = net_out[...,:3]*loc_scalar + X_in_loc + X_in_vel*vel_scalar
 
         # ==== Concat velocity predictions
         '''
@@ -308,8 +291,8 @@ def model_func_ShiftInv_symm(X_in_features, adj_map, model_specs, redshift=None)
             H_vel = net_out[...,3:]*vel_scalar + X_in_vel
             H_out = tf.concat([H_out, H_vel], axis=-1)
         '''
-        #return get_readout(H_out)
-        return get_readout(net_out)
+        return get_readout(H_out)
+        #return get_readout(net_out)
 
 
 

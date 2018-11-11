@@ -73,7 +73,7 @@ BASE_SAVE_PATH = './Models/{}/'
 MODEL_SAVE_PATH   = BASE_SAVE_PATH  + 'Session/'
 FILE_SAVE_PATH    = MODEL_SAVE_PATH + 'original_files/'
 RESULTS_SAVE_PATH = BASE_SAVE_PATH  + 'Results/'
-FILE_SAVE_NAMES = ['utils.py', 'nn.py', 'train.py']
+FILE_SAVE_NAMES = ['utils.py', 'nn.py', 'train.py', 'shift_inv.py']
 
 # Model data names
 CUBE_BASE_NAME = 'X_{}-{}_'
@@ -121,7 +121,8 @@ DATASET_SEED = 12345    # for train/validation data splits
 
 # Network channels
 CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
-CHANNELS_SHALLOW = [9, 32, 16, 8, 6]
+#CHANNELS_SHALLOW = [9, 32, 16, 8, 6]
+CHANNELS_SHALLOW = [9, 32, 16, 8, 3]
 
 # Layer variables
 # ========================================
