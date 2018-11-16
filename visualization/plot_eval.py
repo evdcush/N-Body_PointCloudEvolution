@@ -12,11 +12,9 @@ from matplotlib import pyplot as plt
 # ========================================
 SAVE_DIR = './HistPlots/'
 
-Model_path = './Model/'
-Cube_fname = '/Cubes/X32_{}-{}_{}.npy'
-timesteps_fname = Model_path + 'timesteps.npy'
-#base_name = 'ShiftInv_single_2coeff_7K_ZG_{}-{}'
-base_name = 'Multi3_ShiftInv_7K_ZG_{}-{}'
+Model_path = '../Models/'
+Cube_fname = '/Results/X_{}-{}_{}.npy'
+
 
 REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
              1.1212, 0.9438, 0.7955, 0.6688, 0.5588, 0.4620, 0.3758,
@@ -28,7 +26,7 @@ REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
 # Data IO Functions
 # ========================================
 def load_cube(zx, zy, model_name, truth=False):
-    ctag = 'true' if truth else 'prediction'
+    ctag = 'truth' if truth else 'prediction'
     cube_name = Cube_fname.format(zx, zy, ctag)
     m_name = model_name.format(zx, zy)
     path = Model_path + m_name + cube_name
@@ -58,6 +56,7 @@ def get_mask(x, bound=0.1):
 
 def mask_data(x, mask):
     n,m,d = x.shape
+
     # Reshape for masking entire cube
     x_flat = x.reshape([-1, d])
 
@@ -101,7 +100,7 @@ alpha = .5
 LINEAR_VEL_LABEL = 'linear vel'
 linVel_c = 'r'
 
-#plabels = ['deep vanilla', 'deep noisy']
+plabels = ['Updated', 'Previous']
 pcolors = ['b', 'g']
 
 # Plot multi-hist
@@ -158,6 +157,7 @@ def plot_multi_single(X_truth, X_pred, rs_pairs, splot_idx):
         x_pred  = X_pred[i]
 
         # Mask data
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
         mask = get_mask(x_input)
         x_input_masked = mask_data(x_input, mask)
         x_truth_masked = mask_data(x_truth, mask)
@@ -175,6 +175,35 @@ def plot_multi_single(X_truth, X_pred, rs_pairs, splot_idx):
         # Plot hist
         plot_hist_ax(dist_linVel, [dist_pred], pair, cur_splot_idx)
 
+
+def plot_side_by_side_singles(X_truth, X_preds, rs, splot_idx):
+    # Split ground truth into input and target
+    x_input = X_truth[0]
+    x_truth = X_truth[1]
+
+    # Mask data
+    mask = get_mask(x_input)
+    x_input_masked = mask_data(x_input, mask)
+    x_truth_masked = mask_data(x_truth, mask)
+
+    # Generate moving-along-velocity linear "model prediction"
+    timestep = calculate_timestep(x_input_masked, x_truth_masked) #(x_in, x_true)
+    linearVel_pred = get_linearVel_pred(x_input_masked, timestep) # (...,3)
+    dist_linVel = l2_dist(x_truth_masked, linearVel_pred)
+
+    # Get pred distances
+    pred_distances = []
+    for i, x_pred in enumerate(X_preds):
+        # Mask data
+        x_pred_masked  = mask_data(x_pred, mask)
+        #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+
+        # Get l2 distance to truth
+        dist_pred = l2_dist(np.copy(x_truth_masked), x_pred_masked)
+        pred_distances.append(dist_pred)
+
+    # Plot hist
+    plot_hist_ax(dist_linVel, pred_distances, rs, splot_idx[0])
 
 
 def plot_multiStep_comp(X_truth, X_preds, rs_pairs, splot_idx, singles=False):
@@ -212,7 +241,7 @@ def plot_multiStep_comp(X_truth, X_preds, rs_pairs, splot_idx, singles=False):
             dist_pred = l2_dist(x_truth_masked, x_pred_masked)
             dist_preds.append(dist_pred)
 
-        # Plot hist
+        # Plot histogram
         plot_hist_ax(dist_linVel, dist_preds, pair, cur_splot_idx)
 
 
@@ -220,17 +249,16 @@ def plot_multiStep_comp(X_truth, X_preds, rs_pairs, splot_idx, singles=False):
 
 # Load data
 # ========================================
-cur_rs = [(0, 19)]
-model_names = ['Multi2_15K_s1_0_11_19_ZG_{}-{}', 'Single_s0_0_19_ZG_{}-{}']
+#cur_rs = [(0, 19)]
+cur_rs = (0, 19)
+model_names = ['SI_single-step_{}-{}_updated_slow', 'SI_single-step_{}-{}_previous']
 
 X_truth = load_cube(0,19, model_names[0], truth=True)
-
-X_truth = np.take(X_truth, [0,2], axis=0)
+#code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
+#X_truth = np.take(X_truth, [0,2], axis=0)
 X_preds = []
 for fname in model_names:
     x_pred = load_cube(0, 19, fname)
-    if fname == model_names[0]:
-        x_pred = x_pred[-1]
     X_preds.append(x_pred)
 
 
@@ -239,16 +267,19 @@ for fname in model_names:
 # ========================================
 # number of subplots
 nr = 1
-nc = len(cur_rs)
-splot_idx = [int('{}{}{}'.format(nr, nc, i)) for i in range(1, len(cur_rs)+1)]
+#nc = len(cur_rs)
+#splot_idx = [int('{}{}{}'.format(nr, nc, i)) for i in range(1, len(cur_rs)+1)]
+#splot_idx = [121, 122]
+splot_idx = [111]
+nc = len(splot_idx)
 
 # figure
-f = 5
-fsize = ((f+1)*nc, f*nr)
+fvar = 5
+fsize = ((fvar+1)*nc, fvar*nr)
 fig = plt.figure(figsize=fsize)
 
-#plot_multi_single(X_truth, X_pred, cur_rs, splot_idx)
-plot_multiStep_comp(X_truth, X_preds, cur_rs, splot_idx, singles=True)
+plot_side_by_side_singles(X_truth, X_preds, cur_rs, splot_idx)
+#plot_multiStep_comp(X_truth, X_preds, cur_rs, splot_idx, singles=True)
 #fig.suptitle('Comparison of deep multistep models against moving-along-velocity')
 plt.tight_layout()
 #plt.show()

@@ -412,46 +412,6 @@ def model_func_ShiftInv(X_in, COO_feats, model_specs, redshift=None):
             H_out = tf.concat([H_out, H_vel], axis=-1)
         return get_readout(H_out)
 
-'''
-def model_func_ShiftInv_readoutK(X_in, COO_feats, model_specs, redshift=None):
-    """ # Same as regular shiftinv model func, but uses a different
-    readout function for unscaled coordinates [0,32] (rather than [0,1])
-    Args:
-        X_in (tensor): (b, N, 6)
-        COO_feats (tensor): (3, B*N*M), segment ids for rows, cols, all
-        redshift (tensor): (b*N*M, 1) redshift broadcasted
-    """
-    # Get relevant model specs
-    # ========================================
-    var_scope  = model_specs.var_scope
-    num_layers = model_specs.num_layers
-    activation = model_specs.activation # default tf.nn.relu
-    dims = model_specs.dims
-
-    # Get graph inputs
-    # ========================================
-    edges, nodes = get_input_features_ShiftInv(X_in, COO_feats, dims)
-
-    # Network forward
-    # ========================================
-    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
-        # ==== Split input
-        X_in_loc, X_in_vel = X_in[...,:3], X_in[...,3:]
-        # ==== Network output
-        net_out = network_func_ShiftInv(edges, nodes, COO_feats, num_layers,
-                                        dims[:-1], activation, redshift)
-        #num_feats = net_out.get_shape().as_list()[-1]
-
-        # ==== Scale network output and compute skip connections
-        loc_scalar, vel_scalar = utils.get_scalars()
-        H_out = net_out[...,:3]*loc_scalar + X_in_loc + X_in_vel*vel_scalar
-
-        # ==== Concat velocity predictions
-        if net_out.get_shape().as_list()[-1] > 3:
-            H_vel = net_out[...,3:]*vel_scalar + X_in_vel
-            H_out = tf.concat([H_out, H_vel], axis=-1)
-        return get_readout_within_range(H_out, upper=32.0)
-'''
 
 #=============================================================================
 # Graph, adjacency functions
@@ -763,7 +723,7 @@ def get_readout(h_out):
     gt_one  = (tf.sign(h_out_coo - 1) + 1) / 2
     ls_zero = -(tf.sign(h_out_coo) - 1) / 2
     rest = 1 - gt_one - ls_zero
-    readout = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo) ########################################## THIS WAS 1 + h_out...
+    readout = rest*h_out_coo + gt_one*(h_out_coo - 1) + ls_zero*(1 + h_out_coo) # THIS WAS 1 + h_out...
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
     if M > 3: # then vel was predicted as well, concat
@@ -778,7 +738,7 @@ def get_readout_within_range(h_out, upper=32.0, lower=0.0):
     gt_upper  = (tf.sign(h_out_coo - upper) + 1) / 2
     lt_lower = -(tf.sign(h_out_coo) - 1) / 2
     rest = 1 - gt_upper - lt_lower
-    readout = rest*h_out_coo + gt_upper*(h_out_coo - 1) + lt_lower*(1 + h_out_coo) ########################################## THIS WAS 1 + h_out...
+    readout = rest*h_out_coo + gt_upper*(h_out_coo - 1) + lt_lower*(1 + h_out_coo)
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 
     if M > 3: # then vel was predicted as well, concat
@@ -1026,37 +986,31 @@ def get_batch_2D_segmentID(lst_csrs):
 
 
 def get_3D_segmentID(adj_graph, M):
-    """ Build 3D adjacency from csr_matrix (though any matrix from scipy.sparse works)
+    """ Build 3D adjacency from csr_matrix (though any
+        matrix from scipy.sparse works)
     Args:
         adj_graph (csr_matrix): neighbor graph (assumes kneighbors_graph)
         M (int): number of neighbors
     Returns:
-        row, col, depth. npy arrays for indices of non-zero entries. Diagonals removed.
+        row, col, depth. npy arrays for indices of non-zero entries.
+          Diagonals removed.
     """
     #adj_graph.setdiag(0)  # Don't need diagonal elements
     m_eff = M - 1
 
     # get COO features
-    # NB: this is not the same as COO conversion, since nonzero() will return neighbor indices sorted
+    # NB: this is not the same as COO conversion, since nonzero()
+    #     will return neighbor indices sorted
     rows, cols = adj_graph.nonzero()
     num_elements = rows.size # N*(M-1)
-    # PROBLEM : num_elements actuall N*M
 
     # 3D-projected features for row, col, depth
     r = np.repeat(rows, m_eff-1) # tested equivalent
     c = np.repeat(cols, m_eff-1) # tested equivalent
 
-    # depth indexing algebra is more complicated, # tested equivalent #  cannot reshape array of size 262144 into shape (7)
+    # depth indexing algebra is more complicated, # tested equivalent
     #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-
-    #    ;;;;;                                                                   ;;;;;     #
-    #    ;;;;;      ____   _____   _____  _____     __     _____    __  __       ;;;;;     #
-    #  ..;;;;;..   |  _ \ |  _  \ /     \ |  __ \  |  |    |  ___| |  \/  |    ..;;;;;..   #
-    #   ':::::'    |  __/ |     / |  |  | |  __ <  |  |__  |  ___| |      |     ':::::'    #
-    #     ':`      |__|   |__|__\ \_____/ |_____/  |_____| |_____| |_|\/|_|       ':`      #
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
-    d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1) # ORIGINAL, BAD DIMS???
-    #d = np.reshape(np.repeat(np.reshape(cols, [-1, M]), m_eff, axis=0), -1)
+    d = np.reshape(np.repeat(np.reshape(cols, [-1, m_eff]), m_eff, axis=0), -1)
     del_idx = np.array([(i%m_eff) + (i*m_eff) for i in range(num_elements)])
     d = np.delete(d, del_idx)
 
@@ -1129,10 +1083,12 @@ def get_RotInv_input_edges(x_input, lst_csrs, M):
 
     Returns:
         numpy array of shape (b, e, 10)
-            e=N*(M-1)*(M-2), number of edges in 3D adjacency (diagonals removed), N=num of particles, M=num of neighbors
-            10 input channels corresponding to 1 edge feature + 9 broadcasted surface features, those are broken
-            down into 3 surfaces x (1 scalar distance + 1 row velocity projected onto cols + 1 col velocity
-            projected onto rows)
+            e=N*(M-1)*(M-2), number of edges in 3D adjacency
+            (diagonals removed), N=num of particles, M=num of neighbors
+            10 input channels corresponding to
+            1 edge feature + 9 broadcasted surface features, those are broken
+            down into 3 surfaces x (1 scalar distance + 1 row velocity
+            projected onto cols + 1 col velocity projected onto rows)
     """
     def _process(X_in, A):
         X, V = X_in[...,:3], X_in[...,3:]

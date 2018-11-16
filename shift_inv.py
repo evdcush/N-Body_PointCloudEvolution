@@ -134,7 +134,7 @@ def ShiftInv_layer(H_in, adj, bN, layer_id, is_last=False):
     #==== Weights and Biases
     # W : (15, k_in, k_out)
     # B : (2, k_out)
-    W, B = utils.get_ShiftInv_layer_vars(layer_id)
+    W, B = utils.get_ShiftInv_symm_layer_vars(layer_id)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~
     out_shape = tf.shape(H_in)[0], W[0].shape[-1]

@@ -95,9 +95,10 @@ MODEL_BASENAME = '{}_{}_{}' # {model-type}_{layer-type}_{rs1-...-rsN}_{extra-nam
 # Layer names
 VANILLA   = 'vanilla'
 SHIFT_INV = 'shift-inv'
+SHIFT_INV_SYMM = 'shift-inv-symm'
 ROT_INV   = 'rot-inv'
-LAYER_TAGS = {VANILLA:'V', SHIFT_INV:'SI', ROT_INV:'RI'}
-LAYER_TYPES = [VANILLA, SHIFT_INV, ROT_INV]
+LAYER_TAGS = {VANILLA:'V', SHIFT_INV:'SI', SHIFT_INV_SYMM:'SI_SYMM', ROT_INV:'RI'}
+LAYER_TYPES = [VANILLA, SHIFT_INV, SHIFT_INV_SYMM, ROT_INV]
 
 # Variable names
 # ========================================
@@ -127,8 +128,8 @@ CHANNELS_SHALLOW = [9, 32, 16, 8, 3]
 # Layer variables
 # ========================================
 # Shift-invariant
-#SHIFT_INV_W_IDX = [1,2,3,4]
-SHIFT_INV_W_IDX = list(range(15))
+SHIFT_INV_W_IDX = [1,2,3,4]
+SHIFT_INV_SYMM_W_IDX = list(range(15))
 
 # Rotation-invariant
 ROTATION_INV_SEGNAMES = ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
@@ -209,24 +210,24 @@ def initialize_vanilla_params(kdims, restore=False, **kwargs):
         initialize_weight(Wname, kdim, restore=restore)
     initialize_scalars(restore=restore)
 
-''' # Previous shift-inv
+# Previous shift-inv
 def initialize_ShiftInv_params(kdims, restore=False, **kwargs):
     """ ShiftInv layers have 1 bias, 4 weights, scalars """
     for layer_idx, kdim in enumerate(kdims):
         initialize_bias(BIAS_TAG.format(layer_idx), kdim, restore=restore)
         for w_idx in SHIFT_INV_W_IDX:
             Wname = WEIGHT_TAG.format(layer_idx, w_idx)
-            #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
             initialize_weight(Wname, kdim, restore=restore)
     initialize_scalars(restore=restore)
-'''
-def initialize_ShiftInv_params(kdims, restore=False, **kwargs):
+
+
+def initialize_ShiftInv_symm_params(kdims, restore=False, **kwargs):
     """ ShiftInv layers have 2 bias, 14 weights, scalars
     """
     for layer_idx, kdim in enumerate(kdims):
         initialize_bias(BIAS_TAG.format(f'{layer_idx}1'), kdim, restore=restore)
         initialize_bias(BIAS_TAG.format(f'{layer_idx}2'), kdim, restore=restore)
-        for w_idx in SHIFT_INV_W_IDX:
+        for w_idx in SHIFT_INV_SYMM_W_IDX:
             Wname = WEIGHT_TAG.format(layer_idx, w_idx)
             #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
             initialize_weight(Wname, kdim, restore=restore)
@@ -251,10 +252,12 @@ def layer_init(ltype, kdims, restore):
     layer_args = (kdims, restore)
     if ltype == SHIFT_INV:
         func = initialize_ShiftInv_params
+    if ltype == SHIFT_INV_SYMM:
+        func = initialize_ShiftInv_symm_params
     elif ltype == ROT_INV:
         func = initialize_RotInv_params
     else:
-        func = initialize_vanlla_params
+        func = initialize_vanilla_params
     func(*layer_args)
 
 
@@ -324,14 +327,20 @@ def get_vanilla_layer_vars(layer_idx, **kwargs):
     return weight, bias
 
 
-def get_ShiftInv_layer_vars(layer_idx, **kwargs):
+def get_ShiftInv_symm_layer_vars(layer_idx, **kwargs):
     weights = []
-    for w_idx in SHIFT_INV_W_IDX:
+    for w_idx in SHIFT_INV_SYMM_W_IDX:
         weights.append(get_weight(layer_idx, w_idx=w_idx))
     bias1 = get_bias(layer_idx, 1)
     bias2 = get_bias(layer_idx, 2)
     return weights, [bias1, bias2]
 
+def get_ShiftInv_layer_vars(layer_idx, **kwargs):
+    weights = []
+    for w_idx in SHIFT_INV_W_IDX:
+        weights.append(get_weight(layer_idx, w_idx=w_idx))
+    bias = get_bias(layer_idx)
+    return weights, bias
 
 def get_RotInv_layer_vars(layer_idx, **kwargs):
     bias = get_bias(layer_idx)
@@ -514,9 +523,13 @@ def load_simulation_data(redshift_indices):
     # Load cubes
     rs_idx = redshift_indices[0]
     redshift = REDSHIFTS[rs_idx]
-    X = load_simulation_cube_npy(redshift)
+
+    # Single cube
     if num_rs == 1:
-        return X
+        return load_simulation_cube_npy(redshift, cat_dim=False)
+
+    # Multiple cubes (typical)
+    X = load_simulation_cube_npy(redshift)
     for rs_idx in redshift_indices[1:]:
         redshift = REDSHIFTS[rs_idx]
         X = np.concatenate([X, load_simulation_cube_npy(redshift)], axis=0)

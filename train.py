@@ -37,13 +37,12 @@ batch_size = args.batch_size
 # Training variables
 # ========================================
 learning_rate = args.learn_rate
-checkpoint = 10 #args.checkpoint
+checkpoint = 2 #args.checkpoint
 num_iters  = args.num_iters
 num_val_batches = args.num_test // batch_size
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
 
-# UPDATED #####################################################################
-get_graph_csr   = lambda h: get_symmetrized_idx(nn.get_graph_csr_list(h, args))
+
 
 # Network config
 # ========================================
@@ -163,6 +162,17 @@ for step in range(num_iters):
     csr_list = nn.get_graph_csr_list(x_in, args)
     #csr_list = get_graph_csr(x_in) # len b list of (N,N) csrs
     #coo_feats = nn.to_coo_batch(csr_list)
+
+#==============================================================================
+#   ██████╗ ██████╗ ███╗   ██╗███████╗██╗██████╗ ███╗   ███╗
+#  ██╔════╝██╔═══██╗████╗  ██║██╔════╝██║██╔══██╗████╗ ████║
+#  ██║     ██║   ██║██╔██╗ ██║█████╗  ██║██████╔╝██╔████╔██║
+#  ██║     ██║   ██║██║╚██╗██║██╔══╝  ██║██╔══██╗██║╚██╔╝██║
+#  ╚██████╗╚██████╔╝██║ ╚████║██║     ██║██║  ██║██║ ╚═╝ ██║
+#   ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝
+#   The adjacency input to get_input_features_ShiftInv_numpy
+#   is supposed to be the vanilla KNN CSRs correct?
+#      - and NOT the 'get_symmetrized_idx(csr_list)'
     x_in_feats = get_input_features_ShiftInv_numpy(np.copy(x_in),
                                                    csr_list,
                                                    N,
