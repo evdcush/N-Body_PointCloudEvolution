@@ -23,6 +23,7 @@ print(f'zx ---> zy = {zx} ---> {zy}')
 
 # Cached cubes
 # =======================================
+batch_counter = 1
 cached_input_features = []
 cached_symm_idx = []
 
@@ -32,9 +33,12 @@ def cache_data(label, data):
     print(f'Cached "{save_name}"!')
 
 def cache_all():
-    cache_data('features', cached_input_features)
-    cache_data('symm_idx', cached_symm_idx)
-
+    global batch_counter
+    cache_data(f'features_{batch_counter}', cached_input_features)
+    cache_data(f'symm_idx_{batch_counter}', cached_symm_idx)
+    cached_input_features.clear()
+    cached_symm_idx.clear()
+    batch_counter += 1
 
 #  PROCESS DATA # (1000, 32768, 6)
 # ========================================
@@ -69,8 +73,8 @@ for i in range(num_batches):
 
 # CACHE DATA
 # ==========
-cache_data('features', cached_input_features)
-cache_data('symm_idx', cached_symm_idx)
+#cache_data('features', cached_input_features)
+#cache_data('symm_idx', cached_symm_idx)
 
 
 # run in ipython shell instead, this is too risky
