@@ -37,7 +37,7 @@ batch_size = args.batch_size
 # Training variables
 # ========================================
 learning_rate = args.learn_rate
-checkpoint = 2 #args.checkpoint
+checkpoint = 50 #args.checkpoint
 num_iters  = args.num_iters
 num_val_batches = args.num_test // batch_size
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
@@ -51,7 +51,6 @@ network_features.var_scope = args.var_scope
 network_features.num_layers = len(args.channels) - 1
 network_features.dims = [batch_size, N, M]
 network_features.activation = tf.nn.relu
-#loss_func = nn.get_loss_func(args)
 loss_func = nn.pbc_loss
 
 
@@ -138,11 +137,70 @@ test_predictions  = np.zeros(test_pred_shape).astype(np.float32)
 test_loss = np.zeros((num_val_batches,)).astype(np.float32)
 
 # Save session data
-train_saver.save_model_cube(X_test, ground_truth=True)
+#train_saver.save_model_cube(X_test, ground_truth=True)
 train_saver.save_model_files()
 train_saver.save_model_params(sess, 0)
 
+"""
+X_train.shape = (2, 800, N, 6)
+X_test.shape  = (2, 200, N, 6)
 
+b = 4
+C = 1000
+
+num_batches = 1000 // 4 = 250
+
+X_train[0:4]
+X_train[4:8]
+X_train[8:12]
+...
+X_train[96:100]
+
+# feats[0] = X_train[  0:100]
+# feats[1] = X_train[100:200] # ---> (2, 100, N, 6)
+# feats[2] = X_train[200:300]
+# feats[3] = X_train[300:400]
+# feats[4] = X_train[400:500]
+# feats[5] = X_train[500:600]
+# feats[6] = X_train[600:700]
+# feats[7] = X_train[700:800]
+
+# feats[8] = X_test[  0:100]
+# feats[9] = X_test[100:200]
+
+
+# X_in_features:
+# -------------
+10 * (25, S, 9)
+
+['./X_10-19_features_10.npy',
+ './X_10-19_features_2.npy',
+ './X_10-19_features_7.npy',
+ './X_10-19_features_1.npy',
+ './X_10-19_features_3.npy',
+ './X_10-19_features_9.npy',
+ './X_10-19_features_8.npy',
+ './X_10-19_features_6.npy',
+ './X_10-19_features_4.npy',
+ './X_10-19_features_5.npy']
+
+# X_in_adjmap
+# -----------
+10 * (25, 6) ---> (6,) ---> (S)
+
+['./X_10-19_symm_idx_2.npy',
+ './X_10-19_symm_idx_7.npy',
+ './X_10-19_symm_idx_6.npy',
+ './X_10-19_symm_idx_1.npy',
+ './X_10-19_symm_idx_4.npy',
+ './X_10-19_symm_idx_3.npy',
+ './X_10-19_symm_idx_9.npy',
+ './X_10-19_symm_idx_8.npy',
+ './X_10-19_symm_idx_10.npy',
+ './X_10-19_symm_idx_5.npy']
+
+"""
+from glob import glob
 #=============================================================================
 # TRAINING
 #=============================================================================
@@ -163,16 +221,7 @@ for step in range(num_iters):
     #csr_list = get_graph_csr(x_in) # len b list of (N,N) csrs
     #coo_feats = nn.to_coo_batch(csr_list)
 
-#==============================================================================
-#   ██████╗ ██████╗ ███╗   ██╗███████╗██╗██████╗ ███╗   ███╗
-#  ██╔════╝██╔═══██╗████╗  ██║██╔════╝██║██╔══██╗████╗ ████║
-#  ██║     ██║   ██║██╔██╗ ██║█████╗  ██║██████╔╝██╔████╔██║
-#  ██║     ██║   ██║██║╚██╗██║██╔══╝  ██║██╔══██╗██║╚██╔╝██║
-#  ╚██████╗╚██████╔╝██║ ╚████║██║     ██║██║  ██║██║ ╚═╝ ██║
-#   ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝
-#   The adjacency input to get_input_features_ShiftInv_numpy
-#   is supposed to be the vanilla KNN CSRs correct?
-#      - and NOT the 'get_symmetrized_idx(csr_list)'
+
     x_in_feats = get_input_features_ShiftInv_numpy(np.copy(x_in),
                                                    csr_list,
                                                    N,
