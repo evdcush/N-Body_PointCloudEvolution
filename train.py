@@ -168,37 +168,6 @@ X_train[96:100]
 # feats[8] = X_test[  0:100]
 # feats[9] = X_test[100:200]
 
-
-# X_in_features:
-# -------------
-10 * (25, S, 9)
-
-['./X_10-19_features_10.npy',
- './X_10-19_features_2.npy',
- './X_10-19_features_7.npy',
- './X_10-19_features_1.npy',
- './X_10-19_features_3.npy',
- './X_10-19_features_9.npy',
- './X_10-19_features_8.npy',
- './X_10-19_features_6.npy',
- './X_10-19_features_4.npy',
- './X_10-19_features_5.npy']
-
-# X_in_adjmap
-# -----------
-10 * (25, 6) ---> (6,) ---> (S)
-
-['./X_10-19_symm_idx_2.npy',
- './X_10-19_symm_idx_7.npy',
- './X_10-19_symm_idx_6.npy',
- './X_10-19_symm_idx_1.npy',
- './X_10-19_symm_idx_4.npy',
- './X_10-19_symm_idx_3.npy',
- './X_10-19_symm_idx_9.npy',
- './X_10-19_symm_idx_8.npy',
- './X_10-19_symm_idx_10.npy',
- './X_10-19_symm_idx_5.npy']
-
 """
 from glob import glob
 #=============================================================================
