@@ -770,7 +770,8 @@ def periodic_boundary_dist(readout_full, x_truth):
     return dist
 
 
-def pbc_loss(x_pred, x_truth, *args, **kwargs):
+#def pbc_loss(x_pred, x_truth, *args, **kwargs):
+def pbc_loss(x_pred, x_truth, scale_error=True):
     """ MSE over full dims with periodic boundary conditions
     Args:
         readout (tensor): model prediction which has been remapped to inner cube
@@ -779,6 +780,8 @@ def pbc_loss(x_pred, x_truth, *args, **kwargs):
     """
     pbc_dist  = periodic_boundary_dist(x_pred, x_truth)
     error = tf.reduce_mean(tf.reduce_sum(pbc_dist, axis=-1))
+    if scale_error:
+        error = error * 1e5
     return error
 
 #------------------------------------------------------------------------------

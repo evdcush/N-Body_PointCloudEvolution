@@ -26,21 +26,25 @@ start_time = time.time()
 parser = utils.Parser()
 args = parser.parse_args()
 parser.print_args()
+rs_idx = args.rs_idx = [10, 19] # MUST BE FIXED TO USE CACHED DATA
+args.layer_type = 'shift-inv-symm'
 
 # Dimensionality
 # ========================================
 num_redshifts = len(args.redshifts)
 N = 32**3
-M = args.graph_var
-batch_size = args.batch_size
+M = args.graph_var = 14 # not used, but cached data was for M = 14
+batch_size = 4 #args.batch_size # MUST BE FIXED TO USE CACHED DATA
 
 # Training variables
 # ========================================
 learning_rate = args.learn_rate
-checkpoint = 50 #args.checkpoint
+checkpoint = 250 #args.checkpoint
 num_iters  = args.num_iters
-num_val_batches = args.num_test // batch_size
+num_val_batches = 50 #args.num_test // batch_size
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
+
+
 
 
 
@@ -51,7 +55,7 @@ network_features.var_scope = args.var_scope
 network_features.num_layers = len(args.channels) - 1
 network_features.dims = [batch_size, N, M]
 network_features.activation = tf.nn.relu
-loss_func = nn.pbc_loss
+loss_func = nn.pbc_loss # NOW SCALED 1e5 BY DEFAULT ! <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 
 #==============================================================================
@@ -124,52 +128,132 @@ if args.restore:
 #==============================================================================
 # Load data
 #==============================================================================
+
+# Data load utils for cached data
+# ========================================
+CACHED_FEATURES_PATH  = './CachedData/Features/X_10-19_features_{}_batch.npy'
+CACHED_ADJACENCY_PATH = './CachedData/Adjacency/X_10-19_adjacency_{}_batch.npy'
+TRAINING_BATCHES_IDX = np.arange(201)
+
+def load_cached_batch(batch_num):
+    #==== Get file names
+    feat_fname = CACHED_FEATURES_PATH.format(batch_num)
+    adj_fname  = CACHED_ADJACENCY_PATH.format(batch_num)
+    #==== Load files
+    x_features  = np.load(feat_fname)
+    x_adjacency = np.load(adj_fname)
+    return x_features, x_adjacency
+
+# Batch ground truth utils
+# ========================================
+# PREPROCESSING
+def batch_ground_truth(X_in):
+    """ Reshape ground truth into batches of size 4 to match cached data
+
+    Params
+    ------
+    X_in : ndarray; shape (2, 1000, N, 6)
+        Full ground truth of input and target
+
+    Returns
+    -------
+    X_out : ndarray; shape (2, 250, 4, N, 6)
+        batched ground truth
+        X_out[:, :200] : training data (X_train, 200 batches)
+        X_out[:, 200:] : test data (X_test, 50 batches)
+    """
+    num_batches = X_in.shape[1] // batch_size # 250
+    assert num_batches == 250
+
+    # Shape is FIXED to batch_size = 4
+    X_out = np.zeros((2, num_batches, batch_size, N, 6), np.float32)
+
+    # Batch
+    for batch_num in range(num_batches):
+        i, j = (batch_num * batch_size, (batch_num + 1) * batch_size)
+        X_out[:, batch_num] = X_in[:, i:j]
+
+    return X_out
+
+# PROCESSED INPUT
+def get_batch(X_in, eval_idx=None):
+    """ Get a batch from the ground truth dataset and cached shift-inv data
+
+    # Batching ground truth
+    # ---------------------
+    TRAIN: If training (eval_idx=None), then select a batch at random
+    TEST:  If testing (eval_idx=<int>), then select that batch
+
+    # Loading cached data
+    # -------------------
+    All cached data (features and adjacencies) filenames include their
+    batch number, so we simply need a batch_number to load the proper data
+
+    Params
+    ------
+    X_in : ndarray; (2, 250, 4, N, 6)
+        The batched ground truth data
+        X_in[:,:200] ---> Training set
+        X_in[:,200:] --->  Testing set
+    eval_idx : int
+        if evaluation is defined, it is an int representing an index of one of
+        the 50 test batches
+
+    Returns
+    -------
+    X_out : ndarray; (2, 4, N, 6)
+        ground truth batch
+    X_features : ndarray; (S*, 9)
+        features batch
+    X_adjacency : list(ndarray); (6,)
+        The symmetrical adjacency indices for shiftinv ops
+            (row, col, all, tra, dia, dal)
+    """
+    #==== Training case: choose random
+    if eval_idx is None:
+        batch_num = np.random.choice(TRAINING_BATCHES_IDX) # num in [0...250]
+
+    #==== Testing case: select batch from index alegbra
+    else:
+        assert isinstance(eval_idx, int) # input integrity check
+        batch_num = 200 + eval_idx
+        #print(f'In else clause for eval_idx: {eval_idx}\n  Batch_num = {batch_num}')
+
+    # Get batch data
+    X_out = np.copy(X_in[:, batch_num])
+    X_features  = np.load(CACHED_FEATURES_PATH.format(batch_num))
+    X_adjacency = np.load(CACHED_ADJACENCY_PATH.format(batch_num))
+    return X_out, X_features, X_adjacency
+
+
+
 # Load cubes
-rs_idx = args.rs_idx
 X = utils.normalize(utils.load_simulation_data(rs_idx))
 #X = utils.load_simulation_data(rs_idx)
-X_train, X_test = utils.split_data_validation(X, num_val=args.num_test)
-X = None # reduce memory overhead
+#X_train, X_test = utils.split_data_validation(X, num_val=args.num_test)
+#X = None # reduce memory overhead
+
+X = batch_ground_truth(X) # (2, 250, 4, N, 6)
+assert X.shape == (2, 250, 4, N, 6)
+# KEEP X AS FULL SHAPE, simpler..
+#X_train = X[:, :200] # 200 batches (800 samples)
+#X_test  = X[:, 200:] #  50 batches (200 samples)
+
 
 # Get test containers
-test_pred_shape = X_test.shape[1:-1] + (args.channels[-1],)
+#test_pred_shape = X_test.shape[1:-1] + (args.channels[-1],)
+#test_predictions  = np.zeros(test_pred_shape).astype(np.float32)
+#test_loss = np.zeros((num_val_batches,)).astype(np.float32)
+test_pred_shape = (200, N,) + (args.channels[-1],) # (200, N, 3)
 test_predictions  = np.zeros(test_pred_shape).astype(np.float32)
-test_loss = np.zeros((num_val_batches,)).astype(np.float32)
+test_loss = np.zeros((50,)).astype(np.float32)
 
 # Save session data
 #train_saver.save_model_cube(X_test, ground_truth=True)
 train_saver.save_model_files()
 train_saver.save_model_params(sess, 0)
 
-"""
-X_train.shape = (2, 800, N, 6)
-X_test.shape  = (2, 200, N, 6)
 
-b = 4
-C = 1000
-
-num_batches = 1000 // 4 = 250
-
-X_train[0:4]
-X_train[4:8]
-X_train[8:12]
-...
-X_train[96:100]
-
-# feats[0] = X_train[  0:100]
-# feats[1] = X_train[100:200] # ---> (2, 100, N, 6)
-# feats[2] = X_train[200:300]
-# feats[3] = X_train[300:400]
-# feats[4] = X_train[400:500]
-# feats[5] = X_train[500:600]
-# feats[6] = X_train[600:700]
-# feats[7] = X_train[700:800]
-
-# feats[8] = X_test[  0:100]
-# feats[9] = X_test[100:200]
-
-"""
-from glob import glob
 #=============================================================================
 # TRAINING
 #=============================================================================
@@ -178,12 +262,16 @@ np.random.seed(utils.DATASET_SEED)
 for step in range(num_iters):
     # Data batching
     # ----------------
-    _x_batch = utils.next_minibatch(X_train, batch_size) # shape (2, b, N, 6)
+    #_x_batch = utils.next_minibatch(X_train, batch_size) # shape (2, b, N, 6)
+    _x_batch, x_in_feats, symm_idx = get_batch(X) # (2, 4, N, 6)
 
     # split data
     x_in    = _x_batch[0] # (b, N, 6)
     x_truth = _x_batch[1] # (b, N, 6)
 
+
+    # UNNECESSARY WITH CACHED DATA
+    """
     # Graph data
     # ----------------
     csr_list = nn.get_graph_csr_list(x_in, args)
@@ -196,7 +284,7 @@ for step in range(num_iters):
                                                    N,
                                                    None)
     symm_idx = get_symmetrized_idx(csr_list)
-
+    """
     fdict = {
         X_input : x_in,
         X_input_features: x_in_feats,
@@ -209,17 +297,8 @@ for step in range(num_iters):
         dal_in : symm_idx[5],
     }
 
-
-    # Feed data to tensors
-    # ----------------
-    #fdict = {X_input: x_in,
-    #         X_truth: x_truth,
-    #         X_input: coo_feats,
-    #         }
-
     # Train
     train.run(feed_dict=fdict)
-
 
     # Save
     if save_checkpoint(step):
@@ -234,20 +313,26 @@ print('elapsed time: {}'.format(time.time() - start_time))
 
 # Save trained variables and session
 train_saver.save_model_params(sess, num_iters)
-X_train = None # reduce memory overhead
+#X_train = None # reduce memory overhead
 
 eval_time = time.time()
 #=============================================================================
 # EVALUATION
 #=============================================================================
 print('\nEvaluation:\n{}'.format('='*78))
-for j in range(num_val_batches):
+for j in range(num_val_batches): # ---> range(50) for b = 4
     # Validation cubes
     # ----------------
     p, q = batch_size*j, batch_size*(j+1)
-    x_in    = X_test[0, p:q]
-    x_truth = X_test[1, p:q]
+    _x_test_batch, x_in_feats, symm_idx = get_batch(X, eval_idx=j)
 
+    #x_in    = _x_test_batch[0, p:q]
+    #x_truth = _x_test_batch[1, p:q]
+    x_in = _x_test_batch[0]
+    x_truth = _x_test_batch[1]
+
+
+    """ # UNNECSSARY WITH CACHED DATA
     # Graph data
     # ----------------
     csr_list = nn.get_graph_csr_list(x_in, args)
@@ -258,6 +343,7 @@ for j in range(num_val_batches):
                                                    N,
                                                    None)
     symm_idx = get_symmetrized_idx(csr_list)
+    """
 
     fdict = {
         X_input : x_in,

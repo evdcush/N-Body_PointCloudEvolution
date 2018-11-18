@@ -663,7 +663,7 @@ def print_median_validation_loss(rs, err, sc_err=None):
     err_median = np.median(err)
     print('\nEvaluation Median Error:\n{}'.format('='*78))
     print('# LOCATION LOSS:')
-    print('  {:>2} --> {:>2}: {:.9f}'.format(zx, zy, err_median))
+    print('  {:>2} --> {:>2}: {:.4f}'.format(zx, zy, err_median))
     if sc_err is not None:
         sc_err_median = np.median(sc_err)
         print('# SCALED LOSS:')
@@ -761,7 +761,7 @@ class Parser:
 
         # ==== Data variables
         add('--seed',       '-s', type=int, default=PARAMS_SEED,)
-        add('--rs_idx',     '-z', type=int, default=[18,19], nargs='+',)
+        add('--rs_idx',     '-z', type=int, default=[10,19], nargs='+',)
         add('--model_name', '-m', type=str, default=MODEL_BASENAME,)
         add('--name_suffix','-n', type=str, default='')
 
