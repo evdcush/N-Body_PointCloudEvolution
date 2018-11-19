@@ -252,7 +252,7 @@ def layer_init(ltype, kdims, restore):
     layer_args = (kdims, restore)
     if ltype == SHIFT_INV:
         func = initialize_ShiftInv_params
-    if ltype == SHIFT_INV_SYMM:
+    elif ltype == SHIFT_INV_SYMM:
         func = initialize_ShiftInv_symm_params
     elif ltype == ROT_INV:
         func = initialize_RotInv_params

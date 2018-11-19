@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 # Pseudo-globals
 # ========================================
-SAVE_DIR = './HistPlots/'
+SAVE_DIR = './MY_histplots/'
 
 Model_path = '../Models/'
 Cube_fname = '/Results/X_{}-{}_{}.npy'
@@ -30,6 +30,7 @@ def load_cube(zx, zy, model_name, truth=False):
     cube_name = Cube_fname.format(zx, zy, ctag)
     m_name = model_name.format(zx, zy)
     path = Model_path + m_name + cube_name
+    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     return np.load(path)
 
 
@@ -250,17 +251,16 @@ def plot_multiStep_comp(X_truth, X_preds, rs_pairs, splot_idx, singles=False):
 # Load data
 # ========================================
 #cur_rs = [(0, 19)]
-cur_rs = (0, 19)
-model_names = ['SI_single-step_{}-{}_updated_slow', 'SI_single-step_{}-{}_previous']
+cur_rs = (10, 19)
+model_names = ['SI_SYMM_single-step_{}-{}_updated_cached_10-19_7k', 'SI_single-step_{}-{}_prev_shiftinv_scaled_7K']
 
-X_truth = load_cube(0,19, model_names[0], truth=True)
+X_truth = load_cube(*cur_rs, model_names[1], truth=True)
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
 #X_truth = np.take(X_truth, [0,2], axis=0)
 X_preds = []
 for fname in model_names:
-    x_pred = load_cube(0, 19, fname)
+    x_pred = load_cube(*cur_rs, fname)
     X_preds.append(x_pred)
-
 
 
 # Plot settings
@@ -283,4 +283,4 @@ plot_side_by_side_singles(X_truth, X_preds, cur_rs, splot_idx)
 #fig.suptitle('Comparison of deep multistep models against moving-along-velocity')
 plt.tight_layout()
 #plt.show()
-save_plot(0, 19)
+save_plot(*cur_rs)

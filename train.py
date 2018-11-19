@@ -131,9 +131,10 @@ if args.restore:
 
 # Data load utils for cached data
 # ========================================
+gen_train_batch_nums = lambda: list(np.random.permutation(np.arange(200)))
 CACHED_FEATURES_PATH  = './CachedData/Features/X_10-19_features_{}_batch.npy'
 CACHED_ADJACENCY_PATH = './CachedData/Adjacency/X_10-19_adjacency_{}_batch.npy'
-TRAINING_BATCHES_IDX = np.arange(201)
+TRAINING_BATCHES_IDX = gen_train_batch_nums()
 
 def load_cached_batch(batch_num):
     #==== Get file names
@@ -211,7 +212,11 @@ def get_batch(X_in, eval_idx=None):
     """
     #==== Training case: choose random
     if eval_idx is None:
-        batch_num = np.random.choice(TRAINING_BATCHES_IDX) # num in [0...250]
+        #batch_num = np.random.choice(TRAINING_BATCHES_IDX) # num in [0...250]
+        if len(TRAINING_BATCHES_IDX) == 0:
+            TRAINING_BATCHES_IDX = gen_train_batch_nums()
+        batch_num = TRAINING_BATCHES_IDX.pop()
+
 
     #==== Testing case: select batch from index alegbra
     else:
