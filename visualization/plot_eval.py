@@ -252,7 +252,7 @@ def plot_multiStep_comp(X_truth, X_preds, rs_pairs, splot_idx, singles=False):
 # ========================================
 #cur_rs = [(0, 19)]
 cur_rs = (10, 19)
-model_names = ['SI_SYMM_single-step_{}-{}_updated_cached_10-19_7k', 'SI_single-step_{}-{}_prev_shiftinv_scaled_7K']
+model_names = ['SI_SYMM_single-step_{}-{}_updated_cached_20k', 'SI_single-step_{}-{}_prev_shiftinv_scaled_20K']
 
 X_truth = load_cube(*cur_rs, model_names[1], truth=True)
 #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use

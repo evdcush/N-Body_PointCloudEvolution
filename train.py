@@ -211,6 +211,7 @@ def get_batch(X_in, eval_idx=None):
             (row, col, all, tra, dia, dal)
     """
     #==== Training case: choose random
+    global TRAINING_BATCHES_IDX
     if eval_idx is None:
         #batch_num = np.random.choice(TRAINING_BATCHES_IDX) # num in [0...250]
         if len(TRAINING_BATCHES_IDX) == 0:
