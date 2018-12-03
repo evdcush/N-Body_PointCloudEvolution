@@ -1,55 +1,18 @@
 import os, glob, struct, shutil, code, sys, time, argparse
-from functools import wraps
 import numpy as np
 import tensorflow as tf
-import matplotlib
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-
-''' TODO:
-# TOP PRIORITY
- - Eventually create a trainer class, or abstract as much training code from
-   train to here. Ideally only needing a single train.py.
-     - NEED higher-level abstraction and modularity, currently too much
-       thrashing and potential for code error
-     - Training consistency, for all models, all network types
-     - make train.py invariant to:
-       - model-type: multi-step or single
-       - layer-type: vanilla, shift-inv, or rot-inv
- - In order to abstract train functionality or make a trainer class,
-   need to evaluate:
-     - Can you instantiate placeholders OUTSIDE of the caller script?
-       - must they be placed in train.py for scope reasons? or feeding?
-
-# EVENTUALLY
- - Make a separate evaluation script ('evaluation.py' or whatev), that can
-   evaluate a model separate from training script.
-     - Then, to use in train.py, just import the respective functions
- - Visualizations:
-   - automatic generation of plots for error or whatev,
-   - maybe a meta script that maintains all models trained in a spreadsheet or
-     npy array, that tracks performance based on num_iters, model type, redshifts
-     hyperparameters, etc.
- - Have density-based graph model as another option, like layer-type, for models
-   instead of just KNN
-'''
-#=============================================================================
-# Utility classes
-#=============================================================================
-class AttrDict(dict): # just a dict mutated/accessed by attribute instead index
-    __getattr__ = dict.__getitem__
-    __setattr__ = dict.__setitem__
-
-def TODO(f):
-    @wraps(f)
-    def not_implemented(*args, **kwargs):
-        print('\n  FUNCTION NOT IMPLEMENTED: <{}>'.format(f.__name__))
-    return not_implemented
 
 
 #=============================================================================
 # Globals
 #=============================================================================
+
+# just a dict mutated/accessed by attribute instead index
+class AttrDict(dict):
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
 #------------------------------------------------------------------------------
 # Data and pathing
 #------------------------------------------------------------------------------
@@ -62,7 +25,6 @@ REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
 # Data load paths (must be changed for your machine!)
 # ========================================
 DATA_ROOT_PATH = '/home/evan/.Data/nbody_simulations/{}'
-DATA_PATH_BINARIES = DATA_ROOT_PATH.format('binaries/run*/xv_dm.z=0{:.4f}') # not in use
 DATA_PATH_NPY      = DATA_ROOT_PATH.format('npy_data/X_{:.4f}_.npy')
 
 
