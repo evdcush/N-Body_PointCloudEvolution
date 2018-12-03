@@ -1,38 +1,6 @@
-
 import os
 import time
 import tensorflow as tf
-
-
-#------------------------------------------------------------------------------
-# Parameter getters
-#------------------------------------------------------------------------------
-def get_var(name):
-    """ Assumes within variable scope """
-    return tf.get_variable(name)
-
-
-def get_weight(layer_idx, w_idx=0):
-    name = WEIGHT_TAG.format(layer_idx, w_idx)
-    return get_var(name)
-
-
-def get_bias(layer_idx, suffix=''):
-    name = BIAS_TAG.format(f'{layer_idx}{suffix}')
-    return get_var(name)
-
-
-def get_scalars(num_scalars=2):
-    scalars = [get_var(SCALAR_TAG.format(i)) for i in range(num_scalars)]
-    return scalars
-
-
-def get_shift_inv_layer_vars(layer_idx, **kwargs):
-    weights = []
-    for w_idx in SHIFT_INV_W_IDX:
-        weights.append(get_weight(layer_idx, w_idx=w_idx))
-    bias = get_bias(layer_idx)
-    return weights, bias
 
 
 #==============================================================================
@@ -46,11 +14,11 @@ def get_shift_inv_layer_vars(layer_idx, **kwargs):
 #        `8'  `8'     o888o  888bod8P'
 #                            888
 #                           o888o
-# * Variables
-# * TrainSavers
+# * ScopeVariable
+# * TrainSaver
 #==============================================================================
 
-class Variables:
+class ScopeVariable:
     """Initializes variables and provides their getters
     """
     weight_tag = 'W{}_{}'
@@ -58,20 +26,18 @@ class Variables:
     scalar_tag = 'T_{}'
     def __init__(self, args):
         self.seed = args.seed
-        self.restore  = args.restore
+        self.restore = args.restore
         self.channels = args.channels
         self.var_scope = args.var_scope
-        self.num_layer_W = args.num_layer_W
         self.scalar_val = args.scalar_val
-
-
+        self.num_layer_W = args.num_layer_W
 
     def initialize_scalars(self):
+        """ scalars initialized by const value """
         for i in range(2):
             init = tf.constant([self.scalar_val])
             tag = self.scalar_tag.format(i)
             tf.get_variable(tag, dtype=tf.float32, initializer=init)
-
 
     def initialize_bias(self, layer_idx):
         """ biases initialized to be near zero """
@@ -84,8 +50,8 @@ class Variables:
             initializer = tf.ones((k_out,), dtype=tf.float32) * 1e-8
         tf.get_variable(*args, dtype=tf.float32, initializer=initializer)
 
-
     def initialize_weight(self, layer_idx):
+        """ weights sampled from glorot normal """
         kdims = self.channels[layer_idx : layer_idx+2]
         for w_idx in range(self.num_layer_W):
             name = self.weight_tag.format(layer_idx, w_idx)
@@ -93,15 +59,33 @@ class Variables:
             init = None if self.restore else tf.glorot_normal_initializer(None)
             tf.get_variable(*args, dtype=tf.float32, initializer=init)
 
-
     def initialize_params(self):
+        tf.set_random_seed(self.seed)
         with tf.variable_scope(self.var_scope, reuse=tf.AUTO_REUSE):
-            for layer_idx in range(len(self.kdims)):
+            for layer_idx in range(len(self.channels) - 1):
+                #==== Layer vars
                 self.initialize_bias(layer_idx)
                 self.initialize_weight(layer_idx)
+            #==== model vars
             self.initialize_scalars()
 
+    def get_scalars(self):
+        t1 = tf.get_variable(self.SCALAR_TAG.format(0))
+        t2 = tf.get_variable(self.SCALAR_TAG.format(1))
+        return t1, t2
 
+    def get_layer_vars(self, layer_idx):
+        """ Gets all variables for a layer
+        NOTE: ASSUMES VARIABLE SCOPE! Cannot get vars outside of scope.
+        """
+        get_W = lambda w: tf.get_variable(self.WEIGHT_TAG.format(layer_idx, w))
+        #=== layer vars
+        weights = [get_W(w_idx) for w_idx in range(self.num_layer_W)]
+        bias = tf.get_variable(self.BIAS_TAG.format(layer_idx))
+        return weights, bias
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 
 class TrainSaver:
@@ -130,12 +114,6 @@ class TrainSaver:
         self.assign_names()
         self.make_model_dirs()
 
-        # Init model vars
-        # ===============
-        self.initialize_params()
-
-        # Paths
-
     def initialize_session(self):
         sess_kwargs = {}
         #==== Check for GPU
@@ -143,18 +121,8 @@ class TrainSaver:
             gpu_frac= 0.85
             gpu_opts = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
             sess_kwargs['config'] = tf.ConfigProto(gpu_options=gpu_opts)
-
         #==== initialize session
         self.sess = tf.InteractiveSession(**sess_kwargs)
-
-
-
-    def initialize_params(self):
-        #restore = self.restore
-        pass
-
-
-
 
     def initialize_graph(self):
         """ tf.train.Saver must be initialized AFTER the computational graph
