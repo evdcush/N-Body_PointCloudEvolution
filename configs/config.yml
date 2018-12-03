@@ -2,12 +2,10 @@
 
 seed : 77743196
 var_scope : 'params_{}-{}' # eg. 'params_0-7' for rs 9.0000 --> 1.1212
-weight_tag : 'W{}_{}'
-bias_tag : 'B_{}'
-scalar_tag : 'T_{}'
 
 channels : [9, 32, 16, 8, 3]
-shift_inv_ids : [1,2,3,4]
+num_layer_W : 4  # weights per layer; 4 for shiftinv
+scalar_val : 0.002
 restore : false
 
 num_iters: 2000
@@ -15,7 +13,6 @@ batch_size: 4
 neighbors: 14
 always_write_meta : false
 model_tag: ''
-
 
 path_dataset : '/home/evan/.Data/nbody_simulations/npy_data'
 uni_format : 'X_{:.4f}_.npy'
