@@ -1,9 +1,23 @@
 import argparse
 import yaml
+import os
+
+class AttrDict(dict):
+    """ simply a dict accessed/mutated by attribute instead of index
+    WARNING: cannot be pickled like normal dict/object
+    """
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
 
 ####### TODO
+# dirttttttttyyyy
+config_path = "/".join(os.path.abspath(os.path.dirname(__file__)).split('/')[:-1] + ['configs/config.yml'])
 
-
+def parse():
+    with open(config_path) as yml:
+        config = AttrDict(yaml.load(yml))
+    return config
 
 # OLD PARSER
 '''
