@@ -301,7 +301,7 @@ def ShiftInv_layer(H_in, COO_feats, bN, layer_id, is_last=False):
     cube_idx = COO_feats[2]
 
     # get layer weights
-    weights, B = utils.get_ShiftInv_layer_vars(layer_id)
+    weights, B = utils.get_shift_inv_layer_vars(layer_id)
     W1, W2, W3, W4 = weights
 
     # Helper funcs

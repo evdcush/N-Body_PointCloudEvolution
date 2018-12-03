@@ -2,6 +2,132 @@ import os, glob, struct, shutil, code, sys, time, argparse
 import numpy as np
 import tensorflow as tf
 
+# Dataset read path
+# =================
+DATA_PATH = os.environ['HOME'] + '/.Data/nbody_simulations/npy_data/{}'
+DATA_PATH_UNI = DATA_PATH.format('X_{:.4f}_.npy')
+DATA_PATH_ZA  = DATA_PATH.format('ZA/ZA_{}.npy')
+
+# Redshifts available
+# ===================
+# NB: project typically works with the *indices* into this list of redshifts
+#     instead of the raw values for convenience. For example:
+#       10 ---> 19  ==  0.6688 ---> 0.0000
+REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
+             1.1212, 0.9438, 0.7955, 0.6688, 0.5588, 0.4620, 0.3758,
+             0.2983, 0.2280, 0.1639, 0.1049, 0.0505, 0.0000]
+
+ZA_STEPS = ['001', '002', '003', '004', '005',
+            '006', '007', '008', '009', '010']
+
+# Dataset parameters
+# ==================
+NUM_VAL_SAMPLES = 200
+DATASET_SEED = 12345  # for train/validation data splits
+
+
+
+# Load simulation cube
+# ====================
+def load_uni_simulation_cube(redshift, data_path=DATA_PATH_UNI):
+    """ Loads uniformly timestepped simulation cube stored in npy format
+    Note redshift here is true redshift float value
+    Args:
+        redshift (float): redshift value
+    """
+    # Format data path for redshift
+    cube_path = data_path.format(redshift)
+    print(f'Loading redshift {redshift:.4f} cube from {cube_path[-13:]}')
+
+    # Load cube
+    cube = np.load(cube_path).astype(np.float32)
+    X = np.expand_dims(cube, 0)
+    return X
+
+
+# Load all simulation cubes
+# =========================
+def load_simulation_data(redshift_indices):
+    """ Loads uniformly timestep data serialized as np array of np.float32
+    Redshift indices are used instead of true float values for ease
+    Args:
+        redshift_indices list(int): ordered list of indices into REDSHIFTS
+    """
+    # Get redshifts
+    # -------------
+    redshifts = [REDSHIFTS[rs_idx] for rs_idx in redshift_indices]
+
+    # Get cubes
+    # ---------
+    for i, rs in enumerate(redshifts):
+        #==== concat all cubes after first redshift
+        if i == 0:
+            X = load_uni_simulation_cube(rs)
+            continue
+        X = np.concatenate([X, load_uni_simulation_cube(rs)], axis=0)
+    return X
+
+
+
+"""
+
+# ZA Data Features
+# ================
+For each simulation, the shape of data is 32*32*32*19.
+
+32*32*32 is the number of particles and,
+they are on the uniform 32*32*32 grid.
+
+
+## The meaning of the 19 columns is as follows:
+
+oneSimu[...,  1:4] : ZA displacements (Dx,Dy,Dz)
+oneSimu[...,  4:7] : 2LPT displacements
+oneSimu[..., 7:10] : FastPM displacements
+oneSimu[...,10:13] : ZA velocity
+oneSimu[...,13:16] : 2LPT velocity
+oneSimu[...,16:19] : FastPM velocity
+
+"""
+
+
+# Load single ZA cube set
+# =======================
+def load_ZA_simulation_cube(step, data_path=DATA_PATH_ZA):
+    """ Data sample shapes are: (1000, 32, 32, 32, 19)
+    """
+    # Format data path
+    cube_path = data_path.format(step)
+    print(f'Loading ZA cube from {cube_path}')
+
+    # Load cube
+    cube = np.load(cube_path).astype(np.float32)
+    X = np.expand_dims(cube, 0)
+    return X
+
+
+# Load all specified ZA cubes
+# ===========================
+def load_ZA_simulation_data(ZA_idx):
+    """ Loads all ZA cubes pointed to be ZA_idx,
+    Where ZA_idx is in [1, 10], and refers to the 1-based
+    index of the ZA file
+    """
+    # Get true ZA file tags
+    # ---------------------
+    # NB: i-1 to make it 0-based indexing
+    ZA_steps = [ZA_STEPS[i-1] for i in ZA_idx]
+
+    # Get cubes
+    # ---------
+    for i, z in enumerate(ZA_steps):
+        #==== concat all cubes after first redshift
+        if i == 0:
+            X = load_ZA_simulation_cube(z)
+            continue
+        X = np.concatenate([X, load_ZA_simulation_cube(z)], axis=0)
+    return X
+
 
 #=============================================================================
 # Globals
@@ -59,6 +185,7 @@ VANILLA   = 'vanilla'
 SHIFT_INV = 'shift-inv'
 SHIFT_INV_SYMM = 'shift-inv-symm'
 ROT_INV   = 'rot-inv'
+
 LAYER_TAGS = {VANILLA:'V', SHIFT_INV:'SI', SHIFT_INV_SYMM:'SI_SYMM', ROT_INV:'RI'}
 LAYER_TYPES = [VANILLA, SHIFT_INV, SHIFT_INV_SYMM, ROT_INV]
 
@@ -83,27 +210,14 @@ PARAMS_SEED  = 77743196 # Randomly generated seed selected by cross-validation
 DATASET_SEED = 12345    # for train/validation data splits
 
 # Network channels
-CHANNELS = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
-#CHANNELS_SHALLOW = [9, 32, 16, 8, 6]
-CHANNELS_SHALLOW = [9, 32, 16, 8, 3]
+#CHANNELS_vanilla = [6, 8, 16, 32, 16, 8, 3, 8, 16, 32, 16, 8, 3]
+#CHANNELS = [9, 32, 16, 8, 6]
+CHANNELS = [9, 32, 16, 8, 3]
 
 # Layer variables
 # ========================================
 # Shift-invariant
 SHIFT_INV_W_IDX = [1,2,3,4]
-SHIFT_INV_SYMM_W_IDX = list(range(15))
-
-# Rotation-invariant
-ROTATION_INV_SEGNAMES = ['CD', 'RD', 'RC', 'D', 'C', 'R', 'A']
-ROTATION_INV_W_IDX = [1,2,3,4,5,6]
-ROTATION_INV_WMAP = {'CD': 1, # col-depth
-                     'RD': 2, # row-depth
-                     'RC': 2, # row-col
-                     'D' : 3, # depth
-                     'C' : 3, # col
-                     'R' : 4, # row
-                     'A' : 5, # all
-                     'Z' : 6} # none (no pooling)
 
 
 # Training variables
@@ -283,41 +397,12 @@ def get_scalars(num_scalars=2):
 Assumed to be within the tf.variable_scope of the respective network funcs
   themselves (called directly), so no dispatching layer wrapper get func
 """
-def get_vanilla_layer_vars(layer_idx, **kwargs):
-    weight = get_weight(layer_idx)
-    bias   = get_bias(layer_idx)
-    return weight, bias
-
-
-def get_ShiftInv_symm_layer_vars(layer_idx, **kwargs):
-    weights = []
-    for w_idx in SHIFT_INV_SYMM_W_IDX:
-        weights.append(get_weight(layer_idx, w_idx=w_idx))
-    bias1 = get_bias(layer_idx, 1)
-    bias2 = get_bias(layer_idx, 2)
-    return weights, [bias1, bias2]
-
-def get_ShiftInv_layer_vars(layer_idx, **kwargs):
+def get_shift_inv_layer_vars(layer_idx, **kwargs):
     weights = []
     for w_idx in SHIFT_INV_W_IDX:
         weights.append(get_weight(layer_idx, w_idx=w_idx))
     bias = get_bias(layer_idx)
     return weights, bias
-
-def get_RotInv_layer_vars(layer_idx, **kwargs):
-    bias = get_bias(layer_idx)
-    weights = [get_weight(layer_idx, w_idx=i) for i in ROTATION_INV_W_IDX]
-    W1, W2, W3, W4, W5, W6 = weights
-    # this is bad man, super bad coupling, need a better solution
-    wmap = {'CD': W1, # col-depth
-            'RD': W2, # row-depth
-            'RC': W2, # row-col
-            'D' : W3, # depth
-            'C' : W3, # col
-            'R' : W4, # row
-            'A' : W5, # all
-            'Z' : W6} # none (no pooling)
-    return wmap, bias
 
 
 #=============================================================================
@@ -406,54 +491,10 @@ def restore_parameters(saver, sess, save_dir):
 #=============================================================================
 # Simulation dataset read/load utilities
 #=============================================================================
-""" Note: due to long read times and disk space constraints, data is not
-    read from binaries.
-    Instead, the numpy npy formatted simulation data is what is used regularly
-"""
-#------------------------------------------------------------------------------
-# Dataset (binary) dataset read functions
-#------------------------------------------------------------------------------
-# Read simulation cubes stored in binary structs
-# ========================================
-def read_simulation_binaries(file_list, n_P=32):
-    """ reads simulation data from binaries and and converts to numpy ndarray
-    Args:
-        file_list list(str): paths to files
-        n_P (int): number of particles base (n_P**3 particles)
-            NB: only 32**3 simulation data is used
-    Returns: numpy array of data
-    """
-    num_particles = n_P**3
-    dataset = []
-    for file_name in file_list:
-        this_set = []
-        with open(file_name, "rb") as f:
-            for i in range(num_particles*6):
-                s = struct.unpack('=f',f.read(4))
-                this_set.append(s[0])
-        dataset.append(this_set)
-    dataset = np.array(dataset).reshape([len(file_list),num_particles,6])
-    return dataset
 
-
-# Interface for binary read func
-# ========================================
-def load_simulation_cube_binary(redshift, data_path=DATA_PATH_BINARIES):
-    """ loads two redshift datasets from proper data directory
-    Args:
-        redshift (float): redshift value
-    """
-    glob_paths = glob.glob(data_path.format(redshift))
-    X = read_sim(glob_paths).astype(np.float32)
-    return X
-
-
-#------------------------------------------------------------------------------
-# Dataset (npy) read functions
-#------------------------------------------------------------------------------
 # Load simulation cube from npy
 # ========================================
-def load_simulation_cube_npy(redshift, cat_dim=True):
+def load_uni_simulation_cube_npy(redshift):
     """ Loads uniformly timestepped simulation cube stored in npy format
     Note redshift here is true redshift float value
     Args:
@@ -466,9 +507,8 @@ def load_simulation_cube_npy(redshift, cat_dim=True):
     # Load cube
     cube_path = DATA_PATH_NPY.format(redshift)
     print('Loading Redshift {:.4f} Cube from: {}'.format(redshift, cube_path[-13:]))
-    X = np.load(cube_path).astype(np.float32)
-    if cat_dim:
-        X = np.expand_dims(X, 0)
+    cube = np.load(cube_path).astype(np.float32)
+    X = np.expand_dims(cube, 0)
     return X
 
 
@@ -488,13 +528,13 @@ def load_simulation_data(redshift_indices):
 
     # Single cube
     if num_rs == 1:
-        return load_simulation_cube_npy(redshift, cat_dim=False)
+        return load_uni_simulation_cube_npy(redshift, cat_dim=False)
 
     # Multiple cubes (typical)
-    X = load_simulation_cube_npy(redshift)
+    X = load_uni_simulation_cube_npy(redshift)
     for rs_idx in redshift_indices[1:]:
         redshift = REDSHIFTS[rs_idx]
-        X = np.concatenate([X, load_simulation_cube_npy(redshift)], axis=0)
+        X = np.concatenate([X, load_uni_simulation_cube_npy(redshift)], axis=0)
     return X
 
 
@@ -691,25 +731,6 @@ class TrainSaver:
         save_params(self.saver, session, cur_iter, self.model_path, wr_meta)
 
 
-#------------------------------------------------------------------------------
-# Model function args
-#------------------------------------------------------------------------------
-
-
-
-
-#=============================================================================
-# New utils made for train
-#=============================================================================
-class Trainer():
-    def __init__(self, model, data, evaluation=True):
-
-        if evaluation:jop
-
-
-class Model():
-    pass
-
 
 class Parser:
     """ Wrapper for argparse parser
@@ -722,26 +743,21 @@ class Parser:
         add = self.p.add_argument
 
         # ==== Data variables
-        add('--seed',       '-s', type=int, default=PARAMS_SEED,)
-        add('--rs_idx',     '-z', type=int, default=[10,19], nargs='+',)
-        add('--model_name', '-m', type=str, default=MODEL_BASENAME,)
-        add('--name_suffix','-n', type=str, default='')
+        add('--seed',         '-s', type=int, default=PARAMS_SEED)
+        add('--rs_idx',       '-z', type=int, default=[10,19], nargs='+')
+        add('--model_tag',    '-m', type=str, default='')
+        add('--dataset_type', '-d', type=str, default='uni')
 
         # ==== Model parameter variables
-        add('--layer_type', '-l', type=str, default='shift-inv')
-        add('--graph_var',  '-k', type=int, default=14,) # type might be float for rad
-        add('--channels',   '-c', type=int, default=CHANNELS_SHALLOW, nargs='+')
-        add('--var_scope',  '-v', type=str, default=VARIABLE_SCOPE)
-        add('--learn_rate', '-a', type=float, default=LEARNING_RATE)
+        add('--graph_var',  '-k', type=int, default=14)
 
         # ==== Training variables
         add('--num_test',   '-t', type=int, default=NUM_VAL_SAMPLES)
         add('--num_iters',  '-i', type=int, default=2000)
         add('--batch_size', '-b', type=int, default=4)
-        add('--restore',    '-r', type=int, default=0,) # bool
-        add('--pbc_graph',  '-p', type=int, default=0)
+        add('--restore',    '-r', action='store_true')
+        add('--wr_meta',    '-w', action='store_true') # always write meta graph
         #add('--checkpoint', '-h', type=int, default=100)
-        add('--variable',   '-q', type=int, default=0)  # bool, multi-purpose
 
     def parse_args(self):
         parsed = self.add_interpreted_args(AttrDict(vars(self.p.parse_args())))
