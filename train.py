@@ -6,16 +6,9 @@ import nn
 import utils
 
 from shift_inv import get_symmetrized_idx, model_func_ShiftInv_symm, get_input_features_ShiftInv_numpy
-#from utils import REDSHIFTS, PARAMS_SEED, LEARNING_RATE, NUM_VAL_SAMPLES, MODEL_BASENAME
-#from utils import REDSHIFTS, AttrDict
 
 
-""" TODO:
 
-Would-be-nice:
- X done - have some other script handle the parse-args, instead of polluting here
-
-"""
 start_time = time.time()
 #==============================================================================
 # Data & Session config
@@ -45,9 +38,6 @@ num_val_batches = 50 #args.num_test // batch_size
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
 
 
-
-
-
 # Network config
 # ========================================
 network_features = utils.AttrDict()
@@ -55,7 +45,7 @@ network_features.var_scope = args.var_scope
 network_features.num_layers = len(args.channels) - 1
 network_features.dims = [batch_size, N, M]
 network_features.activation = tf.nn.relu
-loss_func = nn.pbc_loss # NOW SCALED 1e5 BY DEFAULT ! <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+loss_func = nn.pbc_loss # NOW SCALED 1e5 BY DEFAULT ! <<<<<<<<<<<<<<<<<<
 
 
 #==============================================================================
@@ -78,12 +68,12 @@ X_input_features = tf.placeholder(tf.float32, shape=(None, 9))
 
 # Adjacency indices, symmetrized
 # =======================================
-row_in = tf.placeholder(tf.int32, shape=(None,))
-col_in = tf.placeholder(tf.int32, shape=(None,))
-all_in = tf.placeholder(tf.int32, shape=(None,))
-tra_in = tf.placeholder(tf.int32, shape=(None,))
-dia_in = tf.placeholder(tf.int32, shape=(None,))
-dal_in = tf.placeholder(tf.int32, shape=(None,))
+#row_in = tf.placeholder(tf.int32, shape=(None,))
+#col_in = tf.placeholder(tf.int32, shape=(None,))
+#all_in = tf.placeholder(tf.int32, shape=(None,))
+#tra_in = tf.placeholder(tf.int32, shape=(None,))
+#dia_in = tf.placeholder(tf.int32, shape=(None,))
+#dal_in = tf.placeholder(tf.int32, shape=(None,))
 
 # Insert adj into dict
 adj_symm_in = dict(row=row_in, col=col_in, all=all_in,
