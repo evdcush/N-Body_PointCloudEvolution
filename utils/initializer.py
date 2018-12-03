@@ -51,6 +51,8 @@ class Initializer:
             #==== model vars
             self.initialize_scalars()
 
+    # - - - - - - - - - - - -
+
     def get_scalars(self):
         t1 = tf.get_variable(self.scalar_tag.format(0))
         t2 = tf.get_variable(self.scalar_tag.format(1))
@@ -82,3 +84,9 @@ class Initializer:
         """
         self.sess.run(tf.global_variables_initializer())
         print('All variables initialized\n')
+
+    def __call__(self):
+        """ return sess """
+        if not hasattr(self, sess):
+            self.initialize_session()
+        return self.sess

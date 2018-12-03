@@ -8,14 +8,12 @@ num_layer_W : 4  # weights per layer; 4 for shiftinv
 scalar_val : 0.002
 restore : false
 
+num_eval_samples: 200
 num_iters: 2000
 batch_size: 4
 neighbors: 14
 always_write_meta : false
 model_tag: ''
 
-path_dataset : '/home/evan/.Data/nbody_simulations/npy_data'
-uni_format : 'X_{:.4f}_.npy'
-ZA_format : '/ZA/ZA_{}.npy'
 rs_idx : [10, 19]
 dataset_type : 'uni'
