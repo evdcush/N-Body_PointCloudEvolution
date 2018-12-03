@@ -28,7 +28,7 @@ class ScopeVariable:
         self.seed = args.seed
         self.restore = args.restore
         self.channels = args.channels
-        self.var_scope = args.var_scope
+        self.var_scope = args.var_scope.format(*args.rs_idx)
         self.scalar_val = args.scalar_val
         self.num_layer_W = args.num_layer_W
 
@@ -70,18 +70,18 @@ class ScopeVariable:
             self.initialize_scalars()
 
     def get_scalars(self):
-        t1 = tf.get_variable(self.SCALAR_TAG.format(0))
-        t2 = tf.get_variable(self.SCALAR_TAG.format(1))
+        t1 = tf.get_variable(self.scalar_tag.format(0))
+        t2 = tf.get_variable(self.scalar_tag.format(1))
         return t1, t2
 
     def get_layer_vars(self, layer_idx):
         """ Gets all variables for a layer
         NOTE: ASSUMES VARIABLE SCOPE! Cannot get vars outside of scope.
         """
-        get_W = lambda w: tf.get_variable(self.WEIGHT_TAG.format(layer_idx, w))
+        get_W = lambda w: tf.get_variable(self.weight_tag.format(layer_idx, w))
         #=== layer vars
         weights = [get_W(w_idx) for w_idx in range(self.num_layer_W)]
-        bias = tf.get_variable(self.BIAS_TAG.format(layer_idx))
+        bias = tf.get_variable(self.bias_tag.format(layer_idx))
         return weights, bias
 
 
@@ -103,7 +103,7 @@ class TrainSaver:
         self.num_iters = args.num_iters
         self.model_tag = args.model_tag
         self.dataset_type = args.dataset_type
-        self.always_write_meta = args.wr_meta
+        self.always_write_meta = args.always_write_meta
 
         # Model params
         # ============
@@ -112,13 +112,13 @@ class TrainSaver:
         # Format naming and paths
         # =======================
         self.assign_names()
-        self.make_model_dirs()
+        self.assign_pathing()
 
     def initialize_session(self):
         sess_kwargs = {}
         #==== Check for GPU
         if tf.test.is_gpu_available(cuda_only=True):
-            gpu_frac= 0.85
+            gpu_frac = 0.85
             gpu_opts = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
             sess_kwargs['config'] = tf.ConfigProto(gpu_options=gpu_opts)
         #==== initialize session
@@ -217,7 +217,7 @@ class TrainSaver:
 
         #==== Text
         title = f'\n# Evaluation Results:\n# {"="*78}'
-        body = [f'# Location error : {:>3} ---> {:<3}',
+        body = [f'# Location error : {zx:>3} ---> {zy:<3}',
                 f'  median : {err_median : .5f}',
                 f'    mean : {err_avg : .5f}',
                 f'         +- {err_std : .4f} stdv',]
