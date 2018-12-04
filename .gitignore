@@ -1,9 +1,5 @@
 # User ignore:
-Models/
-Evaluation/
-SAVE/
-SANDBOX/
-ARCHIVE/
+Experiments/
 CachedData/
 
 

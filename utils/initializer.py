@@ -1,5 +1,5 @@
 import tensorflow as tf
-
+import code
 class Initializer:
     """Initializes variables and provides their getters
     """
@@ -83,10 +83,11 @@ class Initializer:
             has been specified (via endpoints data input and optimized error)
         """
         self.sess.run(tf.global_variables_initializer())
-        print('All variables initialized\n')
+        print('\n\nAll variables initialized\n')
 
     def __call__(self):
         """ return sess """
-        if not hasattr(self, sess):
+        if not hasattr(self, 'sess'):
+            print('\nin initializer __call__, no sess attrib\n')
             self.initialize_session()
         return self.sess

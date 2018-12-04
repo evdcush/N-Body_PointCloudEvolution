@@ -1,6 +1,7 @@
 import os
 import time
 import tensorflow
+import numpy
 
 
 class ModelSaver:
@@ -84,14 +85,14 @@ class ModelSaver:
     def save_model_error(self, error, training=False):
         name = 'training' if training else 'validation'
         path = f'{self.results_path}/error_{name}'
-        np.save(path, error)
+        numpy.save(path, error)
         print(f'Saved error: {path}')
 
 
     def save_model_cube(self, cube, ground_truth=False):
         name = self.cube_name_truth if ground_truth else self.cube_name_pred
         path = f'{self.results_path}/{name}'
-        np.save(path, cube)
+        numpy.save(path, cube)
         print(f'Saved cube: {path}')
 
 
@@ -105,7 +106,7 @@ class ModelSaver:
             tS, tM, tH = f'{tsec: .3f}${tmin: .3f}${thour: .3f}'.split('$')
             print(f'Training complete!\n est. elapsed time: {tH}h, or {tM}m')
         step = cur_iter + 1
-        self.saver.save(sess, self.experiments_path,
+        self.saver.save(sess, self.params_path + '/chkpt',
                         global_step=step, write_meta_graph=write_meta)
 
 
@@ -116,16 +117,15 @@ class ModelSaver:
     def print_evaluation_results(self, err):
         zx, zy = self.rs_idx
         #==== Statistics
-        err_avg = np.mean(err)
-        err_std = np.stdv(err)
-        err_median = np.median(err)
+        err_avg = numpy.mean(err)
+        err_std = numpy.std(err)
+        err_median = numpy.median(err)
 
         #==== Text
         title = f'\n# Evaluation Results:\n# {"="*78}'
         body = [f'# Location error : {zx:>3} ---> {zy:<3}',
                 f'  median : {err_median : .5f}',
-                f'    mean : {err_avg : .5f}',
-                f'         +- {err_std : .4f} stdv',]
+                f'    mean : {err_avg : .5f} +- {err_std : .4f} stdv',]
         #==== Print results
         print(title)
         for b in body:

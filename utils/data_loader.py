@@ -30,7 +30,7 @@ oneSimu[...,16:19] : FastPM velocity
 """
 
 
-class DataSet:
+class Dataset:
     seed = 12345  # for consistent splits
     path_simu  = os.environ['HOME'] + '/.Data/nbody_simulations'
     uni_format = '/uniform/X_{:.4f}_.npy'
@@ -52,7 +52,7 @@ class DataSet:
         else:
             cube_type = self.ZA_format
             self.rs_val = [ZA_STEPS[i] for i in self.rs_idx]
-        self.path = f'{self.path_simu}/{cube_type}'
+        self.path = f'{self.path_simu}{cube_type}'
 
     def split_dataset(self):
         """ split dataset into training and evaluation sets
@@ -62,11 +62,12 @@ class DataSet:
         num_val = self.num_eval_samples
         np.random.seed(self.seed)
         ridx = np.random.permutation(self.X.shape[1])
-        self.X_train, self.X_test = np.split(X[:, ridx], [-num_val], axis=1)
+        self.X_train, self.X_test = np.split(self.X[:, ridx], [-num_val], axis=1)
         self.X = None # reduce memory overhead
 
-    def get_minibatch(self, batch_size=self.batch_size):
+    def get_minibatch(self):
         """ randomly select training minibatch from dataset """
+        batch_size = self.batch_size
         batch_idx = np.random.choice(self.X_train.shape[1], batch_size)
         x_batch = np.copy(self.X_train[:, batch_idx])
         return x_batch
@@ -97,9 +98,9 @@ class DataSet:
         for v_idx in range(len(self.rs_idx)):
             #==== concat all cubes after first
             if v_idx == 0:
-                X = load_simulation_cube(v_idx)
+                X = self.load_simulation_cube(v_idx)
                 continue
-            X = np.concatenate([X, load_simulation_cube(v_idx)], axis=0)
+            X = np.concatenate([X, self.load_simulation_cube(v_idx)], axis=0)
         self.X = X
         print('Dataset successfully loaded')
 

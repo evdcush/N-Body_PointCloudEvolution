@@ -1,4 +1,6 @@
-from utils import dataset, intializer, saver, parser
+import numpy as np
+import tensorflow as tf
+from utils import data_loader, initializer, saver, parser
 import nn
 
 
@@ -8,18 +10,20 @@ import nn
 
 # Arg parser
 # ========================================
-args = parser.parse()
-saver = saver.TrainSaver(args)
-initializer = initializer.Initializer(args)
-dataset = dataset.Dataset(args)
+arg_parser = parser.Parser()
+args = arg_parser.parse()
+
+saver = saver.ModelSaver(args)
+sess_mgr = initializer.Initializer(args)
+dataset = data_loader.Dataset(args)
 
 
 
 # Dimensionality
 # ========================================
 N = 32**3
-M = args.graph_var = 14 # not used, but cached data was for M = 14
-batch_size = args.batch_size # MUST BE FIXED TO USE CACHED DATAz
+M = args.neighbors
+batch_size = args.batch_size
 
 # Training variables
 # ========================================
@@ -42,7 +46,7 @@ loss_func = nn.pbc_loss # NOW SCALED 1e5 BY DEFAULT ! <<<<<<<<<<<<<<<<<<
 
 # Initialize model parameters
 # ========================================
-initializer.initialize_params()
+sess_mgr.initialize_params()
 
 
 # Inputs
@@ -52,11 +56,11 @@ in_shape = (None, 32**3, 6)
 X_input = tf.placeholder(tf.float32, shape=in_shape)
 X_truth = tf.placeholder(tf.float32, shape=in_shape)
 #RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
-coo_feats = tf.placeholder(tf.float32, shape=(3, batch_size*N*M))
+coo_feats = tf.placeholder(tf.int32, shape=(3, batch_size*N*M))
 
 # Outputs
 # ========================================
-X_pred = nn.model_func_shift_inv(X_input, coo_feats, intializer, dims)
+X_pred = nn.model_func_shift_inv(X_input, coo_feats, sess_mgr, dims)
 
 
 # Optimization
@@ -66,14 +70,13 @@ error = loss_func(X_pred, X_truth)
 train = optimizer.minimize(error)
 
 
-
 # Initialize session and variables
 # ========================================
 # Session
-sess = initializer()
+sess = sess_mgr()
 
 # Variables
-initialize.initialize_graph()
+sess_mgr.initialize_graph()
 saver.init_sess_saver()
 
 
@@ -84,18 +87,18 @@ saver.init_sess_saver()
 
 # Load cubes
 dataset.load_simulation_data()
-dataset.X = dataset.normalize(dataset.X)
+dataset.X = dataset.normalize_uni(dataset.X)
 dataset.split_dataset()
 
 
 test_pred_shape = (200, N,) + (args.channels[-1],) # (200, N, 3)
-test_predictions  = np.zeros(test_pred_shape).astype(np.float32)
+test_predictions = np.zeros(test_pred_shape).astype(np.float32)
 test_loss = np.zeros((50,)).astype(np.float32)
 
 #=============================================================================
 # TRAINING
 #=============================================================================
-print('\nTraining:\n{}'.format('='*78))
+print(f'\nTraining:\n{"="*78}')
 for step in range(num_iters):
     # Data batching
     # ----------------
@@ -105,11 +108,9 @@ for step in range(num_iters):
     x_in    = _x_batch[0] # (b, N, 6)
     x_truth = _x_batch[1] # (b, N, 6)
 
-
-    # UNNECESSARY WITH CACHED DATA
     # Graph data
     # ----------------
-    csr_list = nn.get_kneighbor_list(x_in, M)
+    csr_list  = nn.get_kneighbor_list(x_in, M)
     coo_batch = nn.to_coo_batch(csr_list)
 
     fdict = {
@@ -134,17 +135,16 @@ saver.save_model_params(num_iters, sess)
 #=============================================================================
 # EVALUATION
 #=============================================================================
-print('\nEvaluation:\n{}'.format('='*78))
+print(f'\nEvaluation:\n{"="*78}')
 X_test = dataset.X_test
 for j in range(num_val_batches): # ---> range(50) for b = 4
     # Validation cubes
     # ----------------
     p, q = batch_size*j, batch_size*(j+1)
-    _x_test_batch = X_test[p:q]
+    _x_test_batch = X_test[:, p:q]
 
-    x_in = _x_test_batch[0]
+    x_in    = _x_test_batch[0]
     x_truth = _x_test_batch[1]
-
 
     # Graph data
     # ----------------
@@ -152,11 +152,10 @@ for j in range(num_val_batches): # ---> range(50) for b = 4
     coo_batch = nn.to_coo_batch(csr_list)
 
     fdict = {
-        X_input : x_in,
-        X_truth: x_truth,
+        X_input   : x_in,
+        X_truth   : x_truth,
         coo_feats : coo_batch
     }
-
 
     # Validation output
     # ----------------

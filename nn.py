@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from sklearn import kneighbors_graph, radius_neighbors_graph
+from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
 from scipy.sparse import coo_matrix
 
 
@@ -155,7 +155,7 @@ def network_func_shift_inv(X_in_edges, X_in_nodes, COO_feats, num_layers,
     # Input layer
     # ========================================
     H_in = include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=redshift)
-    H = activation(shift_inv_layer(H_in, COO_feats, dims, 0))
+    H = activation(shift_inv_layer(H_in, COO_feats, dims, model_vars.get_layer_vars(0),))
 
     # Hidden layers
     # ========================================
@@ -189,11 +189,10 @@ def model_func_shift_inv(X_in, COO_feats, model_vars, dims, activation=tf.nn.rel
         X_in_loc, X_in_vel = X_in[...,:3], X_in[...,3:]
         # ==== Network output
         net_out = network_func_shift_inv(edges, nodes, COO_feats, num_layers,
-                                        dims[:-1], activation, redshift)
-        #num_feats = net_out.get_shape().as_list()[-1]
+                                        dims[:-1], activation, model_vars, redshift)
 
         # ==== Scale network output and compute skip connections
-        loc_scalar, vel_scalar = model_vars.get_scalars
+        loc_scalar, vel_scalar = model_vars.get_scalars()
         H_out = net_out[...,:3]*loc_scalar + X_in_loc + X_in_vel*vel_scalar
 
         # ==== Concat velocity predictions
