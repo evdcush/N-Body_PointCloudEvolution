@@ -16,4 +16,5 @@ always_write_meta : false
 model_tag: ''
 
 rs_idx : [10, 19]
+za_idx : [0, 1]
 dataset_type : 'uni'

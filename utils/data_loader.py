@@ -33,25 +33,90 @@ oneSimu[...,16:19] : FastPM velocity
 class Dataset:
     seed = 12345  # for consistent splits
     path_simu  = os.environ['HOME'] + '/.Data/nbody_simulations'
-    uni_format = '/uniform/X_{:.4f}_.npy'
-    ZA_format  = '/ZA/ZA_{}.npy'
     def __init__(self, args):
-        self.rs_idx = args.rs_idx
         self.batch_size = args.batch_size
         self.dataset_type = args.dataset_type
         self.num_eval_samples = args.num_eval_samples
         self.assign_simulation_type()
 
     def assign_simulation_type(self):
-        """ Assigns attributes rs_val and path based on simulation type
+        """
+        """
+        pass
+
+    def split_dataset(self):
+        """ split dataset into training and evaluation sets
+        Both simulation datasets have their sample indices on
+        the 1st axis
+        """
+        num_val = self.num_eval_samples
+        np.random.seed(self.seed)
+        ridx = np.random.permutation(self.X.shape[1])
+        self.X_train, self.X_test = np.split(self.X[:, ridx], [-num_val], axis=1)
+        self.X = None # reduce memory overhead
+
+    def get_minibatch(self):
+        """ randomly select training minibatch from dataset """
+        batch_size = self.batch_size
+        batch_idx = np.random.choice(self.X_train.shape[1], batch_size)
+        x_batch = np.copy(self.X_train[:, batch_idx])
+        return x_batch
+
+    def normalize_dataset(self):
+        pass
+
+    def load_simulation_cube(self, idx):
+        pass
+
+    def load_simulation_data(self):
+        """ Loads all simulation cubes for the
+            training and evaluation datasets
+
+        # Dataset dims
+        uniform : (num_rs, 1000, 32**3, 6)
+             ZA : (num_rs, 1000, 32, 32, 32, 19)
+        """
+        for v_idx in range(len(self.data_idx)):
+            #==== concat all cubes after first
+            if v_idx == 0:
+                X = self.load_simulation_cube(v_idx)
+                continue
+            X = np.concatenate([X, self.load_simulation_cube(v_idx)], axis=0)
+        self.X = X
+        print('Dataset successfully loaded')
+
+class ZA_Dataset(Dataset):
+    pass
+
+class Uni_Dataset(Dataset):
+    pass
+
+
+
+'''
+class Dataset:
+    seed = 12345  # for consistent splits
+    path_simu  = os.environ['HOME'] + '/.Data/nbody_simulations'
+    uni_format = '/uniform/X_{:.4f}_.npy'
+    ZA_format  = '/ZA/ZA_{}.npy'
+    def __init__(self, args):
+        self.batch_size = args.batch_size
+        self.dataset_type = args.dataset_type
+        self.num_eval_samples = args.num_eval_samples
+        self.assign_simulation_type()
+
+    def assign_simulation_type(self):
+        """ Assigns attributes data_val and path based on simulation type
         """
         simu_type = self.dataset_type
         if simu_type == 'uni':
             cube_type = self.uni_format
-            self.rs_val = [UNI_REDSHIFTS[i] for i in self.rs_idx]
+            self.data_idx = args.rs_idx
+            self.data_val = [UNI_REDSHIFTS[i] for i in self.data_idx]
         else:
             cube_type = self.ZA_format
-            self.rs_val = [ZA_STEPS[i] for i in self.rs_idx]
+            self.data_idx = args.za_idx
+            self.data_val = [ZA_STEPS[i] for i in self.data_idx]
         self.path = f'{self.path_simu}{cube_type}'
 
     def split_dataset(self):
@@ -79,7 +144,7 @@ class Dataset:
 
     def load_simulation_cube(self, idx):
         #==== Format path to cube file
-        val = self.rs_val[idx]
+        val = self.data_val[idx]
         cube_path = self.path.format(val)
         print(f'Loading cube from {cube_path}')
         #==== Load cube
@@ -95,7 +160,7 @@ class Dataset:
         uniform : (num_rs, 1000, 32**3, 6)
              ZA : (num_rs, 1000, 32, 32, 32, 19)
         """
-        for v_idx in range(len(self.rs_idx)):
+        for v_idx in range(len(self.data_idx)):
             #==== concat all cubes after first
             if v_idx == 0:
                 X = self.load_simulation_cube(v_idx)
@@ -104,8 +169,4 @@ class Dataset:
         self.X = X
         print('Dataset successfully loaded')
 
-
-
-
-
-
+'''
