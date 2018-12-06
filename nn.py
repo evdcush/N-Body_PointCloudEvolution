@@ -527,7 +527,7 @@ def periodic_boundary_dist(readout_full, x_truth):
     dist = tf.minimum(tf.minimum(d1, d2), d3)
     return dist
 
-
+# diff for ZA, temp try somethin else
 def pbc_loss(x_pred, x_truth, scale_error=True):
     """ MSE over full dims with periodic boundary conditions
     Args:
@@ -540,6 +540,4 @@ def pbc_loss(x_pred, x_truth, scale_error=True):
     if scale_error:
         error = error * 1e5
     return error
-
-
 
