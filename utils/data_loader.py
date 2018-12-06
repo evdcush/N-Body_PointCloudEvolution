@@ -7,7 +7,7 @@ UNI_REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
 
 ZA_STEPS = ['001', '002', '003', '004', '005',
             '006', '007', '008', '009', '010']
-
+import code
 """
 
 # ZA Data Features
@@ -34,15 +34,15 @@ class Dataset:
     seed = 12345  # for consistent splits
     path_simu  = os.environ['HOME'] + '/.Data/nbody_simulations'
     def __init__(self, args):
-        self.batch_size = args.batch_size
         self.dataset_type = args.dataset_type
+        self.batch_size = args.batch_size
         self.num_eval_samples = args.num_eval_samples
-        self.assign_simulation_type()
+        self.z_idx = args.z_idx[self.dataset_type]
 
-    def assign_simulation_type(self):
-        """
-        """
-        pass
+        #=== Load data
+        filenames = [self.fname.format(self.cube_steps[z]) for z in self.z_idx]
+        paths = [f'{self.path_simu}/{fname}' for fname in filenames]
+        self.load_simulation_data(paths) # assigns self.X
 
     def split_dataset(self):
         """ split dataset into training and evaluation sets
@@ -62,111 +62,83 @@ class Dataset:
         x_batch = np.copy(self.X_train[:, batch_idx])
         return x_batch
 
-    def normalize_dataset(self):
-        pass
+    def normalize(self):
+        raise NotImplementedError
 
-    def load_simulation_cube(self, idx):
-        pass
-
-    def load_simulation_data(self):
-        """ Loads all simulation cubes for the
-            training and evaluation datasets
-
-        # Dataset dims
-        uniform : (num_rs, 1000, 32**3, 6)
-             ZA : (num_rs, 1000, 32, 32, 32, 19)
-        """
-        for v_idx in range(len(self.data_idx)):
-            #==== concat all cubes after first
-            if v_idx == 0:
-                X = self.load_simulation_cube(v_idx)
+    def load_simulation_data(self, paths):
+        for i, p in enumerate(paths):
+            if i == 0:
+                X = np.expand_dims(np.load(p), 0)
                 continue
-            X = np.concatenate([X, self.load_simulation_cube(v_idx)], axis=0)
+            X = np.concatenate([X, np.expand_dims(np.load(p), 0)], axis=0)
         self.X = X
-        print('Dataset successfully loaded')
+
+
 
 class ZA_Dataset(Dataset):
-    pass
+    fname = '/ZA/ZA_{}.npy'
+    cube_steps = ZA_STEPS
+    def __init__(self, args):
+        super().__init__(args)
+        #filename = self.name_format(self.cube_steps[self.z_idx])
+        #path = f'{self.path_simu}/{filename}'
+        self.normalize()
+        self.split_dataset()
+
+    def normalize(self):
+        """ convert to positions and concat respective vels
+        For each simulation, the shape of data is 32*32*32*19.
+
+        32*32*32 is the number of particles and,
+        they are on the uniform 32*32*32 grid.
+
+        ## The meaning of the 19 columns is as follows:
+        oneSimu[...,  1:4] : ZA displacements (Dx,Dy,Dz)
+        oneSimu[...,  4:7] : 2LPT displacements
+        oneSimu[..., 7:10] : FastPM displacements
+        oneSimu[...,10:13] : ZA velocity
+        oneSimu[...,13:16] : 2LPT velocity
+        oneSimu[...,16:19] : FastPM velocity
+        """
+        #=== formatting data
+        reshape_dims = (1, 1000, 32**3, 3)
+        mrng = range(2,130,4)
+        q = np.einsum('ijkl->kjli',np.array(np.meshgrid(mrng, mrng, mrng)))
+
+        #=== get ZA cubes
+        ZA_pos = (self.X[...,1:4] + q).reshape(*reshape_dims)
+        ZA_vel = self.X[...,10:13].reshape(*reshape_dims)
+        X_ZA = np.concatenate([ZA_pos, ZA_vel], axis=-1)
+
+        #=== get FastPM cubes
+        FPM_pos = (self.X[...,7:10] + q).reshape(*reshape_dims)
+        FPM_vel = self.X[...,16:19].reshape(*reshape_dims)
+        X_FPM = np.concatenate([FPM_pos, FPM_vel], axis=-1)
+
+        #=== Concat ZA and FastPM together, like typical redshift format
+        self.X = np.concatenate([X_ZA, X_FPM], axis=0) # (2, 1000, 32**3, 6)
+
+
+
 
 class Uni_Dataset(Dataset):
-    pass
-
-
-
-'''
-class Dataset:
-    seed = 12345  # for consistent splits
-    path_simu  = os.environ['HOME'] + '/.Data/nbody_simulations'
-    uni_format = '/uniform/X_{:.4f}_.npy'
-    ZA_format  = '/ZA/ZA_{}.npy'
+    fname = '/uniform/X_{:.4f}_.npy'
+    cube_steps  = UNI_REDSHIFTS
     def __init__(self, args):
-        self.batch_size = args.batch_size
-        self.dataset_type = args.dataset_type
-        self.num_eval_samples = args.num_eval_samples
-        self.assign_simulation_type()
+        super().__init__(args)
+        filenames = [self.name_format(self.cube_steps[z]) for z in self.z_idx]
+        paths = [f'{self.path_simu}/{fname}' for fname in filenames]
+        self.load_simulation_data(paths) # assigns self.X
+        self.normalize()
+        self.split_dataset()
 
-    def assign_simulation_type(self):
-        """ Assigns attributes data_val and path based on simulation type
-        """
-        simu_type = self.dataset_type
-        if simu_type == 'uni':
-            cube_type = self.uni_format
-            self.data_idx = args.rs_idx
-            self.data_val = [UNI_REDSHIFTS[i] for i in self.data_idx]
-        else:
-            cube_type = self.ZA_format
-            self.data_idx = args.za_idx
-            self.data_val = [ZA_STEPS[i] for i in self.data_idx]
-        self.path = f'{self.path_simu}{cube_type}'
+    def normalize(self):
+        self.X[...,:3] = self.X[...,:3] / 32.0
 
-    def split_dataset(self):
-        """ split dataset into training and evaluation sets
-        Both simulation datasets have their sample indices on
-        the 1st axis
-        """
-        num_val = self.num_eval_samples
-        np.random.seed(self.seed)
-        ridx = np.random.permutation(self.X.shape[1])
-        self.X_train, self.X_test = np.split(self.X[:, ridx], [-num_val], axis=1)
-        self.X = None # reduce memory overhead
 
-    def get_minibatch(self):
-        """ randomly select training minibatch from dataset """
-        batch_size = self.batch_size
-        batch_idx = np.random.choice(self.X_train.shape[1], batch_size)
-        x_batch = np.copy(self.X_train[:, batch_idx])
-        return x_batch
 
-    @staticmethod
-    def normalize_uni(X):
-        X[...,:3] = X[...,:3] / 32.0
-        return X
 
-    def load_simulation_cube(self, idx):
-        #==== Format path to cube file
-        val = self.data_val[idx]
-        cube_path = self.path.format(val)
-        print(f'Loading cube from {cube_path}')
-        #==== Load cube
-        cube = np.load(cube_path).astype(np.float32)
-        X = np.expand_dims(cube, 0)
-        return X
 
-    def load_simulation_data(self):
-        """ Loads all simulation cubes for the
-            training and evaluation datasets
-
-        # Dataset dims
-        uniform : (num_rs, 1000, 32**3, 6)
-             ZA : (num_rs, 1000, 32, 32, 32, 19)
-        """
-        for v_idx in range(len(self.data_idx)):
-            #==== concat all cubes after first
-            if v_idx == 0:
-                X = self.load_simulation_cube(v_idx)
-                continue
-            X = np.concatenate([X, self.load_simulation_cube(v_idx)], axis=0)
-        self.X = X
-        print('Dataset successfully loaded')
-
-'''
+def get_dataset(args):
+    dset = args.dataset_type
+    return ZA_Dataset(args) if dset == 'ZA' else Uni_Dataset(args)

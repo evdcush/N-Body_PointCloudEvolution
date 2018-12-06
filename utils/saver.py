@@ -4,21 +4,23 @@ import tensorflow
 import numpy
 
 
+# Naming formats
+# ==============
+ZA_naming  = dict(model='SI_ZA-FastPM_{}', cube='X_{}')
+UNI_naming = dict(model='SI_{}-{}', cube='X_{}-{}')
+naming_map = {'ZA': ZA_naming, 'UNI': UNI_naming}
+
+
 class ModelSaver:
     #==== directories
     params_dir  = 'Session'
     results_dir = 'Results'
     experiments_dir = 'Experiments'
-
-    #==== Naming formats
-    model_name_format = 'SI_{}{}-{}'
-    cube_name_format  = 'X_{}-{}_{}'
-
     def __init__(self, args):
-        self.rs_idx  = args.rs_idx
         self.num_iters = args.num_iters
         self.model_tag = args.model_tag
         self.dataset_type = args.dataset_type
+        self.z_idx = args.z_idx[self.dataset_type]
         self.always_write_meta = args.always_write_meta
 
         # Model params
@@ -39,19 +41,19 @@ class ModelSaver:
         if self.restore:
             self.restore_model_parameters()
 
-
     def assign_names(self):
         self.start_time = time.time()
-        zidx  = self.rs_idx
-        dset  = self.dataset_type
-        mname = self.model_name_format.format(dset, *zidx)
+        #==== key into naming and format args
+        dset = self.dataset_type
+        zidx = self.z_idx
+        naming = naming_map[dset]
+
+        #==== format names
+        mname = naming['model'].format(*zidx)
+        self.cube_name = naming['cube'].format(*zidx)
         if self.model_tag != '':
             mname = f'{mname}_{self.model_tag}'
         self.model_name = mname
-
-        #==== Cube file names
-        self.cube_name_truth = self.cube_name_format.format(*zidx, 'truth')
-        self.cube_name_pred = self.cube_name_format.format(*zidx, 'prediction')
 
 
     def assign_pathing(self):
@@ -90,8 +92,9 @@ class ModelSaver:
 
 
     def save_model_cube(self, cube, ground_truth=False):
-        name = self.cube_name_truth if ground_truth else self.cube_name_pred
-        path = f'{self.results_path}/{name}'
+        #name = self.cube_name_truth if ground_truth else self.cube_name_pred
+        suffix = 'truth' if ground_truth else 'prediction'
+        path = f'{self.results_path}/{self.cube_name}_{suffix}'
         numpy.save(path, cube)
         print(f'Saved cube: {path}')
 
@@ -115,7 +118,12 @@ class ModelSaver:
 
 
     def print_evaluation_results(self, err):
-        zx, zy = self.rs_idx
+        #zx, zy = self.z_idx
+        if self.dataset_type == 'ZA':
+            zx, zy = 'ZA', 'FastPM'
+        else:
+            zx, zy = self.z_idx
+
         #==== Statistics
         err_avg = numpy.mean(err)
         err_std = numpy.std(err)

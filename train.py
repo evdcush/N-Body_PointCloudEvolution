@@ -15,7 +15,7 @@ args = arg_parser.parse()
 
 saver = saver.ModelSaver(args)
 sess_mgr = initializer.Initializer(args)
-dataset = data_loader.Dataset(args)
+dataset = data_loader.get_dataset(args)
 
 
 
@@ -30,7 +30,7 @@ batch_size = args.batch_size
 learning_rate = 0.01
 checkpoint = 250 #args.checkpoint
 num_iters  = args.num_iters
-num_val_batches = 50 #args.num_test // batch_size
+num_val_batches = args.num_eval_samples // batch_size
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
 
 
@@ -52,7 +52,7 @@ sess_mgr.initialize_params()
 # Inputs
 # ========================================
 # Placeholders
-in_shape = (None, 32**3, 6)
+in_shape = (None, N, 6)
 X_input = tf.placeholder(tf.float32, shape=in_shape)
 X_truth = tf.placeholder(tf.float32, shape=in_shape)
 #RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
@@ -78,17 +78,6 @@ sess = sess_mgr()
 # Variables
 sess_mgr.initialize_graph()
 saver.init_sess_saver()
-
-
-
-#==============================================================================
-# Load data
-#==============================================================================
-
-# Load cubes
-dataset.load_simulation_data()
-dataset.X = dataset.normalize_uni(dataset.X)
-dataset.split_dataset()
 
 
 test_pred_shape = (200, N,) + (args.channels[-1],) # (200, N, 3)

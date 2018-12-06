@@ -10,7 +10,7 @@ class Initializer:
         self.seed = args.seed
         self.restore = args.restore
         self.channels = args.channels
-        self.var_scope = args.var_scope.format(*args.rs_idx)
+        self.var_scope = args.var_scope.format(args.dataset_type)
         self.scalar_val = args.scalar_val
         self.num_layer_W = args.num_layer_W
 
