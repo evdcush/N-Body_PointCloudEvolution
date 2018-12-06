@@ -106,12 +106,12 @@ class ZA_Dataset(Dataset):
         q = np.einsum('ijkl->kjli',np.array(np.meshgrid(mrng, mrng, mrng)))
 
         #=== get ZA cubes
-        ZA_pos = (self.X[...,1:4] + q).reshape(*reshape_dims)
+        ZA_pos = (self.X[...,1:4] + q).reshape(*reshape_dims) / 32.0
         ZA_vel = self.X[...,10:13].reshape(*reshape_dims)
         X_ZA = np.concatenate([ZA_pos, ZA_vel], axis=-1)
 
         #=== get FastPM cubes
-        FPM_pos = (self.X[...,7:10] + q).reshape(*reshape_dims)
+        FPM_pos = (self.X[...,7:10] + q).reshape(*reshape_dims) / 32.0
         FPM_vel = self.X[...,16:19].reshape(*reshape_dims)
         X_FPM = np.concatenate([FPM_pos, FPM_vel], axis=-1)
 
