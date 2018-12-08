@@ -109,8 +109,6 @@ class ZA_Dataset(Dataset):
         ZA_pos = (self.X[...,1:4] + q).reshape(*reshape_dims)
         ZA_vel = self.X[...,10:13].reshape(*reshape_dims)
         X_ZA = np.concatenate([ZA_pos, ZA_vel], axis=-1)
-        #import code
-        #code.interact(local=dict(globals(), **locals()))
 
         #=== get FastPM cubes
         FPM_pos = (self.X[...,7:10] + q).reshape(*reshape_dims)
@@ -119,11 +117,6 @@ class ZA_Dataset(Dataset):
 
         #=== Concat ZA and FastPM together, like typical redshift format
         self.X = np.concatenate([X_ZA, X_FPM], axis=0) # (2, 1000, 32**3, 6)
-
-        ## DIRTY RESCALE
-        loc_min = np.min(self.X[...,:3])
-        loc_max = np.max(self.X[...,:3])
-        self.X[...,:3] = (self.X[...,:3] - loc_min) / (loc_max - loc_min)
 
 
 

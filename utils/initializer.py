@@ -88,6 +88,5 @@ class Initializer:
     def __call__(self):
         """ return sess """
         if not hasattr(self, 'sess'):
-            print('\nin initializer __call__, no sess attrib\n')
             self.initialize_session()
         return self.sess

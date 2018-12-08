@@ -199,7 +199,8 @@ def model_func_shift_inv(X_in, COO_feats, model_vars, dims, activation=tf.nn.rel
         if net_out.get_shape().as_list()[-1] > 3:
             H_vel = net_out[...,3:]*vel_scalar + X_in_vel
             H_out = tf.concat([H_out, H_vel], axis=-1)
-        return get_readout(H_out)
+        #return get_readout(H_out)
+        return H_out
 
 
 

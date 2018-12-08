@@ -15,7 +15,7 @@ args = arg_parser.parse()
 
 saver = saver.ModelSaver(args)
 sess_mgr = initializer.Initializer(args)
-dataset = data_loader.get_dataset(args)
+dataset  = data_loader.get_dataset(args)
 
 
 
@@ -66,7 +66,7 @@ X_pred = nn.model_func_shift_inv(X_input, coo_feats, sess_mgr, dims)
 # Optimization
 # ========================================
 optimizer = tf.train.AdamOptimizer(learning_rate)
-error = loss_func(X_pred, X_truth)
+error = loss_func(X_pred, X_truth, scale_error=False)
 train = optimizer.minimize(error)
 
 
