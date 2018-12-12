@@ -204,8 +204,6 @@ def model_func_shift_inv(X_in, COO_feats, model_vars, dims, activation=tf.nn.rel
 
 
 
-
-
 #=============================================================================
 # Graph, adjacency functions
 #=============================================================================
@@ -313,21 +311,39 @@ def get_kneighbor_list(X_in, M, offset_idx=False, include_self=False):
 # RADIUS graph ops
 #=============================================================================
 
-def radius_graph_fn(x, R):
+def radius_graph_fn(x, R, include_self=True):
     """ Wrapper for sklearn.Neighbors.radius_neighbors_graph function
 
-    Args:
-        x (ndarray): input data of shape (N, D), where x[:,:3] == coordinates
-        R (float): radius for search
-    """
-    return radius_neighbors_graph(x[:,:3], R, include_self=True).astype(np.float32)
+    Params
+    ------
+    x : ndarray.float32; (N, D)
+        input data, where x[:,:3] == particle coordinates
+    R : float
+        neighborhood search radius
 
-def get_radNeighbor_coo(X_in, R):
+    Returns
+    -------
+    xR_ngraph : scipy.CSR; (N,N)
+        sparse matrix representing each particle's neighboring
+        particles within radius R
+    """
+    xR_ngraph = radius_neighbors_graph(x[...,:3], R, include_self=include_self)
+    return xR_ngraph.astype(np.float32)
+
+def get_radius_graph_COO(X_in, R):
+    """ Normalize radius neighbor graph by number of neighbors
+
+    This function prepares a single sample for direct conversion from
+    scipy CSR format to tensorflow's SparseTensor, which is structured
+    much like a modified scipy COO matrix.
+
+    The matrix data is divided by the number of neighbors for each respective
+    particle for the graph convolution operation in the network layer.
+    """
     N = X_in.shape[0]
     # just easier to diff indptr for now
     # get csr
     rad_csr = radius_graph_fn(X_in, R)
-    #code.interact(local=dict(globals(), **locals())) # DEBUGGING-use
     rad_coo = rad_csr.tocoo()
 
     # diff data for matmul op select

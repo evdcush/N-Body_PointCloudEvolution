@@ -6,6 +6,7 @@ import numpy
 
 # Naming formats
 # ==============
+HOME = os.environ['HOME']
 ZA_naming  = dict(model='SI_ZA-FastPM_{}', cube='X_{}')
 UNI_naming = dict(model='SI_{}-{}', cube='X_{}-{}')
 naming_map = {'ZA': ZA_naming, 'UNI': UNI_naming}
@@ -15,7 +16,7 @@ class ModelSaver:
     #==== directories
     params_dir  = 'Session'
     results_dir = 'Results'
-    experiments_dir = 'Experiments'
+    experiments_dir = f"{HOME}/.Data/Experiments_Nbody"
     def __init__(self, args):
         self.num_iters = args.num_iters
         self.model_tag = args.model_tag
