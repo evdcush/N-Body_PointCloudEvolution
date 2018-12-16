@@ -7,7 +7,6 @@ UNI_REDSHIFTS = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792, 1.6141, 1.3385,
 
 ZA_STEPS = ['001', '002', '003', '004', '005',
             '006', '007', '008', '009', '010']
-import code
 """
 
 # ZA Data Features
@@ -32,16 +31,16 @@ oneSimu[...,16:19] : FastPM velocity
 
 class Dataset:
     seed = 12345  # for consistent splits
-    path_simu  = os.environ['HOME'] + '/.Data/nbody_simulations'
     def __init__(self, args):
         self.dataset_type = args.dataset_type
         self.batch_size = args.batch_size
         self.num_eval_samples = args.num_eval_samples
+        self.simulation_data_path = args.simulation_data_path
         self.z_idx = args.z_idx[self.dataset_type]
 
         #=== Load data
         filenames = [self.fname.format(self.cube_steps[z]) for z in self.z_idx]
-        paths = [f'{self.path_simu}/{fname}' for fname in filenames]
+        paths = [f'{self.simulation_data_path}/{fname}' for fname in filenames]
         self.load_simulation_data(paths) # assigns self.X
 
     def split_dataset(self):
@@ -53,7 +52,7 @@ class Dataset:
         np.random.seed(self.seed)
         ridx = np.random.permutation(self.X.shape[1])
         self.X_train, self.X_test = np.split(self.X[:, ridx], [-num_val], axis=1)
-        self.X = None # reduce memory overhead
+        #self.X = None # reduce memory overhead
 
     def get_minibatch(self):
         """ randomly select training minibatch from dataset """
@@ -73,17 +72,35 @@ class Dataset:
             X = np.concatenate([X, np.expand_dims(np.load(p), 0)], axis=0)
         self.X = X
 
-
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 class ZA_Dataset(Dataset):
     fname = '/ZA/ZA_{}.npy'
     cube_steps = ZA_STEPS
     def __init__(self, args):
         super().__init__(args)
-        #filename = self.name_format(self.cube_steps[self.z_idx])
-        #path = f'{self.path_simu}/{filename}'
-        self.normalize()
+        self.get_za_fpm_data()
+        #self.normalize()
         self.split_dataset()
+
+    def get_za_fpm_data(self):
+        """ NO NORMALIZATION """
+        #=== formatting data
+        reshape_dims = (1, 1000, 32**3, 3)
+
+        #=== get ZA cubes
+        ZA_disp = (self.X[...,1:4]).reshape(*reshape_dims)
+        ZA_vel  = self.X[...,10:13].reshape(*reshape_dims)
+        X_ZA = np.concatenate([ZA_disp, ZA_vel], axis=-1)
+
+        #=== get FastPM cubes
+        FPM_disp = (self.X[...,7:10]).reshape(*reshape_dims)
+        FPM_vel  = self.X[...,16:19].reshape(*reshape_dims)
+        X_FPM = np.concatenate([FPM_disp, FPM_vel], axis=-1)
+
+        #=== Concat ZA and FastPM together, like typical redshift format
+        self.X = np.concatenate([X_ZA, X_FPM], axis=0) # (2, 1000, 32**3, 6)
+
 
     def normalize(self):
         """ convert to positions and concat respective vels
@@ -119,8 +136,7 @@ class ZA_Dataset(Dataset):
         self.X = np.concatenate([X_ZA, X_FPM], axis=0) # (2, 1000, 32**3, 6)
 
 
-
-
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 class Uni_Dataset(Dataset):
     fname = '/uniform/X_{:.4f}_.npy'
@@ -128,17 +144,14 @@ class Uni_Dataset(Dataset):
     def __init__(self, args):
         super().__init__(args)
         filenames = [self.name_format(self.cube_steps[z]) for z in self.z_idx]
-        paths = [f'{self.path_simu}/{fname}' for fname in filenames]
+        paths = [f'{self.simulation_data_path}/{fname}' for fname in filenames]
         self.load_simulation_data(paths) # assigns self.X
-        self.normalize()
         self.split_dataset()
 
     def normalize(self):
         self.X[...,:3] = self.X[...,:3] / 32.0
 
-
-
-
+#------------------------------------------------------------------------------
 
 def get_dataset(args):
     dset = args.dataset_type

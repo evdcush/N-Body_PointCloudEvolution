@@ -1,3 +1,4 @@
+import code
 import numpy as np
 import tensorflow as tf
 from utils import data_loader, initializer, saver, parser
@@ -16,7 +17,7 @@ args = arg_parser.parse()
 saver = saver.ModelSaver(args)
 sess_mgr = initializer.Initializer(args)
 dataset  = data_loader.get_dataset(args)
-
+#dataset.normalize()
 
 
 # Dimensionality
@@ -39,15 +40,9 @@ save_checkpoint = lambda step: (step+1) % checkpoint == 0
 dims = [batch_size, N, M]
 loss_func = nn.pbc_loss # NOW SCALED 1e5 BY DEFAULT ! <<<<<<<<<<<<<<<<<<
 
-
-#==============================================================================
-# Setup computational graph
-#==============================================================================
-
 # Initialize model parameters
 # ========================================
 sess_mgr.initialize_params()
-
 
 # Inputs
 # ========================================

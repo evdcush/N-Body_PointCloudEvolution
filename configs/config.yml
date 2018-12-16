@@ -1,7 +1,9 @@
 ---
 
+simulation_data_path: ~/.Data/nbody_simulations # DATASET PATH
+experiments_dir: ~/.Data/Experiments/Nbody      # MODEL OUTPUTS
 seed : 77743196
-var_scope : 'params_{}'
+var_scope : params_{}
 
 channels : [9, 32, 16, 8, 3]
 num_layer_W : 4  # weights per layer; 4 for shiftinv
@@ -18,4 +20,4 @@ model_tag: ''
 z_idx :
     ZA  : [0]
     UNI : [10, 19]
-dataset_type : 'ZA' # Either ZA or UNI
+dataset_type : ZA # Either ZA or UNI

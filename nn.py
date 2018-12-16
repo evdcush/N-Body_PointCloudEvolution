@@ -564,3 +564,23 @@ def pbc_loss(x_pred, x_truth, scale_error=True):
         error = error * 1e5
     return error
 
+###############################################################################
+#                                                                             #
+#                    ████████╗ ██████╗ ██████╗  ██████╗                       #
+#                    ╚══██╔══╝██╔═══██╗██╔══██╗██╔═══██╗                      #
+#                       ██║   ██║   ██║██║  ██║██║   ██║                      #
+#                       ██║   ██║   ██║██║  ██║██║   ██║                      #
+#                       ██║   ╚██████╔╝██████╔╝╚██████╔╝                      #
+#                       ╚═╝    ╚═════╝ ╚═════╝  ╚═════╝                       #
+#                                                                             #
+###############################################################################
+
+# https://arxiv.org/abs/1506.02025 # spatial trans
+# https://arxiv.org/abs/1706.03762 # attn all u need (nlp)
+# >>-----> https://arxiv.org/pdf/1710.10903.pdf  # graph attention nets GATs
+
+def attn_layer(foo):
+    """ see p.3,4 of GATs, eqns 1,2,6, fig1
+        auth's TF code: https://github.com/PetarV-/GAT
+    """
+    pass
