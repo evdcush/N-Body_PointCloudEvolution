@@ -11,16 +11,21 @@ from scipy.sparse import coo_matrix
   * also, passing var_scope is unncessary with Initializer
 """
 
-# Shift invariant nodes
-# ========================================
 def include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=None):
     """ Broadcast node features to edges for input layer
-    Args:
-        X_in_edges (tensor):   (c, 3), input edge features (relative pos of neighbors)
-        X_in_nodes (tensor): (b*N, 3), input node features (velocities)
-        COO_feats (tensor): (3, c), rows, cols, cube indices (respectively)
-    Returns:
-        X_in_graph (tensor): (c, 9), input with node features broadcasted to edges
+    Params
+    ------
+    X_in_edges : tensor; (c,3)
+        input edges features (relative pos of neighbors)
+    X_in_nodes : tensor; (b*N, 3)
+        input node features (velocities)
+    COO_feats : tensor; (3, c)
+        rows, cols, cube indices
+
+    Returns
+    -------
+    X_in : tensor; (c,9)
+        model graph input, with node features broadcasted to edges
     """
     # ==== get row, col indices
     row_idx = COO_feats[0]
@@ -31,16 +36,14 @@ def include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=None):
     node_cols = tf.gather_nd(X_in_nodes, tf.expand_dims(col_idx, axis=1))
 
     # ==== full node, edges graph
-    X_in_graph = tf.concat([X_in_edges, node_rows, node_cols], axis=1) # (c, 9)
+    X_in = tf.concat([X_in_edges, node_rows, node_cols], axis=1) # (c, 9)
 
     # ==== broadcast redshifts
     if redshift is not None:
-        X_in_graph = tf.concat([X_in_graph, redshift], axis=1) # (c, 10)
-    return X_in_graph
+        X_in = tf.concat([X_in, redshift], axis=1) # (c, 10)
+    return X_in
 
 
-# Shift invariant edges
-# ========================================
 def get_input_features_shift_inv(X_in, coo, dims):
     """ get edges and nodes with TF ops
     get relative distances of each particle from its M neighbors
@@ -62,20 +65,26 @@ def get_input_features_shift_inv(X_in, coo, dims):
     return tf.reshape(edges, [-1, 3]), nodes
 
 
-# Pooled graph conv
-# ========================================
-def pool_shift_inv_graph_conv(h, pool_idx, num_segs, broadcast):
+def shift_inv_conv(h, pool_idx, num_segs, broadcast):
     """
-    Args:
-        h (tensor): has shape (c, k), row-major order
-        pool_idx (numpy array): has shape (c),
-            must be row idx of non-zero entries to pool over columns
-            must be column idx of non-zero entries to pool over rows
-        num_segs (int): number of segments in h (how many particles)
-        broadcast (bool): if True, after pooling re-broadcast to original shape
+    Params
+    ------
+    h : tensor; (c, k)
+        data to be avgd, row-major order
+    pool_idx : tensor; (c,)
+        indices for pooling over segments in data
+        - column indices ---> pools rows
+        - row indices    ---> pools cols
+        - cube indices   ---> rows and cols
+    num_segs : int
+        number of segments in h (eg, num of particles in h)
+    broadcast : bool
+        re-broadcast to original shape after pooling
 
-    Returns:
-        tensor of shape (c, k) if broadcast, else (b*N, k)
+    Returns
+    -------
+    pooled_conv : tensor
+        shape (c, k) if broadcast else (num_segs, k)
     """
     pooled_conv = tf.unsorted_segment_mean(h, pool_idx, num_segs)
     if broadcast:
@@ -115,26 +124,25 @@ def shift_inv_layer(H_in, COO_feats, bN, layer_vars, is_last=False):
     # Helper funcs
     # ========================================
     def _pool(H, idx, broadcast=True):
-
-        return pool_shift_inv_graph_conv(H, idx, b*N, broadcast)
+        return shift_inv_conv(H, idx, b*N, broadcast)
 
     def _left_mult(h, W):
         return tf.einsum('ck,kq->cq', h, W)
 
     # Layer forward pass
     # ========================================
-    # H1 - no pooling
+    # H1 : no pooling
     H1 = _left_mult(H_in, W1) # (c, q)
 
-    # H2 - pool rows
+    # H2 : pool rows
     H_pooled_rows = _pool(H_in, col_idx)
     H2 = _left_mult(H_pooled_rows, W2) # (c, q)
 
-    # H3 - pool cols
+    # H3 : pool cols
     H_pooled_cols = _pool(H_in, row_idx)
     H3 = _left_mult(H_pooled_cols, W3) # (c, q)
 
-    # H4 - pool cubes
+    # H4 : pool cubes
     H_pooled_all = _pool(H_in, cube_idx)
     H4 =  _left_mult(H_pooled_all, W4) # (c, q)
 
@@ -190,8 +198,7 @@ def model_func_shift_inv(X_in, COO_feats, model_vars, dims, activation=tf.nn.rel
         # ==== Network output
         net_out = network_func_shift_inv(edges, nodes, COO_feats, num_layers,
                                         dims[:-1], activation, model_vars, redshift)
-
-        # ==== Scale network output and compute skip connections
+        # ==== Scale network output
         loc_scalar, vel_scalar = model_vars.get_scalars()
         H_out = net_out[...,:3]*loc_scalar + X_in_loc + X_in_vel*vel_scalar
 
@@ -199,7 +206,6 @@ def model_func_shift_inv(X_in, COO_feats, model_vars, dims, activation=tf.nn.rel
         if net_out.get_shape().as_list()[-1] > 3:
             H_vel = net_out[...,3:]*vel_scalar + X_in_vel
             H_out = tf.concat([H_out, H_vel], axis=-1)
-        #return get_readout(H_out)
         return H_out
 
 
