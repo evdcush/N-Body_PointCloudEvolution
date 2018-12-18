@@ -76,7 +76,8 @@ save_checkpoint = lambda step: (step+1) % checkpoint == 0
 # Network config
 # ========================================
 dims = [batch_size, N, M]
-loss_func = nn.pbc_loss # NOW SCALED 1e5 BY DEFAULT ! <<<<<<<<<<<<<<<<<<
+#loss_func = nn.pbc_loss
+loss_func = nn.loss_za if args.dataset_type == 'ZA' else nn.pbc_loss
 
 # Initialize model parameters
 # ========================================
@@ -85,21 +86,25 @@ sess_mgr.initialize_params()
 # Inputs
 # ========================================
 # Placeholders
-in_shape = (None, N, 6)
+#in_shape = (None, N, 6)
+in_shape = (None, N, 3)
 X_input = tf.placeholder(tf.float32, shape=in_shape)
-X_truth = tf.placeholder(tf.float32, shape=in_shape)
-#RS_in   = tf.placeholder(tf.float32, shape=(None, 1))
+#X_truth = tf.placeholder(tf.float32, shape=in_shape)
+actual_error = tf.placeholder(tf.float32, shape=in_shape)
 coo_feats = tf.placeholder(tf.int32, shape=(3, batch_size*N*M))
+za_diagonal = tf.placeholder(tf.int32, shape=(batch_size*N*M))
 
 # Outputs
 # ========================================
-X_pred = nn.model_func_shift_inv(X_input, coo_feats, sess_mgr, dims)
-
+#X_pred = nn.model_func_shift_inv(X_input, coo_feats, sess_mgr, dims)
+pred_error = nn.model_func_shift_inv_za(X_input, coo_feats, za_diagonal, sess_mgr, dims)
 
 # Optimization
 # ========================================
 optimizer = tf.train.AdamOptimizer(learning_rate)
-error = loss_func(X_pred, X_truth, scale_error=False)
+#error = loss_func(X_pred, X_truth, scale_error=False)
+error = loss_func(pred_error, actual_error)
+
 train = optimizer.minimize(error)
 
 
@@ -133,7 +138,24 @@ for step in range(num_iters):
     # Graph data
     # ----------------
     csr_list  = nn.get_kneighbor_list(x_in, M)
-    coo_batch = nn.to_coo_batch(csr_list)
+    #coo_batch = nn.to_coo_batch(csr_list)
+#=============================================================================#
+#                                                                             #
+#           __                              __        __                      #
+#      ___ / /_ ___    ___    ___  ___  ___/ /       / /  ___   ____ ___      #
+#     (_-</ __// _ \  / _ \  / _ \/ -_)/ _  /       / _ \/ -_) / __// -_)     #
+#    /___/\__/ \___/ / .__/ / .__/\__/ \_,_/       /_//_/\__/ /_/   \__/      #
+#                   /_/    /_/                                                #
+#                                                                             #
+    coo_batch, diags = nn.to_coo_batch_ZA_diag(csr_list)
+    """ Notes to future self:
+    - continue adapting new diag args (like fdit)
+    - see if dataset needs changes
+    - (consider actually making trainer class) make separate script for ZA?
+        - the learning task is totally diff
+    - adapt model & network functions as needed
+    - if things dont look right--test
+    """
 
     fdict = {
         X_input : x_in,
