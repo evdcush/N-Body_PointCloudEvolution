@@ -3,7 +3,45 @@ import numpy as np
 import tensorflow as tf
 from utils import data_loader, initializer, saver, parser
 import nn
+#=============================================================================#
+#                                                                             #
+#                     ████████  ██████  ██████   ██████                       #
+#                        ██    ██    ██ ██   ██ ██    ██                      #
+#                        ██    ██    ██ ██   ██ ██    ██                      #
+#                        ██    ██    ██ ██   ██ ██    ██                      #
+#                        ██     ██████  ██████   ██████                       #
+#                                                                             #
+#=============================================================================#
 
+"""
+# 1
+- TRY CURRENT GRAPH-BASED UPDATES TO ZA MODEL
+
+# 2
+IF THINGS WORK: update to correct shift_inv ops (15 ops)
+
+# 3 encoding
+graph model with different encoding
+- instead of placeing za on diagonal
+  ---> define a set of neighbors as the union of grid pos and final ZA pos
+       (where ZA_final_pos is just za_init + za_disp)
+- each edge will contain the diff between corresponding grid pos,
+  and the diff between corresponding final pos
+
+# 4 SET:
+(this task should be easy), thus we shouldnt need all this expensive machinery
+with graph
+- Instead have a set of N particles (vanilla), so just nodes
+  - node features:
+    - ZA_disp
+    - positions of init_particles
+- drastically reduced ops
+  - just vanilla: affine transformation with pooling op (mean, max, etc..)
+
+
+
+
+"""
 
 #==============================================================================
 # Data & Session config

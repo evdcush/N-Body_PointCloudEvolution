@@ -2,6 +2,9 @@ import numpy as np
 import tensorflow as tf
 from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
 from scipy.sparse import coo_matrix
+"""
+MAKE SURE include_self=True FOR ZA DATASET
+"""
 
 
 # ALL NN OPS TO BE UPDATED
@@ -42,6 +45,71 @@ def include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=None):
     if redshift is not None:
         X_in = tf.concat([X_in, redshift], axis=1) # (c, 10)
     return X_in
+
+    """
+    There will be ONE edge in edges that is zeros because difference between
+    self
+    - we want to insert ZA_displacements here
+
+    For a particle, there is one neighbor index in adjacency that is equal
+    to its index in cube, when include_self=True
+      - thus it will be zero if we diff
+      - THIS IS WHERE YOU INSERT ZA_displacements
+    """
+
+
+def get_input_features_shift_inv_ZA(init_pos, ZA_displacement, coo, diag, dims):
+    """ get edges and nodes with TF ops
+    get relative distances of each particle from its M neighbors
+    use diff tensor
+
+    Params
+    ------
+    init_pos : tensor; (b, N, 3)
+        initial positions on the grid
+
+    ZA_displacement : tensor; (b, N, 3)
+        za displacement vector, X[...,1:4]
+
+    coo : tensor; (3, b*N*M)
+        the sparse adjacency matrix, made FROM init_pos
+        # Diagonal indices notes:
+        -
+    diag : tensor; (b*N)
+        the diagonal indices
+
+    Returns
+    -------
+    edges : tensor; (C, 3)
+        NO NODES
+    """
+
+    def _broadcast_to_diag(h, broadcast_idx, shape):
+    """Broadcast values to diagonal.
+    Args:
+        h(tensor). Values to be broadcasted to a diagonal.
+        broadcast_idx(tensor). Diagonal indices, shape = (b*N)
+        shape(tensor). The shape of the output, should be (S, q)
+    Returns:
+        tensor with specified shape
+    """
+        return tf.scatter_nd(tf.expand_dims(broadcast_idx, axis=1), h, shape)
+
+    b, N, M = dims
+    #==== get edges (neighbors)
+    flattened_pos = tf.reshape(init_pos, (-1, 3))
+    cols = coo[1]
+    edges = tf.reshape(tf.gather(init_pos, cols), [b, N, M, 3])
+
+    #=== weight edges
+    edges = edges - tf.expand_dims(init_pos, axis=2) # (b, N, M, 3) - (b, N, 1, 3)
+
+    #=== broadcast ZA_displacements to diagonal
+    flattened_za_disp = tf.reshape(ZA_displacements, (-1, 3))
+    out_shape = (b*N*M, 3)
+    diagonal_za = _broadcast_to_diag(flattened_za_disp, diag, out_shape)
+    features_out = tf.reshape(edges, [-1, 3]) + diagonal_za
+    return features_out
 
 
 def get_input_features_shift_inv(X_in, coo, dims):
@@ -260,6 +328,48 @@ def confirm_CSR_to_COO_index_integrity(A, COO_feats):
     cols = COO_feats[1]
     assert np.all(CSR_feats == cols)
 
+
+def to_coo_batch_ZA_diag(A):
+    """ Get row and column indices from csr
+    DOES NOT LIKE OFFSET IDX, tocoo() method will complain about index being
+    greater than matrix size
+
+    Args:
+        A (csr): list of csrs of shape (N, N)
+    """
+    # Dims
+    # ----------------
+    b = len(A) # batch size
+    N = A[0].shape[0] # (32**3)
+    M = A[0].indices.shape[0] // N
+    dia = []
+
+    # Get COO feats
+    # ----------------
+    COO_feats = np.zeros((3, b*N*M)).astype(np.int32)
+    for i in range(b):
+        #coo = A[i].tocoo()
+        r, c = A[i].nonzero()
+
+        # Offset coo feats
+        row = r + i*N
+        col = c + i*N
+        cube = np.zeros_like(row) + i
+
+        # Assign coo feats
+        k, q = i*N*M, (i+1)*N*M
+        COO_feats[0, k:q] = row
+        COO_feats[1, k:q] = col
+        COO_feats[2, k:q] = cube
+
+        # Make diagonals
+        d = np.array(np.where(r == c)[0])
+        dia.extend(d + i * len(r))
+
+    diagonals = np.array(dia)
+    # sanity check
+    #confirm_CSR_to_COO_index_integrity(A, COO_feats) # checked out
+    return COO_feats, diagonals
 
 def to_coo_batch(A):
     """ Get row and column indices from csr
@@ -563,6 +673,28 @@ def pbc_loss(x_pred, x_truth, scale_error=True):
     if scale_error:
         error = error * 1e5
     return error
+
+
+def loss_ZA(predicted_error, true_error):
+    """
+    We want net to predict the error from ZA approx to truth (FPM)
+    thus:
+        loss = predicted_error - actual_error
+    where
+        predicted_error = network output
+        # We want this AS close to possible as actual_error
+
+        actual_error == FPM_disp - ZA_disp
+
+    predicted_error.shape == true_error.shape == (b, N, 3)
+    """
+    err_diff = tf.squared_difference(predicted_error, true_error) # (b, N, 3)
+    error = tf.reduce_mean(tf.reduce_sum(err_diff, axis=-1))
+    return error
+
+
+
+
 
 ###############################################################################
 #                                                                             #
