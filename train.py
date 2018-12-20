@@ -4,16 +4,14 @@ import tensorflow as tf
 from utils import data_loader, initializer, saver, parser
 import nn
 #=============================================================================#
+#                        _____    ___    ____     ___                         #
+#                       |_   _|  / _ \  |  _ \   / _ \                        #
+#                         | |   | | | | | | | | | | | |                       #
+#                         | |   | |_| | | |_| | | |_| |                       #
+#                         |_|    \___/  |____/   \___/                        #
 #                                                                             #
-#                     ████████  ██████  ██████   ██████                       #
-#                        ██    ██    ██ ██   ██ ██    ██                      #
-#                        ██    ██    ██ ██   ██ ██    ██                      #
-#                        ██    ██    ██ ██   ██ ██    ██                      #
-#                        ██     ██████  ██████   ██████                       #
-#                                                                             #
-#=============================================================================#
+"""===========================================================================#
 
-"""
 # 1
 - TRY CURRENT GRAPH-BASED UPDATES TO ZA MODEL
 
@@ -39,9 +37,10 @@ with graph
   - just vanilla: affine transformation with pooling op (mean, max, etc..)
 
 
+#==========================================================================="""
 
 
-"""
+
 
 #==============================================================================
 # Data & Session config
@@ -77,7 +76,7 @@ save_checkpoint = lambda step: (step+1) % checkpoint == 0
 # ========================================
 dims = [batch_size, N, M]
 #loss_func = nn.pbc_loss
-loss_func = nn.loss_za if args.dataset_type == 'ZA' else nn.pbc_loss
+loss_func = nn.loss_ZA if args.dataset_type == 'ZA' else nn.pbc_loss
 
 # Initialize model parameters
 # ========================================
@@ -91,20 +90,19 @@ in_shape = (None, N, 3)
 X_input = tf.placeholder(tf.float32, shape=in_shape)
 #X_truth = tf.placeholder(tf.float32, shape=in_shape)
 actual_error = tf.placeholder(tf.float32, shape=in_shape)
-coo_feats = tf.placeholder(tf.int32, shape=(3, batch_size*N*M))
-za_diagonal = tf.placeholder(tf.int32, shape=(batch_size*N*M))
+coo_feats    = tf.placeholder(tf.int32,   shape=(3, batch_size*N*M))
+za_diagonal  = tf.placeholder(tf.int32,   shape=(batch_size*N*M))
 
 # Outputs
 # ========================================
 #X_pred = nn.model_func_shift_inv(X_input, coo_feats, sess_mgr, dims)
 pred_error = nn.model_func_shift_inv_za(X_input, coo_feats, za_diagonal, sess_mgr, dims)
 
-# Optimization
+# Optimizer and loss
 # ========================================
 optimizer = tf.train.AdamOptimizer(learning_rate)
 #error = loss_func(X_pred, X_truth, scale_error=False)
-error = loss_func(pred_error, actual_error)
-
+error = nn.loss_ZA(pred_error, actual_error)
 train = optimizer.minimize(error)
 
 
@@ -132,8 +130,8 @@ for step in range(num_iters):
     _x_batch = dataset.get_minibatch() # (2, 4, N, 6)
 
     # split data
-    x_in    = _x_batch[0] # (b, N, 6)
-    x_truth = _x_batch[1] # (b, N, 6)
+    x_za  = _x_batch[0] # (b, N, 6)
+    x_fpm = _x_batch[1] # (b, N, 6)
 
     # Graph data
     # ----------------
@@ -159,7 +157,9 @@ for step in range(num_iters):
 
     fdict = {
         X_input : x_in,
-        X_truth : x_truth,
+        #X_truth : x_truth,
+        actual_error :
+        za_diagonal : ,
         coo_feats : coo_batch,
     }
 
