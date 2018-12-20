@@ -155,7 +155,7 @@ for step in range(num_iters):
     fdict = {
         X_input : init_pos,
         #X_truth : x_truth,
-        true_error : true_err
+        true_error : true_err,
         za_diagonal : diag,
         coo_feats : coo_batch,
     }
@@ -206,7 +206,7 @@ for j in range(num_val_batches): # ---> range(50) for b = 4
     fdict = {
         X_input : init_pos,
         #X_truth : x_truth,
-        true_error : true_err
+        true_error : true_err,
         za_diagonal : diag,
         coo_feats : coo_batch,
     }

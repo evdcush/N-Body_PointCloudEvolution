@@ -58,6 +58,23 @@ def include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=None):
     """
 
 
+
+
+#=============================================================================#
+#                                                                             #
+#                   d888888P  .88888.  888888ba   .88888.                     #
+#                      88    d8'   `8b 88    `8b d8'   `8b                    #
+#                      88    88     88 88     88 88     88                    #
+#                      88    88     88 88     88 88     88                    #
+#                      88    Y8.   .8P 88    .8P Y8.   .8P                    #
+#                      dP     `8888P'  8888888P   `8888P'                     #
+#                                                                             #
+#=============================================================================#
+# ValueError: Cannot reshape a tensor with 180388626432 elements to shape [4,32768,14,3] (5505024 elements) for 'Reshape_1' (op: 'Reshape') with input shapes: [1835008,32768,3], [4] and with input tensors computed as partial shapes: input[1] = [4,32768,14,3].
+
+# RESHAPE ERROR IN PRE-PROCESS
+# TODO
+
 def get_input_features_shift_inv_ZA(init_pos, ZA_displacement, coo, diag, dims):
     """ get edges and nodes with TF ops
     get relative distances of each particle from its M neighbors
@@ -761,11 +778,7 @@ def mse_za(fpm_displacement, za_displacement):
     error = np.mean(np.sum(err_diff, axis=-1))
     return error
 
-#=== formatting data
-        reshape_dims = (1, 1000, 32**3, 3)
-        mrng = range(2,130,4)
-        q = np.einsum('ijkl->kjli',np.array(np.meshgrid(mrng, mrng, mrng)))
-        # q.shape = (32, 32, 32, 3)
+
 def get_init_pos(za_disp):
     b, N, k = za_disp.shape
     mg = range(2, 130, 4)
