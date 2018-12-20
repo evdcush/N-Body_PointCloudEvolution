@@ -143,7 +143,7 @@ for step in range(num_iters):
     init_pos = get_init_pos(x_za_disp)
 
     # calculate true_error
-    true_err = nn.mse_za(x_fpm_disp, x_za_disp)
+    true_err = x_fpm_disp - x_za_disp
 
     # Graph data
     # ----------------
@@ -180,26 +180,42 @@ for j in range(num_val_batches): # ---> range(50) for b = 4
     # Validation cubes
     # ----------------
     p, q = batch_size*j, batch_size*(j+1)
-    _x_test_batch = X_test[:, p:q]
+    _x_batch = X_test[:, p:q]
 
-    x_in    = _x_test_batch[0]
-    x_truth = _x_test_batch[1]
+    # split data
+    x_za  = _x_batch[0] # (b, N, 6)
+    x_fpm = _x_batch[1] # (b, N, 6)
+
+    # displacements
+    x_za_disp  = x_za[...,:3]
+    x_fpm_disp = x_fpm[...,:3]
+
+    # get initial displacement
+    init_pos = get_init_pos(x_za_disp)
+
+    # calculate true_error
+    true_err = x_fpm_disp - x_za_disp
 
     # Graph data
     # ----------------
-    csr_list = nn.get_kneighbor_list(x_in, M)
-    coo_batch = nn.to_coo_batch(csr_list)
+    csr_list  = nn.get_kneighbor_list(init_pos, M)
+    #coo_batch = nn.to_coo_batch(csr_list)
+    coo_batch, diag = nn.to_coo_batch_ZA_diag(csr_list)
 
+    # Feed data and Train
     fdict = {
-        X_input   : x_in,
-        X_truth   : x_truth,
-        coo_feats : coo_batch
+        X_input : init_pos,
+        #X_truth : x_truth,
+        true_error : true_err
+        za_diagonal : diag,
+        coo_feats : coo_batch,
     }
 
     # Validation output
     # ----------------
-    x_pred_val, v_error = sess.run([X_pred, error], feed_dict=fdict)
-    test_predictions[p:q] = x_pred_val
+    pred_error, v_error = sess.run([pred_error, error], feed_dict=fdict)
+    #test_predictions[p:q] = x_pred_val
+    pred_errors[p:q] = pred_error
     test_loss[j] = v_error
     print(f'val_err, {j} : {v_error}')
 
@@ -207,6 +223,6 @@ for j in range(num_val_batches): # ---> range(50) for b = 4
 
 # END Validation
 # ========================================
-saver.save_model_cube(test_predictions)
+#saver.save_model_cube(test_predictions)
 saver.save_model_error(test_loss)
 saver.print_evaluation_results(test_loss)
