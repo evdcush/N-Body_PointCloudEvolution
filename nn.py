@@ -72,27 +72,27 @@ def get_input_features_shift_inv_ZA(init_pos, ZA_displacement, coo, diag, dims):
         za displacement vector, X[...,1:4]
 
     coo : tensor; (3, b*N*M)
-        the sparse adjacency matrix, made FROM init_pos
+        the sparse adjacency matrix, MADE FROM init_pos
         # Diagonal indices notes:
         -
     diag : tensor; (b*N)
-        the diagonal indices
+        the diagonal indices; the indices where the particles in init_pos are
+        neighboring nodes with themself (via `include_self=True)
 
     Returns
     -------
     edges : tensor; (C, 3)
         NO NODES
     """
-
     def _broadcast_to_diag(h, broadcast_idx, shape):
-    """Broadcast values to diagonal.
-    Args:
-        h(tensor). Values to be broadcasted to a diagonal.
-        broadcast_idx(tensor). Diagonal indices, shape = (b*N)
-        shape(tensor). The shape of the output, should be (S, q)
-    Returns:
-        tensor with specified shape
-    """
+        """Broadcast values to diagonal.
+        Args:
+            h(tensor). Values to be broadcasted to a diagonal.
+            broadcast_idx(tensor). Diagonal indices, shape = (b*N)
+            shape(tensor). The shape of the output, should be (S, q)
+        Returns:
+            tensor with specified shape
+        """
         return tf.scatter_nd(tf.expand_dims(broadcast_idx, axis=1), h, shape)
 
     b, N, M = dims
@@ -226,7 +226,62 @@ def shift_inv_layer(H_in, COO_feats, bN, layer_vars, is_last=False):
 # Network ops
 #==============================================================================
 
-def network_func_shift_inv(X_in_edges, X_in_nodes, COO_feats, num_layers,
+def network_func_shift_inv_za(edges, coo, num_layers, dims, activation, model_vars):
+    # Input layer
+    # ========================================
+    H = activation(shift_inv_layer(edges, coo, dims, model_vars.get_layer_vars(0),))
+
+    # Hidden layers
+    # ========================================
+    for layer_idx in range(1, num_layers):
+        is_last = layer_idx == num_layers - 1
+        layer_vars = model_vars.get_layer_vars(layer_idx)
+        H = shift_inv_layer(H, coo, dims, layer_vars, is_last=is_last)
+        if not is_last:
+            H = activation(H)
+    return H
+
+
+def model_func_shift_inv_za(init_pos, COO_feats, ZA_displacement, ZA_diagonal,
+                            model_vars, dims, activation=tf.nn.relu):
+    """
+
+    Params
+    ------
+    init_pos : tensor; (b, N, 3)
+        the initial positions of particles on the grid
+
+    coo_feats : tensor; (3, c) -- where c = b * N * M
+        segment IDs for rows, cols, all
+
+    ZA_displacement : tensor; (b, N, 3)
+        za displacement vector, X[...,1:4]
+
+    ZA_diagonal : tensor; (b*N,)
+        diagonal indices of the initial positions
+
+    model_vars : Initializer
+        Initializer instance that has model config and variable utils
+    """
+    var_scope = model_vars.var_scope
+    num_layers = len(model_vars.channels) - 1
+
+    # Get graph inputs
+    # ========================================
+    #edges, nodes = get_input_features_shift_inv(X_in, COO_feats, dims)
+    edges = get_input_features_shift_inv_ZA(init_pos, ZA_displacement,
+                                            COO_feats, ZA_diagonal, dims)
+
+    # Network forward
+    # ========================================
+    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
+        # ==== Network output
+        pred_error = network_func_shift_inv_za(edges, COO_feats, num_layers,
+                                               dims[:-1], activation, model_vars)
+        return pred_error
+
+'''
+def _network_func_shift_inv(X_in_edges, X_in_nodes, COO_feats, num_layers,
                            dims, activation, model_vars, redshift=None):
     # Input layer
     # ========================================
@@ -244,7 +299,7 @@ def network_func_shift_inv(X_in_edges, X_in_nodes, COO_feats, num_layers,
     return H
 
 
-def model_func_shift_inv(X_in, COO_feats, model_vars, dims, activation=tf.nn.relu, redshift=None):
+def _model_func_shift_inv(X_in, COO_feats, model_vars, dims, activation=tf.nn.relu, redshift=None):
     """
     Args:
         X_in (tensor): (b, N, 6)
@@ -275,7 +330,7 @@ def model_func_shift_inv(X_in, COO_feats, model_vars, dims, activation=tf.nn.rel
             H_vel = net_out[...,3:]*vel_scalar + X_in_vel
             H_out = tf.concat([H_out, H_vel], axis=-1)
         return H_out
-
+'''
 
 
 #=============================================================================
@@ -679,12 +734,12 @@ def loss_ZA(predicted_error, true_error):
     """
     We want net to predict the error from ZA approx to truth (FPM)
     thus:
-        loss = predicted_error - actual_error
+        loss = predicted_error - true_error
     where
         predicted_error = network output
         # We want this AS close to possible as actual_error
 
-        actual_error == FPM_disp - ZA_disp
+        true_error == FPM_disp - ZA_disp
 
     predicted_error.shape == true_error.shape == (b, N, 3)
     """
@@ -701,10 +756,23 @@ def loss_ZA(predicted_error, true_error):
 #     |_| |_|  \__,_| |_| |_| |_| | .__/   \__, |    \___/  | .__/  |___/     #
 #                                 |_|      |___/            |_|               #
 
-def mse_za(predicted_error, true_error):
-    err_diff = np.square(predicted_error - true_error)
+def mse_za(fpm_displacement, za_displacement):
+    err_diff = np.square(fpm_displacement - za_displacement)
     error = np.mean(np.sum(err_diff, axis=-1))
     return error
+
+#=== formatting data
+        reshape_dims = (1, 1000, 32**3, 3)
+        mrng = range(2,130,4)
+        q = np.einsum('ijkl->kjli',np.array(np.meshgrid(mrng, mrng, mrng)))
+        # q.shape = (32, 32, 32, 3)
+def get_init_pos(za_disp):
+    b, N, k = za_disp.shape
+    mg = range(2, 130, 4)
+    q = np.einsum('ijkl->kjli', np.array(np.meshgrid(mg, mg, mg)))
+    qr = q.reshape(-1, 3)
+    init_pos = za_disp + qr
+    return init_pos
 
 
 

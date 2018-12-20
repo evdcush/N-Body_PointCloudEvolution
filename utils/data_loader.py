@@ -121,6 +121,7 @@ class ZA_Dataset(Dataset):
         reshape_dims = (1, 1000, 32**3, 3)
         mrng = range(2,130,4)
         q = np.einsum('ijkl->kjli',np.array(np.meshgrid(mrng, mrng, mrng)))
+        # q.shape = (32, 32, 32, 3)
 
         #=== get ZA cubes
         ZA_pos = (self.X[...,1:4] + q).reshape(*reshape_dims)
