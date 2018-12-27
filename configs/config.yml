@@ -5,7 +5,7 @@ experiments_dir: ~/.Data/Experiments/Nbody      # MODEL OUTPUTS
 seed : 77743196
 var_scope : params_{}
 
-channels : [9, 32, 16, 8, 3]
+channels : [3, 32, 16, 8, 3]
 num_layer_W : 4  # weights per layer; 4 for shiftinv
 scalar_val : 0.002
 restore : false

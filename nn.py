@@ -1,3 +1,4 @@
+import code, sys
 import numpy as np
 import tensorflow as tf
 from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
@@ -58,23 +59,6 @@ def include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=None):
     """
 
 
-
-
-#=============================================================================#
-#                                                                             #
-#                   d888888P  .88888.  888888ba   .88888.                     #
-#                      88    d8'   `8b 88    `8b d8'   `8b                    #
-#                      88    88     88 88     88 88     88                    #
-#                      88    88     88 88     88 88     88                    #
-#                      88    Y8.   .8P 88    .8P Y8.   .8P                    #
-#                      dP     `8888P'  8888888P   `8888P'                     #
-#                                                                             #
-#=============================================================================#
-# ValueError: Cannot reshape a tensor with 180388626432 elements to shape [4,32768,14,3] (5505024 elements) for 'Reshape_1' (op: 'Reshape') with input shapes: [1835008,32768,3], [4] and with input tensors computed as partial shapes: input[1] = [4,32768,14,3].
-
-# RESHAPE ERROR IN PRE-PROCESS
-# TODO
-
 def get_input_features_shift_inv_ZA(init_pos, ZA_displacement, coo, diag, dims):
     """ get edges and nodes with TF ops
     get relative distances of each particle from its M neighbors
@@ -116,13 +100,16 @@ def get_input_features_shift_inv_ZA(init_pos, ZA_displacement, coo, diag, dims):
     #==== get edges (neighbors)
     flattened_pos = tf.reshape(init_pos, (-1, 3))
     cols = coo[1]
-    edges = tf.reshape(tf.gather(init_pos, cols), [b, N, M, 3])
+    #gath_edges = tf.gather(flattened_pos, cols)
+    #code.interact(local=dict(globals(), **locals()))
+    #edges = tf.reshape(gath_edges, [b, N, M, 3])
+    edges = tf.reshape(tf.gather(flattened_pos, cols), [b, N, M, 3])
 
     #=== weight edges
     edges = edges - tf.expand_dims(init_pos, axis=2) # (b, N, M, 3) - (b, N, 1, 3)
 
     #=== broadcast ZA_displacements to diagonal
-    flattened_za_disp = tf.reshape(ZA_displacements, (-1, 3))
+    flattened_za_disp = tf.reshape(ZA_displacement, (-1, 3))
     out_shape = (b*N*M, 3)
     diagonal_za = _broadcast_to_diag(flattened_za_disp, diag, out_shape)
     features_out = tf.reshape(edges, [-1, 3]) + diagonal_za
@@ -217,6 +204,9 @@ def shift_inv_layer(H_in, COO_feats, bN, layer_vars, is_last=False):
     # Layer forward pass
     # ========================================
     # H1 : no pooling
+    #code.interact(local=dict(globals(), **locals()))
+    # H1.shape = (1835008, 3)
+    # W1.shape = (9, 32) <----- input chans off
     H1 = _left_mult(H_in, W1) # (c, q)
 
     # H2 : pool rows
@@ -438,6 +428,7 @@ def to_coo_batch_ZA_diag(A):
         d = np.array(np.where(r == c)[0])
         dia.extend(d + i * len(r))
 
+    #code.interact(local=dict(globals(), **locals()))
     diagonals = np.array(dia)
     # sanity check
     #confirm_CSR_to_COO_index_integrity(A, COO_feats) # checked out
@@ -483,7 +474,7 @@ def to_coo_batch(A):
 #------------------------------------------------------------------------------
 # Graph gets
 # ========================================
-def get_kneighbor_list(X_in, M, offset_idx=False, include_self=False):
+def get_kneighbor_list(X_in, M, offset_idx=False, include_self=True):
     b, N, D = X_in.shape
     lst_csrs = []
     #print('nn.get_kneighbor_list\n M: {}, include_self: {}'.format(M, include_self))

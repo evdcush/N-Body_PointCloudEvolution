@@ -87,12 +87,14 @@ sess_mgr.initialize_params()
 # Placeholders
 #in_shape = (None, N, 6)
 in_shape = (None, N, 3)
-X_input = tf.placeholder(tf.float32, shape=in_shape)
+X_input = tf.placeholder(tf.float32, shape=in_shape, name='X_input')
 #X_truth = tf.placeholder(tf.float32, shape=in_shape)
-true_error  = tf.placeholder(tf.float32,shape=in_shape)
-coo_feats   = tf.placeholder(tf.int32,  shape=(3, batch_size*N*M))
-za_displacement = tf.placeholder(tf.float32, shape=in_shape)
-za_diagonal = tf.placeholder(tf.int32,  shape=(batch_size*N*M))
+true_error  = tf.placeholder(tf.float32,shape=in_shape, name='true_error')
+coo_feats   = tf.placeholder(tf.int32,  shape=(3, batch_size*N*M), name='coo_feats')
+za_displacement = tf.placeholder(tf.float32, shape=in_shape, name='za_displacement')
+#za_diagonal = tf.placeholder(tf.int32,  shape=(batch_size*N*M))
+za_diagonal = tf.placeholder(tf.int32,  shape=(batch_size*N), name='za_diagonal')
+
 
 # Outputs
 # ========================================
@@ -140,7 +142,7 @@ for step in range(num_iters):
     x_fpm_disp = x_fpm[...,:3]
 
     # get initial displacement
-    init_pos = get_init_pos(x_za_disp)
+    init_pos = nn.get_init_pos(x_za_disp)
 
     # calculate true_error
     true_err = x_fpm_disp - x_za_disp
@@ -156,6 +158,7 @@ for step in range(num_iters):
         X_input : init_pos,
         #X_truth : x_truth,
         true_error : true_err,
+        za_displacement : x_za_disp,
         za_diagonal : diag,
         coo_feats : coo_batch,
     }
@@ -191,7 +194,7 @@ for j in range(num_val_batches): # ---> range(50) for b = 4
     x_fpm_disp = x_fpm[...,:3]
 
     # get initial displacement
-    init_pos = get_init_pos(x_za_disp)
+    init_pos = nn.get_init_pos(x_za_disp)
 
     # calculate true_error
     true_err = x_fpm_disp - x_za_disp
@@ -207,15 +210,16 @@ for j in range(num_val_batches): # ---> range(50) for b = 4
         X_input : init_pos,
         #X_truth : x_truth,
         true_error : true_err,
+        za_displacement : x_za_disp,
         za_diagonal : diag,
         coo_feats : coo_batch,
     }
 
     # Validation output
     # ----------------
-    pred_error, v_error = sess.run([pred_error, error], feed_dict=fdict)
+    p_error, v_error = sess.run([pred_error, error], feed_dict=fdict)
     #test_predictions[p:q] = x_pred_val
-    pred_errors[p:q] = pred_error
+    test_predictions[p:q] = p_error
     test_loss[j] = v_error
     print(f'val_err, {j} : {v_error}')
 
@@ -223,6 +227,6 @@ for j in range(num_val_batches): # ---> range(50) for b = 4
 
 # END Validation
 # ========================================
-#saver.save_model_cube(test_predictions)
+saver.save_model_cube(test_predictions)
 saver.save_model_error(test_loss)
 saver.print_evaluation_results(test_loss)
