@@ -141,7 +141,7 @@ for step in range(num_iters):
     x_za_disp  = x_za[...,:3]
     x_fpm_disp = x_fpm[...,:3]
 
-    # get initial displacement
+    # get initial positions
     init_pos = nn.get_init_pos(x_za_disp)
 
     # calculate true_error
