@@ -120,13 +120,18 @@ sess_mgr.initialize_graph()
 saver.init_sess_saver()
 
 
-test_pred_shape = (200, N,) + (args.channels[-1],) # (200, N, 3)
+#test_pred_shape = (200, N,) + (args.channels[-1],) # (200, N, 3)
+test_pred_shape = (2, 200, N,) + (args.channels[-1],) # (200, N, 3)
 test_predictions = np.zeros(test_pred_shape).astype(np.float32)
 test_loss = np.zeros((50,)).astype(np.float32)
+
 
 #=============================================================================
 # TRAINING
 #=============================================================================
+num_chkpts = num_iters // checkpoint
+training_error = np.zeros((2, num_chkpts, batch_size, N, 3)).astype(np.float32)
+
 print(f'\nTraining:\n{"="*78}')
 for step in range(num_iters):
     # Data batching
@@ -166,13 +171,18 @@ for step in range(num_iters):
 
     # Save
     if save_checkpoint(step):
-        err = sess.run(error, feed_dict=fdict)
+        err, pred_err = sess.run([error, pred_error], feed_dict=fdict)
         saver.save_model_params(step, sess)
         saver.print_checkpoint(step, err)
-
+        idx = step // checkpoint
+        training_error[0, idx] = true_err
+        training_error[1, idx] = pred_err
 
 # Save trained variables and session
 saver.save_model_params(num_iters, sess)
+saver.save_model_error(training_error, training=True)
+
+
 
 #=============================================================================
 # EVALUATION
@@ -218,8 +228,8 @@ for j in range(num_val_batches): # ---> range(50) for b = 4
     # Validation output
     # ----------------
     p_error, v_error = sess.run([pred_error, error], feed_dict=fdict)
-    #test_predictions[p:q] = x_pred_val
-    test_predictions[p:q] = p_error
+    test_predictions[0, p:q] = true_err
+    test_predictions[1, p:q] = p_error
     test_loss[j] = v_error
     print(f'val_err, {j} : {v_error}')
 
