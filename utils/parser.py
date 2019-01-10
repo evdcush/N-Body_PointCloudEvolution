@@ -2,9 +2,6 @@ import os
 import argparse
 import yaml
 
-
-####### TODO
-# find solution for pathing, this is dirty
 project_dir = os.path.abspath(os.path.dirname(__file__)).split('/')[:-1]
 config_path = "/".join(project_dir + ['configs/config.yml'])
 HOME = os.environ['HOME']
