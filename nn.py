@@ -15,6 +15,65 @@ MAKE SURE include_self=True FOR ZA DATASET
   * also, passing var_scope is unncessary with Initializer
 """
 
+
+#-----------------------------------------------------------------------------#
+#                                  set model                                  #
+#-----------------------------------------------------------------------------#
+
+def set_layer(h_in, layer_vars):
+    """
+    Params
+    ------
+    h_in : tensor; (b, N, )
+        point cloud input data
+    layer_vars : tuple(tensor)
+        tuple with this layer's weight, W, and bias B
+    """
+    # W.(X - X_mu) + B
+    Wlst, B = layer_vars
+    W = Wlst[0]
+    h_mu = tf.reduce_mean(h_in, axis=1, keepdims=True)
+    h    = h_in - h_mu
+    #code.interact(local=dict(globals(), **locals()))
+    h_out  = tf.einsum('bnk,kq->bnq', h, W) + B
+    return h_out
+
+def network_func_set(X_in, num_layers, activation, model_vars):
+    # Input layer
+    # ===========
+    H = activation(set_layer(X_in, model_vars.get_layer_vars(0)))
+
+    # Hidden
+    # ======
+    for layer_idx in range(1, num_layers):
+        is_last = layer_idx == num_layers -1
+        layer_vars = model_vars.get_layer_vars(layer_idx)
+        H = set_layer(H, layer_vars)
+        if not is_last:
+            H = activation(H)
+    return H
+
+def model_func_set(X_in, model_vars, activation=tf.nn.relu):#dims, activation=tf.nn.relu):
+    """
+    Params
+    ------
+    model_vars : Initializer
+        Initializer instance that has model config and variable utils
+    """
+    var_scope = model_vars.var_scope
+    num_layers = len(model_vars.channels) - 1
+
+    # Network forward
+    # ========================================
+    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
+        # ==== Network output
+        pred_error = network_func_set(X_in, num_layers, activation, model_vars)
+        return pred_error
+
+#-----------------------------------------------------------------------------#
+#                                 graph model                                 #
+#-----------------------------------------------------------------------------#
+
 def include_node_features(X_in_edges, X_in_nodes, COO_feats, redshift=None):
     """ Broadcast node features to edges for input layer
     Params
