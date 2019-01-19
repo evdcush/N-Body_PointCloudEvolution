@@ -7,7 +7,6 @@ from scipy.sparse import coo_matrix
 MAKE SURE include_self=True FOR ZA DATASET
 """
 
-
 # ALL NN OPS TO BE UPDATED
 
 """
@@ -24,19 +23,19 @@ def set_layer(h_in, layer_vars):
     """
     Params
     ------
-    h_in : tensor; (b, N, )
+    h_in : tensor; (b, N, K)
         point cloud input data
     layer_vars : tuple(tensor)
         tuple with this layer's weight, W, and bias B
     """
     # W.(X - X_mu) + B
-    Wlst, B = layer_vars
-    W = Wlst[0]
+    W, B = layer_vars
+    W = W[0]
     h_mu = tf.reduce_mean(h_in, axis=1, keepdims=True)
     h    = h_in - h_mu
-    #code.interact(local=dict(globals(), **locals()))
     h_out  = tf.einsum('bnk,kq->bnq', h, W) + B
     return h_out
+
 
 def network_func_set(X_in, num_layers, activation, model_vars):
     # Input layer
@@ -45,15 +44,17 @@ def network_func_set(X_in, num_layers, activation, model_vars):
 
     # Hidden
     # ======
+    last_idx = num_layers - 1
     for layer_idx in range(1, num_layers):
-        is_last = layer_idx == num_layers -1
+        is_last = layer_idx == last_idx
         layer_vars = model_vars.get_layer_vars(layer_idx)
         H = set_layer(H, layer_vars)
         if not is_last:
             H = activation(H)
     return H
+    #return H + X_in
 
-def model_func_set(X_in, model_vars, activation=tf.nn.relu):#dims, activation=tf.nn.relu):
+def model_func_set(za_disp, model_vars, activation=tf.nn.relu):#dims, activation=tf.nn.relu):
     """
     Params
     ------
@@ -67,6 +68,7 @@ def model_func_set(X_in, model_vars, activation=tf.nn.relu):#dims, activation=tf
     # ========================================
     with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
         # ==== Network output
+        X_in = get_init_pos_tf(za_disp)
         pred_error = network_func_set(X_in, num_layers, activation, model_vars)
         return pred_error
 
@@ -838,7 +840,12 @@ def get_init_pos(za_disp):
     return init_pos
 
 
-
+def get_init_pos_tf(disp):
+    mg = tf.range(2,130,4)
+    q = tf.cast(tf.einsum('ijkl->kjli', tf.meshgrid(mg, mg, mg)), tf.float32)
+    qr = tf.reshape(q, (-1, 3))
+    init_pos = disp + qr
+    return init_pos
 
 
 
