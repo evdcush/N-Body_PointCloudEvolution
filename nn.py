@@ -3,22 +3,225 @@ import numpy as np
 import tensorflow as tf
 from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
 from scipy.sparse import coo_matrix
-"""
-MAKE SURE include_self=True FOR ZA DATASET
-"""
 
-# ALL NN OPS TO BE UPDATED
-
-"""
-* passing num_layers no longer req'd if you passing an Initializer for var gets
-  * also, passing var_scope is unncessary with Initializer
-"""
+#██████████████████████████████████████████████████████████████████████████████
+#██████████████████████████████████████████████████████████████████████████████
+#-----------------------------------------------------------------------------#
+#                               15 Op Shift Inv                               #
+#-----------------------------------------------------------------------------#
 
 
+# Updated/Corrected Shiftinv layer
+# ===================================
+def shift_inv_layer(H_in, COO_feats, bN, layer_vars, is_last=False):
+def shift_inv_15op_layer(H_in, adj, bN, layer_id, is_last=False):
+    """
+
+    New basis with 15 independent weights.
+      see: https://openreview.net/pdf?id=Syx72jC9tm.
+
+    Let S = sum_i( symmetrized_i ) for i = 0...b-1, where b = batch size.
+    symmetrized_i = number of non-zero entries of symmetrized adjacency.
+    If adjacency is symmetric, then symmetrized_i = N*M;
+    but in general it's not.
+
+    Also, even if all instances in the batch have a fixed number of
+    neighbors (i.e. all unsymmetrized adjacencies have N*M non-zero entries),
+    the corresponding symmetrized versions can contain different number
+    of entries.
+
+    Our implementation where all dimensions but channels are flattened
+    is handy to deal with this.
+
+    Args:
+        H_in(tensor). Shape = (S, k)
+            k is number of input channels.
+        adj: dict
+            adj["row"]: array, shape = (S)
+                Row idx of non-zero entries.
+            adj["col"]: array, shape = (S)
+                Col idx of non-zero entries.
+            adj["all"]: array, shape = (S)
+                Idx to pool over the entire adjacency.
+            adj["tra"]: array, shape = (S)
+                Idx to traspose matrix.
+            adj["dia"]: array, shape = (b*N)
+                Idx of diagonal elements.
+            adj["dal"]: array, shape = (b*N)
+                Idx to pool diagonal.
+            All entries are properly shifted across the batch.
+        b(int). Batch size.
+        N(int). Number of particles.
+        layer_id (int). Id of layer in network, for retrieving variables.
+        is_last (bool). If is_last, pool output over columns.
+
+    Returns:
+        H_out (tensor). Shape = (S, q) or (b, N, q) if is_last.
+    """
+    def _pool(h, pool_idx, num_segs):
+        """Pool based on indices.
+
+        Given row idx, it corresponds to pooling over columns, given col idx it corresponds
+        to pool over rows, etc...
+
+        Args:
+            h (tensor). Shape = (S, k), row-major order.
+            pool_idx (tensor). Shape = (S) or (b*N).
+            num_segs (int). Number of segments (number of unique indices).
+        Return:
+            tensor.
+        """
+        return tf.unsorted_segment_mean(h, pool_idx, num_segs)
+
+    def _broadcast(h, broadcast_idx):
+        """Broadcast based on indices.
+
+        Given row idx, it corresponds to broadcast over columns,
+        given col idx it corresponds to broadcast over rows, etc...
+        Note: in the old implementation _pool and _broadcast were
+        done together in pool_ShiftInv_graph_conv.
+
+        Args:
+            h (tensor). Pooled data.
+            broadcast_idx (tensor). Shape = (S) or (b*N).
+        Return:
+            tensor.
+        """
+        return tf.gather_nd(h, tf.expand_dims(broadcast_idx, axis=1))
+
+    def _broadcast_to_diag(h, broadcast_idx, shape):
+        """Broadcast values to diagonal.
+
+        Args:
+            h(tensor). Values to be broadcasted to a diagonal.
+            broadcast_idx(tensor). Diagonal indices, shape = (b*N)
+            shape(tensor). The shape of the output, should be (S, q)
+
+        Returns:
+            tensor with specified shape
+        """
+        return tf.scatter_nd(tf.expand_dims(broadcast_idx, axis=1), h, shape)
+
+
+
+    # -------------------------
+    # FIXME: this paragraph is a placeholder for weights and biases
+    # This is just a placeholder for trainable weights. Just setting identity matrices as placeholders (so
+    # input_channels = output_channels).
+    # This should be replaced with 15 weight matrices of shape (H_in.shape[1], number of output channels).
+    #W = tf.constant(np.array([np.eye(H_in.shape[1], dtype=np.float64) for _ in range(15)], dtype=np.float64))
+
+    # This is just a placeholder for biases. Just setting it to one as placeholder.
+    # This should be replaced with 2 bias matrices of shape (number of output channels).
+    #B = tf.constant(np.ones(shape=(2, W.shape[2])))
+    # -------------------------
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~
+    # FIX:
+    # S = sum_i( symmetrized_i ) for i = 0...b-1, where b = batch size.
+    # Updated: H_in, adj, bN, layer_id, is_last=False
+    #     H_in: (S, k_in)
+    # Prev:    H_in, COO_feats, bN, layer_id, is_last=False
+        # COO_feats (tensor): (3, c), of row, column, cube-wise indices respectively
+        # COO_feats (tensor): (3, c), of row, column, cube-wise indices respectively
+    #
+    # Get layer vars
+    # -------------------------
+    #==== Data dims
+    b, N = bN # batch_size, num_particles
+
+    #   # split vars
+    #   weights, B = layer_vars
+    #   W1, W2, W3, W4 = weights
+    #==== Weights and Biases, UPDATED
+    # W : (15, k_in, k_out)
+    # B : (2, k_out)
+    W, B = layer_vars
+
+
+    #==== Weights and Biases, OLD
+    # W : (15, k_in, k_out)
+    # B : (2, k_out)
+    W, B = get_ShiftInv_symm_layer_vars(layer_id)
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    out_shape = tf.shape(H_in)[0], W[0].shape[-1]
+    H_all = []
+
+    #==== 1. No pooling
+    H_all.append(tf.matmul(H_in, W[0]))
+
+    #==== 2. Transpose
+    H2 = tf.gather(H_in, adj["tra"])
+    H_all.append(tf.matmul(H2, W[1]))
+
+    #==== 3. Diagonal
+    Hd = tf.gather(H_in, adj["dia"])
+    H_all.append(_broadcast_to_diag(tf.matmul(Hd, W[2]), adj["dia"], out_shape))
+
+    #==== 4. Pool rows, broadcast to rows
+    Hr = _pool(H_in, adj["col"], b * N)
+    H_all.append(_broadcast(tf.matmul(Hr, W[3]), adj["col"]))
+
+    #==== 5. Pool rows, broadcast to cols
+    H_all.append(_broadcast(tf.matmul(Hr, W[4]), adj["row"]))
+
+    #==== 6. Pool rows, broadcast to diag
+    H_all.append(_broadcast_to_diag(tf.matmul(Hr, W[5]), adj["dia"], out_shape))
+
+    #==== 7. Pool cols, broadcast to cols
+    Hc = _pool(H_in, adj["row"], b * N)
+    H_all.append(_broadcast(tf.matmul(Hc, W[6]), adj["row"]))
+
+    #==== 8. Pool cols, broadcast to rows
+    H_all.append(_broadcast(tf.matmul(Hc, W[7]), adj["col"]))
+
+    #==== 9. Pool cols, broadcast to diag
+    H_all.append(_broadcast_to_diag(tf.matmul(Hc, W[8]), adj["dia"], out_shape))
+
+    #==== 10. Pool all, broadcast all
+    Ha = _pool(H_in, adj["all"], b)
+    H_all.append(_broadcast(tf.matmul(Ha, W[9]), adj["all"]))
+
+    #==== 11. Pool all, broadcast diagonal
+    Ha_broad = _broadcast(tf.matmul(Ha, W[10]), adj["dal"])
+    H_all.append(_broadcast_to_diag(Ha_broad, adj["dia"], out_shape))
+
+    #==== 12. Pool diagonal, broadcast all
+    Hp = _pool(Hd, adj["dal"], b)
+    H_all.append(_broadcast(tf.matmul(Hp, W[11]), adj["all"]))
+
+    #==== 13. Pool diagonal, broadcast diagonal
+    Hp_broad = _broadcast(tf.matmul(Hp, W[12]), adj["dal"])
+    H_all.append(_broadcast_to_diag(Hp_broad, adj["dia"], out_shape))
+
+    #==== 14. Broadcast diagonal to rows
+    H_all.append(_broadcast(tf.matmul(Hd, W[13]), adj["col"]))
+
+    #==== 15. Broadcast diagonal to cols
+    H_all.append(_broadcast(tf.matmul(Hd, W[14]), adj["row"]))
+
+    # Diagonal and off diagonal bias
+    # For simplicity will have a bias applied to all and a
+    #  separate one to diagonal only
+    #  (which is equivalent to diagonal and off-diagonal)
+    B_diag = _broadcast_to_diag(tf.broadcast_to(B[0], (b * N, B[0].shape[0])), adj["dia"], out_shape)
+    B_all = B[1]
+
+    # Output
+    #------------------------
+    H = tf.add_n(H_all) + B_diag + B_all
+    if is_last:
+        return tf.reshape(_pool(H, adj["row"], b * N), (b, N, -1))
+    else:
+        return H
+
+
+#██████████████████████████████████████████████████████████████████████████████
+#██████████████████████████████████████████████████████████████████████████████
 #-----------------------------------------------------------------------------#
 #                                  set model                                  #
 #-----------------------------------------------------------------------------#
-
 def set_layer(h_in, layer_vars):
     """
     Params
@@ -71,6 +274,9 @@ def model_func_set(za_disp, model_vars, activation=tf.nn.relu):#dims, activation
         X_in = get_init_pos_tf(za_disp)
         pred_error = network_func_set(X_in, num_layers, activation, model_vars)
         return pred_error
+
+###############################################################################
+###############################################################################
 
 #-----------------------------------------------------------------------------#
 #                                 graph model                                 #
@@ -850,16 +1056,7 @@ def get_init_pos_tf(disp):
 
 
 
-#=============================================================================#
-#                                                                             #
-#                   d888888P  .88888.  888888ba   .88888.                     #
-#                      88    d8'   `8b 88    `8b d8'   `8b                    #
-#                      88    88     88 88     88 88     88                    #
-#                      88    88     88 88     88 88     88                    #
-#                      88    Y8.   .8P 88    .8P Y8.   .8P                    #
-#                      dP     `8888P'  8888888P   `8888P'                     #
-#                                                                             #
-#=============================================================================#
+
 # https://arxiv.org/abs/1506.02025 # spatial trans
 # https://arxiv.org/abs/1706.03762 # attn all u need (nlp)
 # >>-----> https://arxiv.org/pdf/1710.10903.pdf  # graph attention nets GATs

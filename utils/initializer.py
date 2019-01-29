@@ -4,6 +4,7 @@ class Initializer:
     """Initializes variables and provides their getters
     """
     weight_tag = 'W{}_{}'
+    #bias_tag   = 'B_{}'
     bias_tag   = 'B_{}'
     scalar_tag = 'T_{}'
     def __init__(self, args):
@@ -25,6 +26,18 @@ class Initializer:
         """ biases initialized to be near zero """
         args = (self.bias_tag.format(layer_idx),)
         k_out = self.channels[layer_idx + 1] # only output chans relevant
+        if self.restore:
+            initializer = None
+            args += (k_out,)
+        else:
+            initializer = tf.ones((k_out,), dtype=tf.float32) * 1e-8
+        tf.get_variable(*args, dtype=tf.float32, initializer=initializer)
+
+    def initialize_multi_bias(self, layer_idx):
+        """ biases initialized to be near zero """
+        #args = (self.bias_tag.format(layer_idx),)
+        k_out = self.channels[layer_idx + 1] # only output chans relevant
+
         if self.restore:
             initializer = None
             args += (k_out,)
