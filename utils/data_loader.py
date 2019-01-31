@@ -136,6 +136,73 @@ class ZA_Dataset(Dataset):
         #=== Concat ZA and FastPM together, like typical redshift format
         self.X = np.concatenate([X_ZA, X_FPM], axis=0) # (2, 1000, 32**3, 6)
 
+class ZA_Cached_Dataset(Dataset):
+    fname = '/ZA/ZA_{}.npy'
+    fname_idx  = 'symm_idx'
+    fname_feat = 'features'
+    cube_steps = ZA_STEPS
+    def __init__(self, args):
+        super().__init__(args)
+        self.cache_path = self.simulation_data_path + '/cached/X_{}_{}.npy'
+        self.get_za_fpm_data()
+        self.split_dataset()
+
+
+    def split_dataset(self):
+        # This simply splits indices
+        np.random.seed(self.seed) # lol just use permutation, whyu use choice?
+        #indices = np.random.choice(1000, 1000, replace=False)
+        indices = np.random.permutation(np.arange(1000))
+        self.eval_idx  = indices[-self.num_eval_samples:]
+        self.train_idx = indices[:-self.num_eval_samples]
+
+    def shuffle_train_idx(self):
+        np.random.shuffle(self.train_idx)
+
+
+    #def get_cached_data(self, indices):
+    #    get_idx  = lambda i: np.load(self.cache_path.format(self.fname_idx,  i))
+    #    get_feat = lambda i: np.load(self.cache_path.format(self.fname_feat, i))
+    #    symm_idx = [get_idx[i] for i in indices]
+    #    feats    = [get_feat[i][0] for i in indices]
+    #    return feats, symm_idx
+
+    def get_cached_data(self, idx):
+        j = idx + 1 # the filenames are 1-indexed
+        get_idx  = lambda i: np.load(self.cache_path.format(self.fname_idx,  i))
+        get_feat = lambda i: np.load(self.cache_path.format(self.fname_feat, i))
+        #symm_idx = [get_idx[i] for i in indices]
+        #feats    = [get_feat[i][0] for i in indices]
+        feats    = get_feat(j)[0] # (S, 9)
+        symm_idx = list(get_idx(j)[0]) # (6,)
+        return feats, symm_idx
+
+    def get_za_fpm_data(self):
+        """ NO NORMALIZATION """
+        #=== formatting data
+        reshape_dims = (1, 1000, 32**3, 3)
+
+        #=== get ZA cubes
+        ZA_disp = (self.X[...,1:4]).reshape(*reshape_dims)
+        ZA_vel  = self.X[...,10:13].reshape(*reshape_dims)
+        X_ZA = np.concatenate([ZA_disp, ZA_vel], axis=-1)
+
+        #=== get FastPM cubes
+        FPM_disp = (self.X[...,7:10]).reshape(*reshape_dims)
+        FPM_vel  = self.X[...,16:19].reshape(*reshape_dims)
+        X_FPM = np.concatenate([FPM_disp, FPM_vel], axis=-1)
+
+        #=== Concat ZA and FastPM together, like typical redshift format
+        self.X = np.concatenate([X_ZA, X_FPM], axis=0) # (2, 1000, 32**3, 6)
+
+
+    def get_minibatch(self, idx):
+        # Cube data (fpm)
+        x_data = self.X[:,idx:idx+1]
+        # Cached data
+        feats, symm_idx = self.get_cached_data(idx)
+        return x_data, feats, symm_idx
+
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -156,4 +223,9 @@ class Uni_Dataset(Dataset):
 
 def get_dataset(args):
     dset = args.dataset_type
-    return ZA_Dataset(args) if dset == 'ZA' else Uni_Dataset(args)
+    if dset == 'ZA':
+        return ZA_Dataset(args)
+    elif dset == 'ZA_15':
+        return ZA_Cached_Dataset(args)
+    else:
+        return Uni_Dataset(args)

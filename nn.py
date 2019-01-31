@@ -6,6 +6,8 @@ from scipy.sparse import coo_matrix
 
 #██████████████████████████████████████████████████████████████████████████████
 #██████████████████████████████████████████████████████████████████████████████
+
+
 #-----------------------------------------------------------------------------#
 #                               15 Op Shift Inv                               #
 #-----------------------------------------------------------------------------#
@@ -13,8 +15,7 @@ from scipy.sparse import coo_matrix
 
 # Updated/Corrected Shiftinv layer
 # ===================================
-def shift_inv_layer(H_in, COO_feats, bN, layer_vars, is_last=False):
-def shift_inv_15op_layer(H_in, adj, bN, layer_id, is_last=False):
+def shift_inv_15op_layer(H_in, adj, bN, layer_vars, is_last=False):
     """
 
     New basis with 15 independent weights.
@@ -104,18 +105,6 @@ def shift_inv_15op_layer(H_in, adj, bN, layer_id, is_last=False):
 
 
 
-    # -------------------------
-    # FIXME: this paragraph is a placeholder for weights and biases
-    # This is just a placeholder for trainable weights. Just setting identity matrices as placeholders (so
-    # input_channels = output_channels).
-    # This should be replaced with 15 weight matrices of shape (H_in.shape[1], number of output channels).
-    #W = tf.constant(np.array([np.eye(H_in.shape[1], dtype=np.float64) for _ in range(15)], dtype=np.float64))
-
-    # This is just a placeholder for biases. Just setting it to one as placeholder.
-    # This should be replaced with 2 bias matrices of shape (number of output channels).
-    #B = tf.constant(np.ones(shape=(2, W.shape[2])))
-    # -------------------------
-
     # ~~~~~~~~~~~~~~~~~~~~~~~~~
     # FIX:
     # S = sum_i( symmetrized_i ) for i = 0...b-1, where b = batch size.
@@ -131,18 +120,10 @@ def shift_inv_15op_layer(H_in, adj, bN, layer_id, is_last=False):
     b, N = bN # batch_size, num_particles
 
     #   # split vars
-    #   weights, B = layer_vars
-    #   W1, W2, W3, W4 = weights
     #==== Weights and Biases, UPDATED
     # W : (15, k_in, k_out)
     # B : (2, k_out)
     W, B = layer_vars
-
-
-    #==== Weights and Biases, OLD
-    # W : (15, k_in, k_out)
-    # B : (2, k_out)
-    W, B = get_ShiftInv_symm_layer_vars(layer_id)
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~
     out_shape = tf.shape(H_in)[0], W[0].shape[-1]
@@ -216,6 +197,35 @@ def shift_inv_15op_layer(H_in, adj, bN, layer_id, is_last=False):
     else:
         return H
 
+def network_func_15op_shift_inv_za(edges, adj, num_layers, dims, activation, sess_mgr):
+    # Input layer
+    # ========================================
+    H = activation(shift_inv_15op_layer(edges, adj, dims, sess_mgr.get_layer_vars(0),))
+
+    # Hidden layers
+    # ========================================
+    for layer_idx in range(1, num_layers):
+        is_last = layer_idx == num_layers - 1
+        layer_vars = sess_mgr.get_layer_vars(layer_idx)
+        H = shift_inv_15op_layer(H, adj, dims, layer_vars, is_last=is_last)
+        if not is_last:
+            H = activation(H)
+    return H
+
+
+def model_func_15op_shift_inv_za(edges, adj_map, sess_mgr, dims,
+                                 activation=tf.nn.relu):
+    var_scope = sess_mgr.var_scope
+    num_layers = len(sess_mgr.channels) - 1
+
+    # Network forward
+    # ========================================
+    with tf.variable_scope(var_scope, reuse=True): # so layers can get variables
+        # ==== Network output
+        pred_error = network_func_15op_shift_inv_za(edges, adj_map, num_layers,
+                                               dims[:-1], activation, sess_mgr)
+        return pred_error
+        # Consider Skip connects if error is off
 
 #██████████████████████████████████████████████████████████████████████████████
 #██████████████████████████████████████████████████████████████████████████████

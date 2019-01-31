@@ -8,7 +8,7 @@ import numpy
 # ==============
 ZA_naming  = dict(model='SI_ZA-FastPM_{}', cube='X_{}')
 UNI_naming = dict(model='SI_{}-{}', cube='X_{}-{}')
-naming_map = {'ZA': ZA_naming, 'UNI': UNI_naming}
+naming_map = {'ZA': ZA_naming, 'ZA_15': ZA_naming, 'UNI': UNI_naming}
 
 
 class ModelSaver:
@@ -115,7 +115,7 @@ class ModelSaver:
 
     def print_evaluation_results(self, err):
         #zx, zy = self.z_idx
-        if self.dataset_type == 'ZA':
+        if 'ZA' in self.dataset_type:
             zx, zy = 'ZA', 'FastPM'
         else:
             zx, zy = self.z_idx

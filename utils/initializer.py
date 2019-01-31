@@ -5,7 +5,7 @@ class Initializer:
     """
     weight_tag = 'W{}_{}'
     #bias_tag   = 'B_{}'
-    bias_tag   = 'B_{}'
+    bias_tag   = 'B{}_{}'
     scalar_tag = 'T_{}'
     def __init__(self, args):
         self.seed = args.seed
@@ -14,6 +14,7 @@ class Initializer:
         self.var_scope = args.var_scope.format(args.dataset_type)
         self.scalar_val = args.scalar_val
         self.num_layer_W = args.num_layer_W
+        self.num_layer_B = args.num_layer_B
 
     def initialize_scalars(self):
         """ scalars initialized by const value """
@@ -22,28 +23,30 @@ class Initializer:
             tag = self.scalar_tag.format(i)
             tf.get_variable(tag, dtype=tf.float32, initializer=init)
 
-    def initialize_bias(self, layer_idx):
-        """ biases initialized to be near zero """
-        args = (self.bias_tag.format(layer_idx),)
-        k_out = self.channels[layer_idx + 1] # only output chans relevant
-        if self.restore:
-            initializer = None
-            args += (k_out,)
-        else:
-            initializer = tf.ones((k_out,), dtype=tf.float32) * 1e-8
-        tf.get_variable(*args, dtype=tf.float32, initializer=initializer)
+    #def initialize_bias(self, layer_idx):
+    #    """ biases initialized to be near zero """
+    #    args = (self.bias_tag.format(layer_idx),)
+    #    k_out = self.channels[layer_idx + 1] # only output chans relevant
+    #    if self.restore:
+    #        initializer = None
+    #        args += (k_out,)
+    #    else:
+    #        initializer = tf.ones((k_out,), dtype=tf.float32) * 1e-8
+    #    tf.get_variable(*args, dtype=tf.float32, initializer=initializer)
 
-    def initialize_multi_bias(self, layer_idx):
+    def initialize_bias(self, layer_idx):
         """ biases initialized to be near zero """
         #args = (self.bias_tag.format(layer_idx),)
         k_out = self.channels[layer_idx + 1] # only output chans relevant
-
-        if self.restore:
-            initializer = None
-            args += (k_out,)
-        else:
-            initializer = tf.ones((k_out,), dtype=tf.float32) * 1e-8
-        tf.get_variable(*args, dtype=tf.float32, initializer=initializer)
+        for b_idx in range(self.num_layer_B):
+            name = self.bias_tag.format(layer_idx, b_idx)
+            args = (name,)
+            if self.restore:
+                init = None
+                args +=  (k_out,)
+            else:
+                init = tf.ones((k_out,), dtype=tf.float32) * 1e-8
+            tf.get_variable(*args, dtype=tf.float32, initializer=init)
 
     def initialize_weight(self, layer_idx):
         """ weights sampled from glorot normal """
@@ -75,10 +78,14 @@ class Initializer:
         """ Gets all variables for a layer
         NOTE: ASSUMES VARIABLE SCOPE! Cannot get vars outside of scope.
         """
-        get_W = lambda w: tf.get_variable(self.weight_tag.format(layer_idx, w))
+        get_B = lambda i: tf.get_variable(self.bias_tag.format(layer_idx, i))
+        get_W = lambda i: tf.get_variable(self.weight_tag.format(layer_idx, i))
         #=== layer vars
-        weights = [get_W(w_idx) for w_idx in range(self.num_layer_W)]
-        bias = tf.get_variable(self.bias_tag.format(layer_idx))
+        weights = [get_W(i) for i in range(self.num_layer_W)]
+        bias    = [get_B(i) for i in range(self.num_layer_B)]
+        if len(bias) == 1:
+            bias = bias[0]
+        #bias = tf.get_variable(self.bias_tag.format(layer_idx))
         return weights, bias
 
     def initialize_session(self):
