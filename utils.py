@@ -15,6 +15,7 @@ import glob
 import code
 import time
 import argparse
+from collections import NamedTuple
 import numpy as np
 import tensorflow as tf
 
@@ -35,6 +36,185 @@ So:
 * clean up nn
 
 """
+
+# Handy Helpers
+# =============
+
+class AttrDict(dict):
+    # dot accessible dict
+    # NB: not pickleable
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+#-----------------------------------------------------------------------------#
+#                            Settings & Constants                             #
+#-----------------------------------------------------------------------------#
+
+# Session vars
+# ============
+VAR_SCOPE  = 'params'  # tf variable scope; sess vars look like: 'params/W2_3'
+params_seed = 77743196 # seed for weight inits; may be modified
+weight_tag = 'W{}_{}'  # eg 'W2_3' : the 3rd weight for the 2nd net layer
+bias_tag   = 'B{}_{}'  # generally only 1 bias per layer, so 'B_2' for 2nd net layer bias
+scalar_tag = 'T_{}'    # scalar param, net out (currently no use) (DEFAULT 0.002)
+model_tag  = ''        # default model name
+restore = False        # if restore, then load previously trained model
+
+# Data vars
+# =========
+num_particles = 32**3   # particles in point cloud
+data_seed = 12345       # for consistent train/test dataset splits (best not to modify!)
+
+# dataset labels
+# --------------
+za_labels = ['001', '002', '003', '004', '005',
+             '006', '007', '008', '009', '010']
+za_default = za_labels[3] # '004'
+
+#redshifts = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792,
+#             1.6141, 1.3385, 1.1212, 0.9438, 0.7955,
+#             0.6688, 0.5588, 0.4620, 0.3758, 0.2983,
+#             0.2280, 0.1639, 0.1049, 0.0505, 0.0000] # redshift dset not in use
+#rs_default = [10, 19] # (0.6688, 0.000)
+
+
+# Training vars
+# =============
+batch_size = 4
+num_iters  = 20000
+num_eval_samples = 200
+always_write_meta = False
+
+# Model vars
+# ==========
+channels = [9, 32, 16, 8, 3]    # shallow for corrected shift-inv (mem)
+#channels = [6, 32, 64, 128, 256, 64, 16, 8, 3]
+num_neighbors = 14
+num_layer_W = 15   # num weights per layer in network; 15 for upd. shiftinv, 4 for old
+num_layer_B = 2    # 2 for 15op, 1 normally
+
+
+class SessionManager:
+    """ inits and gets vars within a tf session
+
+    Variables can be tricky in tf compared to Chainer/torch--especially
+    if you have mostly used tf's built-ins and interface assets.
+
+    When not utilizing a tf network or layer interface, you have to be careful
+    with variable initialization. Namely, you *must* initialize variables
+    using tf's context manager:
+    `with tf.variable_scope(vscope, reuse=tf.AUTO_REUSE)`
+
+    Use tf.AUTO_REUSE--it will be True when there exists a variable within
+    `vscope`, and False when not (thus making a new var). Static True may
+    cause issues when initializing.
+
+    The `reuse` kwarg is the most important part.
+    If you do not specify 'True', or `tf.AUTO_REUSE`, *every time you
+    "get" your variable, tf will  initialize a new variable and return it,*
+    instead of using the same variables--you'll OOM and the model won't learn.
+
+    Both the init and getters of a variable use tf.get_variable. If the
+    variable requested is not defined within scope (ie, you did not reuse!),
+    then tf.get_variable initializes a variable and returns it, otherwise
+    it will return the requested variable.
+
+    In short:
+    tf.get_variable MUST be called under tf.variable_scope with tf.AUTO_REUSE
+
+    """
+    def __init__(self, args):
+        kdims = list(zip(args.channels[:-1], args.channels[1:]))
+        tf.set_random_seed(args.seed)
+        with tf.variable_scope(VAR_SCOPE, reuse=tf.AUTO_REUSE):
+            for layer_vars in enumerate(kdims):
+                self.initialize_bias(  *layer_vars, args.restore)
+                self.initialize_weight(*layer_vars, args.restore)
+            if args.scalar:
+                self.initialize_scalars(args.scalar)
+
+    def initialize_scalars(self):
+        """ scalars initialized by const value """
+        for i in range(2):
+            init = tf.constant([self.scalar_val])
+            tag = self.scalar_tag.format(i)
+            tf.get_variable(tag, dtype=tf.float32, initializer=init)
+
+    def initialize_bias(self, layer_idx):
+        """ biases initialized to be near zero """
+        args = (self.bias_tag.format(layer_idx),)
+        k_out = self.channels[layer_idx + 1] # only output chans relevant
+        if self.restore:
+            initializer = None
+            args += (k_out,)
+        else:
+            initializer = tf.ones((k_out,), dtype=tf.float32) * 1e-8
+        tf.get_variable(*args, dtype=tf.float32, initializer=initializer)
+
+    def initialize_weight(self, layer_idx):
+        """ weights sampled from glorot normal """
+        kdims = self.channels[layer_idx : layer_idx+2]
+        for w_idx in range(self.num_layer_W):
+            name = self.weight_tag.format(layer_idx, w_idx)
+            args = (name, kdims)
+            init = None if self.restore else tf.glorot_normal_initializer(None)
+            tf.get_variable(*args, dtype=tf.float32, initializer=init)
+
+    def initialize_params(self):
+        tf.set_random_seed(self.seed)
+        with tf.variable_scope(self.var_scope, reuse=tf.AUTO_REUSE):
+            for layer_idx in range(len(self.channels) - 1):
+                #==== Layer vars
+                self.initialize_bias(layer_idx)
+                self.initialize_weight(layer_idx)
+            #==== model vars
+            self.initialize_scalars()
+
+    # - - - - - - - - - - - -
+
+    def get_scalars(self):
+        t1 = tf.get_variable(self.scalar_tag.format(0))
+        t2 = tf.get_variable(self.scalar_tag.format(1))
+        return t1, t2
+
+    def get_layer_vars(self, layer_idx):
+        """ Gets all variables for a layer
+        NOTE: ASSUMES VARIABLE SCOPE! Cannot get vars outside of scope.
+        """
+        get_B = lambda i: tf.get_variable(self.bias_tag.format(layer_idx, i))
+        get_W = lambda i: tf.get_variable(self.weight_tag.format(layer_idx, i))
+        #=== layer vars
+        weights = [get_W(i) for i in range(self.num_layer_W)]
+        bias    = [get_B(i) for i in range(self.num_layer_B)]
+        if len(bias) == 1:
+            bias = bias[0]
+        #bias = tf.get_variable(self.bias_tag.format(layer_idx))
+        return weights, bias
+
+    def initialize_session(self):
+        sess_kwargs = {}
+        #==== Check for GPU
+        if tf.test.is_gpu_available(cuda_only=True):
+            gpu_frac = 0.85
+            gpu_opts = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
+            sess_kwargs['config'] = tf.ConfigProto(gpu_options=gpu_opts)
+        #==== initialize session
+        self.sess = tf.InteractiveSession(**sess_kwargs)
+
+    def initialize_graph(self):
+        """ initializes all variables after computational graph
+            has been specified (via endpoints data input and optimized error)
+        """
+        self.sess.run(tf.global_variables_initializer())
+        print('\n\nAll variables initialized\n')
+
+    def __call__(self):
+        """ return sess """
+        if not hasattr(self, 'sess'):
+            self.initialize_session()
+        return self.sess
+
 
 #-----------------------------------------------------------------------------#
 #                             Pathing and Naming                              #
@@ -86,6 +266,39 @@ cached_indices  = get_cache('*symm*')
 ZA_naming  = dict(model='SI_ZA-FastPM_{}', cube='X_{}')
 #UNI_naming = dict(model='SI_{}-{}', cube='X_{}-{}') # redshift-based dataset not used
 naming_map = {'ZA': ZA_naming, 'ZA_15': ZA_naming, }#'UNI': UNI_naming}
+
+
+
+
+---
+
+seed : 77743196
+var_scope : params_{}
+
+#channels : [3, 32, 16, 8, 3]
+channels : [9, 32, 16, 8, 3]
+#channels : [3, 32, 64, 128, 256, 64, 16, 8, 3]
+#num_layer_W : 4  # weights per layer; 4 for shiftinv
+#num_layer_W : 1  # weights per layer, SET
+num_layer_W : 15
+num_layer_B : 2 # normally 1
+scalar_val : 0.002
+restore : false
+
+num_eval_samples: 200
+num_iters: 2000
+#batch_size: 4
+batch_size : 1
+neighbors : 14
+always_write_meta : false
+model_tag : ''
+
+z_idx :
+    ZA  : [0]
+    ZA_15  : [0]
+    UNI : [10, 19]
+dataset_type : ZA_15 # Either ZA or UNI
+
 
 
 
@@ -222,5 +435,121 @@ class ModelSaver:
         for b in body:
             print(b)
 
+
+'''
+
+'''
+import tensorflow as tf
+import code
+class Initializer:
+    """Initializes variables and provides their getters
+    """
+    weight_tag = 'W{}_{}'
+    #bias_tag   = 'B_{}'
+    bias_tag   = 'B{}_{}'
+    scalar_tag = 'T_{}'
+    def __init__(self, args):
+        self.seed = args.seed
+        self.restore = args.restore
+        self.channels = args.channels
+        self.var_scope = args.var_scope.format(args.dataset_type)
+        self.scalar_val = args.scalar_val
+        self.num_layer_W = args.num_layer_W
+        self.num_layer_B = args.num_layer_B
+
+    def initialize_scalars(self):
+        """ scalars initialized by const value """
+        for i in range(2):
+            init = tf.constant([self.scalar_val])
+            tag = self.scalar_tag.format(i)
+            tf.get_variable(tag, dtype=tf.float32, initializer=init)
+
+    #def initialize_bias(self, layer_idx):
+    #    """ biases initialized to be near zero """
+    #    args = (self.bias_tag.format(layer_idx),)
+    #    k_out = self.channels[layer_idx + 1] # only output chans relevant
+    #    if self.restore:
+    #        initializer = None
+    #        args += (k_out,)
+    #    else:
+    #        initializer = tf.ones((k_out,), dtype=tf.float32) * 1e-8
+    #    tf.get_variable(*args, dtype=tf.float32, initializer=initializer)
+
+    def initialize_bias(self, layer_idx):
+        """ biases initialized to be near zero """
+        #args = (self.bias_tag.format(layer_idx),)
+        k_out = self.channels[layer_idx + 1] # only output chans relevant
+        for b_idx in range(self.num_layer_B):
+            name = self.bias_tag.format(layer_idx, b_idx)
+            args = (name,)
+            if self.restore:
+                init = None
+                args +=  (k_out,)
+            else:
+                init = tf.ones((k_out,), dtype=tf.float32) * 1e-8
+            tf.get_variable(*args, dtype=tf.float32, initializer=init)
+
+    def initialize_weight(self, layer_idx):
+        """ weights sampled from glorot normal """
+        kdims = self.channels[layer_idx : layer_idx+2]
+        for w_idx in range(self.num_layer_W):
+            name = self.weight_tag.format(layer_idx, w_idx)
+            args = (name, kdims)
+            init = None if self.restore else tf.glorot_normal_initializer(None)
+            tf.get_variable(*args, dtype=tf.float32, initializer=init)
+
+    def initialize_params(self):
+        tf.set_random_seed(self.seed)
+        with tf.variable_scope(self.var_scope, reuse=tf.AUTO_REUSE):
+            for layer_idx in range(len(self.channels) - 1):
+                #==== Layer vars
+                self.initialize_bias(layer_idx)
+                self.initialize_weight(layer_idx)
+            #==== model vars
+            self.initialize_scalars()
+
+    # - - - - - - - - - - - -
+
+    def get_scalars(self):
+        t1 = tf.get_variable(self.scalar_tag.format(0))
+        t2 = tf.get_variable(self.scalar_tag.format(1))
+        return t1, t2
+
+    def get_layer_vars(self, layer_idx):
+        """ Gets all variables for a layer
+        NOTE: ASSUMES VARIABLE SCOPE! Cannot get vars outside of scope.
+        """
+        get_B = lambda i: tf.get_variable(self.bias_tag.format(layer_idx, i))
+        get_W = lambda i: tf.get_variable(self.weight_tag.format(layer_idx, i))
+        #=== layer vars
+        weights = [get_W(i) for i in range(self.num_layer_W)]
+        bias    = [get_B(i) for i in range(self.num_layer_B)]
+        if len(bias) == 1:
+            bias = bias[0]
+        #bias = tf.get_variable(self.bias_tag.format(layer_idx))
+        return weights, bias
+
+    def initialize_session(self):
+        sess_kwargs = {}
+        #==== Check for GPU
+        if tf.test.is_gpu_available(cuda_only=True):
+            gpu_frac = 0.85
+            gpu_opts = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
+            sess_kwargs['config'] = tf.ConfigProto(gpu_options=gpu_opts)
+        #==== initialize session
+        self.sess = tf.InteractiveSession(**sess_kwargs)
+
+    def initialize_graph(self):
+        """ initializes all variables after computational graph
+            has been specified (via endpoints data input and optimized error)
+        """
+        self.sess.run(tf.global_variables_initializer())
+        print('\n\nAll variables initialized\n')
+
+    def __call__(self):
+        """ return sess """
+        if not hasattr(self, 'sess'):
+            self.initialize_session()
+        return self.sess
 
 '''
