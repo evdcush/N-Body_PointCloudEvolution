@@ -14,8 +14,12 @@ import sys
 import glob
 import code
 import time
+import random
 import argparse
+import datetime
 from collections import NamedTuple
+
+import yaml
 import numpy as np
 import tensorflow as tf
 
@@ -36,9 +40,16 @@ So:
 * clean up nn
 
 """
-
 # Handy Helpers
 # =============
+
+def get_date():
+    # OUT: (YYYY, M, D), eg (2019, 2, 27)
+    date  = datetime.datetime.now().date()
+    year  = str(date.year)
+    month = str(date.month)
+    day   = str(date.day)
+    return (year, month, day)
 
 class AttrDict(dict):
     # dot accessible dict
@@ -47,270 +58,265 @@ class AttrDict(dict):
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 
-#-----------------------------------------------------------------------------#
-#                            Settings & Constants                             #
-#-----------------------------------------------------------------------------#
 
-# Session vars
-# ============
-VAR_SCOPE  = 'params'  # tf variable scope; sess vars look like: 'params/W2_3'
-params_seed = 77743196 # seed for weight inits; may be modified
-weight_tag = 'W{}_{}'  # eg 'W2_3' : the 3rd weight for the 2nd net layer
-bias_tag   = 'B{}_{}'  # generally only 1 bias per layer, so 'B_2' for 2nd net layer bias
-scalar_tag = 'T_{}'    # scalar param, net out (currently no use) (DEFAULT 0.002)
-model_tag  = ''        # default model name
-restore = False        # if restore, then load previously trained model
+# yaml RW funcs
+# -------------
+def R_yml(fname):
+    with open(fname) as file:
+        return yaml.load(file)
 
-# Data vars
-# =========
-num_particles = 32**3   # particles in point cloud
-data_seed = 12345       # for consistent train/test dataset splits (best not to modify!)
-
-# dataset labels
-# --------------
-za_labels = ['001', '002', '003', '004', '005',
-             '006', '007', '008', '009', '010']
-za_default = za_labels[3] # '004'
-
-#redshifts = [9.0000, 4.7897, 3.2985, 2.4950, 1.9792,
-#             1.6141, 1.3385, 1.1212, 0.9438, 0.7955,
-#             0.6688, 0.5588, 0.4620, 0.3758, 0.2983,
-#             0.2280, 0.1639, 0.1049, 0.0505, 0.0000] # redshift dset not in use
-#rs_default = [10, 19] # (0.6688, 0.000)
+def W_yml(fname, obj):
+    with open(fname, 'w') as file:
+        yaml.dump(obj, file, default_flow_style=False)
 
 
-# Training vars
-# =============
-batch_size = 4
-num_iters  = 20000
-num_eval_samples = 200
-always_write_meta = False
-
-# Model vars
-# ==========
-channels = [9, 32, 16, 8, 3]    # shallow for corrected shift-inv (mem)
-#channels = [6, 32, 64, 128, 256, 64, 16, 8, 3]
-num_neighbors = 14
-num_layer_W = 15   # num weights per layer in network; 15 for upd. shiftinv, 4 for old
-num_layer_B = 2    # 2 for 15op, 1 normally
-
-
-class SessionManager:
-    """ inits and gets vars within a tf session
-
-    Variables can be tricky in tf compared to Chainer/torch--especially
-    if you have mostly used tf's built-ins and interface assets.
-
-    When not utilizing a tf network or layer interface, you have to be careful
-    with variable initialization. Namely, you *must* initialize variables
-    using tf's context manager:
-    `with tf.variable_scope(vscope, reuse=tf.AUTO_REUSE)`
-
-    Use tf.AUTO_REUSE--it will be True when there exists a variable within
-    `vscope`, and False when not (thus making a new var). Static True may
-    cause issues when initializing.
-
-    The `reuse` kwarg is the most important part.
-    If you do not specify 'True', or `tf.AUTO_REUSE`, *every time you
-    "get" your variable, tf will  initialize a new variable and return it,*
-    instead of using the same variables--you'll OOM and the model won't learn.
-
-    Both the init and getters of a variable use tf.get_variable. If the
-    variable requested is not defined within scope (ie, you did not reuse!),
-    then tf.get_variable initializes a variable and returns it, otherwise
-    it will return the requested variable.
-
-    In short:
-    tf.get_variable MUST be called under tf.variable_scope with tf.AUTO_REUSE
-
-    """
-    def __init__(self, args):
-        kdims = list(zip(args.channels[:-1], args.channels[1:]))
-        tf.set_random_seed(args.seed)
-        with tf.variable_scope(VAR_SCOPE, reuse=tf.AUTO_REUSE):
-            for layer_vars in enumerate(kdims):
-                self.initialize_bias(  *layer_vars, args.restore)
-                self.initialize_weight(*layer_vars, args.restore)
-            if args.scalar:
-                self.initialize_scalars(args.scalar)
-
-    def initialize_scalars(self):
-        """ scalars initialized by const value """
-        for i in range(2):
-            init = tf.constant([self.scalar_val])
-            tag = self.scalar_tag.format(i)
-            tf.get_variable(tag, dtype=tf.float32, initializer=init)
-
-    def initialize_bias(self, layer_idx):
-        """ biases initialized to be near zero """
-        args = (self.bias_tag.format(layer_idx),)
-        k_out = self.channels[layer_idx + 1] # only output chans relevant
-        if self.restore:
-            initializer = None
-            args += (k_out,)
-        else:
-            initializer = tf.ones((k_out,), dtype=tf.float32) * 1e-8
-        tf.get_variable(*args, dtype=tf.float32, initializer=initializer)
-
-    def initialize_weight(self, layer_idx):
-        """ weights sampled from glorot normal """
-        kdims = self.channels[layer_idx : layer_idx+2]
-        for w_idx in range(self.num_layer_W):
-            name = self.weight_tag.format(layer_idx, w_idx)
-            args = (name, kdims)
-            init = None if self.restore else tf.glorot_normal_initializer(None)
-            tf.get_variable(*args, dtype=tf.float32, initializer=init)
-
-    def initialize_params(self):
-        tf.set_random_seed(self.seed)
-        with tf.variable_scope(self.var_scope, reuse=tf.AUTO_REUSE):
-            for layer_idx in range(len(self.channels) - 1):
-                #==== Layer vars
-                self.initialize_bias(layer_idx)
-                self.initialize_weight(layer_idx)
-            #==== model vars
-            self.initialize_scalars()
-
-    # - - - - - - - - - - - -
-
-    def get_scalars(self):
-        t1 = tf.get_variable(self.scalar_tag.format(0))
-        t2 = tf.get_variable(self.scalar_tag.format(1))
-        return t1, t2
-
-    def get_layer_vars(self, layer_idx):
-        """ Gets all variables for a layer
-        NOTE: ASSUMES VARIABLE SCOPE! Cannot get vars outside of scope.
-        """
-        get_B = lambda i: tf.get_variable(self.bias_tag.format(layer_idx, i))
-        get_W = lambda i: tf.get_variable(self.weight_tag.format(layer_idx, i))
-        #=== layer vars
-        weights = [get_W(i) for i in range(self.num_layer_W)]
-        bias    = [get_B(i) for i in range(self.num_layer_B)]
-        if len(bias) == 1:
-            bias = bias[0]
-        #bias = tf.get_variable(self.bias_tag.format(layer_idx))
-        return weights, bias
-
-    def initialize_session(self):
-        sess_kwargs = {}
-        #==== Check for GPU
-        if tf.test.is_gpu_available(cuda_only=True):
-            gpu_frac = 0.85
-            gpu_opts = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
-            sess_kwargs['config'] = tf.ConfigProto(gpu_options=gpu_opts)
-        #==== initialize session
-        self.sess = tf.InteractiveSession(**sess_kwargs)
-
-    def initialize_graph(self):
-        """ initializes all variables after computational graph
-            has been specified (via endpoints data input and optimized error)
-        """
-        self.sess.run(tf.global_variables_initializer())
-        print('\n\nAll variables initialized\n')
-
-    def __call__(self):
-        """ return sess """
-        if not hasattr(self, 'sess'):
-            self.initialize_session()
-        return self.sess
 
 
 #-----------------------------------------------------------------------------#
-#                             Pathing and Naming                              #
+#                                   PATHING                                   #
 #-----------------------------------------------------------------------------#
+"""
+These are the variables you need to adjust to point towards your data
+"""
 
 # Base paths
 # ==========
 _home = os.environ['HOME'] # ~, your home directory, eg '/home/evan'
-_data = _home + '/.Data'
+_data = _home + '/.Data'   # '/home/$USER/.Data'
 _project = os.path.abspath(os.path.dirname(__file__)) # '/path/to/nbody_project'
 
-# Data paths
-# ==========
+# data dirs
 data_path = _data + '/nbody_simulations'        # location of simulation datasets
 experiments_path = _data + '/Experiments/Nbody' # where model params & test preds saved
 
-# Datasets
-# ========
-"""
-Available datasets:
-There are ten ZA/FPM datasets available with, numbered '001'...'010',
-eg: 'ZA_001.npy', 'ZA_002.npy', ..., 'ZA_010.npy'
-
-Cache : cached graph data for corrected shift-inv model (15op), using ZA_001.npy
-    data is cached as features and symm_idx for each sample (1000 total), 1-indexed
-    eg 'X_features_37.npy', 'X_symm_idx_37.npy'
-
-    Since the cache filname numbers are not padded with leading zeros,
-    eg '98' instead of '0098', care must be taken when sorting fnames
-    (so you don't get [..., '979', '98', '980', '981', ...])
-
-"""
+# Dataset
+# =======
 ZA_path = data_path + '/ZA'
-ZA_datasets = sorted(glob.glob(ZA_path + '/*.npy'))
+ZA_samples = ZA_datasets = sorted(glob.glob(ZA_path + '/*.npy'))
 
-# Cached data
-# -----------
-ZA_cache = data_path + '/cached'
-cache_sort_key = lambda s: int(s.split('_')[-1][:-4]) # fname number
-get_cache = lambda gmatch: sorted(glob.glob(ZA_cache + gmatch), key=cache_sort_key)
+# dataset labels
+# --------------
+# example za dpath: '/home/evan/.Data/nbody_simulations/ZA/007.npy'
+za_labels = ['001', '002', '003', '004', '005',
+             '006', '007', '008', '009', '010']
 
-cached_features = get_cache('*features*')
-cached_indices  = get_cache('*symm*')
+#-----------------------------------------------------------------------------#
+#                                   NAMING                                    #
+#-----------------------------------------------------------------------------#
+# How variables and models are named
+
+# Variable naming
+# ===============
+VAR_SCOPE  = 'params'  # tf variable scope; sess vars look like: 'params/W2_3'
+weight_tag = 'W{}_{}'  # eg 'W2_3' : the 3rd weight for the 2nd net layer
+bias_tag   = 'B{}_{}'  # generally only 1 bias per layer, so 'B_2' for 2nd net layer bias
+scalar_tag = 'T_{}'    # scalar param, net out (currently no use) (DEFAULT 0.002)
+model_tag  = ''        # default model name
+
+# Model naming
+# ============
+ZA_naming  = AttrDict(model='ZA-FPM_{}', cube='X_{}')
+model_gen_tags = ['arae', 'boot', 'cari', 'drac', 'erid', 'forn', 'gemi',
+                  'hyda', 'indi', 'lyra', 'mensa', 'norma', 'orion', 'pavo',
+                  'reti', 'scut', 'taur', 'ursa', 'virgo']
+
+def name_model(naming, label_idx, model_tag=''):
+    """ format naming style with dataset index {0:'001', '1':'002',...} and tag
+    eg:
+    name_model(ZA_naming, 3, 'testbatch')
+        ---> (model='ZA-FPM_3_testbatch', cube='X_3')
+
+    name_model(ZA_naming, 2) # (random tag)
+        ---> (model='ZA-FPM_2_erid-ursa-hyda', cube='X_2')
+    """
+    if model_tag == '':
+        mtags = random.choices(model_gen_tags, k=3)
+        model_tag = '-'.join(mtags)
+    model_tag = f'{label_idx}_{model_tag}'
+    naming.model = naming.model.format(model_tag)
+    naming.cube  = naming.cube.format(label_idx)
+    print(f"NAMED: model={naming.model}\n       cube={naming.cube}")
 
 
-# Naming formats
-# ==============
-""" fnames for model params """
-ZA_naming  = dict(model='SI_ZA-FastPM_{}', cube='X_{}')
-#UNI_naming = dict(model='SI_{}-{}', cube='X_{}-{}') # redshift-based dataset not used
-naming_map = {'ZA': ZA_naming, 'ZA_15': ZA_naming, }#'UNI': UNI_naming}
+#-----------------------------------------------------------------------------#
+#                                DATA FEATURES                                #
+#-----------------------------------------------------------------------------#
+# Data vars
+# =========
+num_samples   = 1000
+num_particles = 32**3
+dataset_seed  = 12345
+
+# default dataset selection
+za_default_idx = 0
+za_default = za_labels[za_default_idx] # '001'
 
 
+#-----------------------------------------------------------------------------#
+#                               MODEL SETTINGS                                #
+#-----------------------------------------------------------------------------#
+# Params
+# ======
+params_seed  = 77743196 # seed for weight inits; may be modified
+channels = [6, 32, 64, 16, 8, 3]
+#channels = [9, 32, 16, 8, 3] # shallow for corrected shift-inv (mem)
+#channels = [6, 32, 64, 128, 256, 64, 16, 8, 3]  # set can go deeeeeep
+num_neighbors = 14
 
+# layer vars
+num_layer_W = 4  # num weights per layer in network; 15 for upd. shiftinv, 4 for old
+num_layer_B = 1  # 2 for 15op, 1 normally
+num_scalar  = 2
+scalar_val_init = 0.002
 
----
-
-seed : 77743196
-var_scope : params_{}
-
-#channels : [3, 32, 16, 8, 3]
-channels : [9, 32, 16, 8, 3]
-#channels : [3, 32, 64, 128, 256, 64, 16, 8, 3]
-#num_layer_W : 4  # weights per layer; 4 for shiftinv
-#num_layer_W : 1  # weights per layer, SET
-num_layer_W : 15
-num_layer_B : 2 # normally 1
-scalar_val : 0.002
-restore : false
-
-num_eval_samples: 200
-num_iters: 2000
-#batch_size: 4
-batch_size : 1
-neighbors : 14
-always_write_meta : false
-model_tag : ''
-
-z_idx :
-    ZA  : [0]
-    ZA_15  : [0]
-    UNI : [10, 19]
-dataset_type : ZA_15 # Either ZA or UNI
 
 
 
 
 #-----------------------------------------------------------------------------#
-#                                    Saver                                    #
+#                                  TRAINING                                   #
 #-----------------------------------------------------------------------------#
 
+# Default settings
+# ================
+batch_size = 4
+num_iters  = 20000
+num_eval_samples  = 200
+always_write_meta = False
+restore = False # use pretrained model params
 
 
-# WIP: this just copy-pasted from utils/saver.py
-#
-'''
+#=============================================================================#
+#                                   SESSION                                   #
+#=============================================================================#
+"""
+This section has the variable initializers and getters.
+
+Network weights, biases, and scalars are all initialized and retrieved
+with these functions.
+
+NOTE:
+    Both variable inits and gets ASSUME UNDER VARIABLE SCOPE
+    There are scoped wrapper functions for full network param initialization,
+    and getter for layer params
+"""
+
+# SMELL: getters don't have 'num_*' kwargs, but inits do? remove kwarg?
+
+# Scalars
+# =======
+def init_scalar(nscalars=num_scalar, sval=scalar_val_init):
+    """ scalars initialized by const  value """
+    for i in range(nscalars):
+        init = tf.constant([sval])
+        tag  = scalar_tag.format(i)
+        tf.get_variable(tag, dtype=tf.float32, initializer=init)
+
+def get_scalar():
+    t1 = tf.get_variable(scalar_tag.format(0))
+    t2 = tf.get_variable(scalar_tag.format(1))
+    return t1, t2
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+# Biases
+# ======
+def init_bias(kdims, layer_idx, nbiases=num_layer_B, restore=False):
+    """ biases initialized to be near zero """
+    for i in range(nbiases):
+        bname = bias_tag.format(layer_idx, i)
+        args = (bname,)
+        k = kdims[-1]
+        if restore:
+            init = None
+            args += (k,)
+        else:
+            init = tf.ones((k_out,), dtype=tf.float32) * 1e-8
+        tf.get_variable(*args, dtype=tf.float32, initializer=init)
+
+def get_bias(layer_idx):
+    b0 = tf.get_variable(bias_tag.format(layer_idx, 0))
+    # FOR NOW, ASSUME WORKING WITH ONLY 1 BIAS
+    #if num_layer_B > 1:
+    #    biases = [b0]
+    #    for i in range(1, num_layer_B):
+    #        biases.append(tf.get_variable(bias_tag.format(layer_idx, i)))
+    #    return biases
+    return b0
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+# Weights
+# =======
+def init_weight(kdims, layer_idx, nweights=num_layer_W, restore=False):
+    """ weights sampled from glorot normal """
+    for i in range(nweights):
+        wname = weight_tag.format(layer_idx, i)
+        args = (wname, kdims)
+        init = None if restore else tf.glorot_normal_initializer(None)
+        tf.get_variable(*args, dtype=tf.float32, initializer=init)
+
+def get_weight(layer_idx):
+    weights = []
+    for i in range(num_layer_W):
+        weights.append(tf.get_variable(weight_tag.format(layer_idx, i)))
+    return weights
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+# Scoped wrappers
+# ===============
+def initialize_params(channels, vscope=VAR_SCOPE, restore=False, seed=params_seed):
+    kdims = list(zip(channels[:-1], channels[1:]))
+    tf.set_random_seed(seed)
+    with tf.variable_scope(vscope, reuse=tf.AUTO_REUSE):
+        for layer_idx, kdim in enumerate(kdims):
+            #==== layer vars
+            init_weight(kdim, layer_idx, restore=restore)
+            init_bias(  kdim, layer_idx, restore=restore)
+        #==== network out scalar
+        init_scalar()
+
+def get_params(layer_idx, vscope=VAR_SCOPE):
+    with tf.variable_scope(vscope, reuse=True):
+        W = get_weight(layer_idx)
+        B = get_bias(layer_idx)
+        return W, B
+
+#------------------------------------------------------------------------------
+
+# Session initialization
+# ======================
+def initialize_session():
+    sess_kwargs = {}
+    #==== Check for GPU
+    if tf.test.is_gpu_available(cuda_only=True):
+        gpu_frac = 0.85
+        gpu_opts = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
+        sess_kwargs['config'] = tf.ConfigProto(gpu_options=gpu_opts)
+    #==== initialize session
+    sess = tf.InteractiveSession(**sess_kwargs)
+    return sess
+
+def initialize_graph(sess):
+    """ initializes all variables AFTER computational graph
+        has been specified (via endpoints data input and optimized error)
+    """
+    sess.run(tf.global_variables_initializer())
+    print('\n\nAll variables initialized\n')
+
+#██████████████████████████████████████████████████████████████████████████████
+#                                 WHERE I STOPPED                             #
+#██████████████████████████████████████████████████████████████████████████████
+
+#=============================================================================#
+#                                    SAVER                                    #
+#=============================================================================#
+""" utils for saving model parameters and experiment results """
+
+####  WORK-IN-PROGRESS  ####
+# this class has not yet been integrated into utils here !
+
 class ModelSaver:
     #==== directories
     params_dir  = 'Session'
@@ -436,120 +442,233 @@ class ModelSaver:
             print(b)
 
 
-'''
+
+
+
+#-----------------------------------------------------------------------------#
+#                                   DATASET                                   #
+#-----------------------------------------------------------------------------#
+
+"""
+
+# ZA Data Features
+# ================
+For each simulation, the shape of data is 32*32*32*19.
+
+32*32*32 is the number of particles and,
+they are on the uniform 32*32*32 grid.
+
+
+## The meaning of the 19 columns is as follows:
+
+oneSimu[...,  1:4] : ZA displacements (Dx,Dy,Dz)
+oneSimu[...,  4:7] : 2LPT displacements
+oneSimu[..., 7:10] : FastPM displacements
+oneSimu[...,10:13] : ZA velocity
+oneSimu[...,13:16] : 2LPT velocity
+oneSimu[...,16:19] : FastPM velocity
+
+"""
 
 '''
-import tensorflow as tf
-import code
-class Initializer:
-    """Initializes variables and provides their getters
-    """
-    weight_tag = 'W{}_{}'
-    #bias_tag   = 'B_{}'
-    bias_tag   = 'B{}_{}'
-    scalar_tag = 'T_{}'
+class Dataset:
+    seed = 12345  # for consistent splits
     def __init__(self, args):
-        self.seed = args.seed
-        self.restore = args.restore
-        self.channels = args.channels
-        self.var_scope = args.var_scope.format(args.dataset_type)
-        self.scalar_val = args.scalar_val
-        self.num_layer_W = args.num_layer_W
-        self.num_layer_B = args.num_layer_B
+        self.dataset_type = args.dataset_type
+        self.batch_size = args.batch_size
+        self.num_eval_samples = args.num_eval_samples
+        self.simulation_data_path = args.simulation_data_path
+        self.z_idx = args.z_idx[self.dataset_type]
 
-    def initialize_scalars(self):
-        """ scalars initialized by const value """
-        for i in range(2):
-            init = tf.constant([self.scalar_val])
-            tag = self.scalar_tag.format(i)
-            tf.get_variable(tag, dtype=tf.float32, initializer=init)
+        #=== Load data
+        filenames = [self.fname.format(self.cube_steps[z]) for z in self.z_idx]
+        paths = [f'{self.simulation_data_path}/{fname}' for fname in filenames]
+        self.load_simulation_data(paths) # assigns self.X
 
-    #def initialize_bias(self, layer_idx):
-    #    """ biases initialized to be near zero """
-    #    args = (self.bias_tag.format(layer_idx),)
-    #    k_out = self.channels[layer_idx + 1] # only output chans relevant
-    #    if self.restore:
-    #        initializer = None
-    #        args += (k_out,)
-    #    else:
-    #        initializer = tf.ones((k_out,), dtype=tf.float32) * 1e-8
-    #    tf.get_variable(*args, dtype=tf.float32, initializer=initializer)
-
-    def initialize_bias(self, layer_idx):
-        """ biases initialized to be near zero """
-        #args = (self.bias_tag.format(layer_idx),)
-        k_out = self.channels[layer_idx + 1] # only output chans relevant
-        for b_idx in range(self.num_layer_B):
-            name = self.bias_tag.format(layer_idx, b_idx)
-            args = (name,)
-            if self.restore:
-                init = None
-                args +=  (k_out,)
-            else:
-                init = tf.ones((k_out,), dtype=tf.float32) * 1e-8
-            tf.get_variable(*args, dtype=tf.float32, initializer=init)
-
-    def initialize_weight(self, layer_idx):
-        """ weights sampled from glorot normal """
-        kdims = self.channels[layer_idx : layer_idx+2]
-        for w_idx in range(self.num_layer_W):
-            name = self.weight_tag.format(layer_idx, w_idx)
-            args = (name, kdims)
-            init = None if self.restore else tf.glorot_normal_initializer(None)
-            tf.get_variable(*args, dtype=tf.float32, initializer=init)
-
-    def initialize_params(self):
-        tf.set_random_seed(self.seed)
-        with tf.variable_scope(self.var_scope, reuse=tf.AUTO_REUSE):
-            for layer_idx in range(len(self.channels) - 1):
-                #==== Layer vars
-                self.initialize_bias(layer_idx)
-                self.initialize_weight(layer_idx)
-            #==== model vars
-            self.initialize_scalars()
-
-    # - - - - - - - - - - - -
-
-    def get_scalars(self):
-        t1 = tf.get_variable(self.scalar_tag.format(0))
-        t2 = tf.get_variable(self.scalar_tag.format(1))
-        return t1, t2
-
-    def get_layer_vars(self, layer_idx):
-        """ Gets all variables for a layer
-        NOTE: ASSUMES VARIABLE SCOPE! Cannot get vars outside of scope.
+    def split_dataset(self):
+        """ split dataset into training and evaluation sets
+        Both simulation datasets have their sample indices on
+        the 1st axis
         """
-        get_B = lambda i: tf.get_variable(self.bias_tag.format(layer_idx, i))
-        get_W = lambda i: tf.get_variable(self.weight_tag.format(layer_idx, i))
-        #=== layer vars
-        weights = [get_W(i) for i in range(self.num_layer_W)]
-        bias    = [get_B(i) for i in range(self.num_layer_B)]
-        if len(bias) == 1:
-            bias = bias[0]
-        #bias = tf.get_variable(self.bias_tag.format(layer_idx))
-        return weights, bias
+        num_val = self.num_eval_samples
+        np.random.seed(self.seed)
+        ridx = np.random.permutation(self.X.shape[1])
+        self.X_train, self.X_test = np.split(self.X[:, ridx], [-num_val], axis=1)
+        #self.X = None # reduce memory overhead
 
-    def initialize_session(self):
-        sess_kwargs = {}
-        #==== Check for GPU
-        if tf.test.is_gpu_available(cuda_only=True):
-            gpu_frac = 0.85
-            gpu_opts = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
-            sess_kwargs['config'] = tf.ConfigProto(gpu_options=gpu_opts)
-        #==== initialize session
-        self.sess = tf.InteractiveSession(**sess_kwargs)
+    def get_minibatch(self):
+        """ randomly select training minibatch from dataset """
+        batch_size = self.batch_size
+        batch_idx = np.random.choice(self.X_train.shape[1], batch_size)
+        x_batch = np.copy(self.X_train[:, batch_idx])
+        return x_batch
 
-    def initialize_graph(self):
-        """ initializes all variables after computational graph
-            has been specified (via endpoints data input and optimized error)
+    def normalize(self):
+        raise NotImplementedError
+
+    def load_simulation_data(self, paths):
+        for i, p in enumerate(paths):
+            if i == 0:
+                X = np.expand_dims(np.load(p), 0)
+                continue
+            X = np.concatenate([X, np.expand_dims(np.load(p), 0)], axis=0)
+        self.X = X
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+class ZA_Dataset(Dataset):
+    fname = '/ZA/ZA_{}.npy'
+    cube_steps = ZA_STEPS
+    def __init__(self, args):
+        super().__init__(args)
+        self.get_za_fpm_data()
+        #self.normalize()
+        self.split_dataset()
+
+    def get_za_fpm_data(self):
+        """ NO NORMALIZATION """
+        #=== formatting data
+        reshape_dims = (1, 1000, 32**3, 3)
+
+        #=== get ZA cubes
+        ZA_disp = (self.X[...,1:4]).reshape(*reshape_dims)
+        ZA_vel  = self.X[...,10:13].reshape(*reshape_dims)
+        X_ZA = np.concatenate([ZA_disp, ZA_vel], axis=-1)
+
+        #=== get FastPM cubes
+        FPM_disp = (self.X[...,7:10]).reshape(*reshape_dims)
+        FPM_vel  = self.X[...,16:19].reshape(*reshape_dims)
+        X_FPM = np.concatenate([FPM_disp, FPM_vel], axis=-1)
+
+        #=== Concat ZA and FastPM together, like typical redshift format
+        self.X = np.concatenate([X_ZA, X_FPM], axis=0) # (2, 1000, 32**3, 6)
+
+
+    def normalize(self):
+        """ convert to positions and concat respective vels
+        For each simulation, the shape of data is 32*32*32*19.
+
+        32*32*32 is the number of particles and,
+        they are on the uniform 32*32*32 grid.
+
+        ## The meaning of the 19 columns is as follows:
+        oneSimu[...,  1:4] : ZA displacements (Dx,Dy,Dz)
+        oneSimu[...,  4:7] : 2LPT displacements
+        oneSimu[..., 7:10] : FastPM displacements
+        oneSimu[...,10:13] : ZA velocity
+        oneSimu[...,13:16] : 2LPT velocity
+        oneSimu[...,16:19] : FastPM velocity
         """
-        self.sess.run(tf.global_variables_initializer())
-        print('\n\nAll variables initialized\n')
+        #=== formatting data
+        reshape_dims = (1, 1000, 32**3, 3)
+        mrng = range(2,130,4)
+        q = np.einsum('ijkl->kjli',np.array(np.meshgrid(mrng, mrng, mrng)))
+        # q.shape = (32, 32, 32, 3)
 
-    def __call__(self):
-        """ return sess """
-        if not hasattr(self, 'sess'):
-            self.initialize_session()
-        return self.sess
+        #=== get ZA cubes
+        ZA_pos = (self.X[...,1:4] + q).reshape(*reshape_dims)
+        ZA_vel = self.X[...,10:13].reshape(*reshape_dims)
+        X_ZA = np.concatenate([ZA_pos, ZA_vel], axis=-1)
 
+        #=== get FastPM cubes
+        FPM_pos = (self.X[...,7:10] + q).reshape(*reshape_dims)
+        FPM_vel = self.X[...,16:19].reshape(*reshape_dims)
+        X_FPM = np.concatenate([FPM_pos, FPM_vel], axis=-1)
+
+        #=== Concat ZA and FastPM together, like typical redshift format
+        self.X = np.concatenate([X_ZA, X_FPM], axis=0) # (2, 1000, 32**3, 6)
+
+class ZA_Cached_Dataset(Dataset):
+    fname = '/ZA/ZA_{}.npy'
+    fname_idx  = 'symm_idx'
+    fname_feat = 'features'
+    cube_steps = ZA_STEPS
+    def __init__(self, args):
+        super().__init__(args)
+        self.cache_path = self.simulation_data_path + '/cached/X_{}_{}.npy'
+        self.get_za_fpm_data()
+        self.split_dataset()
+
+
+    def split_dataset(self):
+        # This simply splits indices
+        np.random.seed(self.seed) # lol just use permutation, whyu use choice?
+        #indices = np.random.choice(1000, 1000, replace=False)
+        indices = np.random.permutation(np.arange(1000))
+        self.eval_idx  = indices[-self.num_eval_samples:]
+        self.train_idx = indices[:-self.num_eval_samples]
+
+    def shuffle_train_idx(self):
+        np.random.shuffle(self.train_idx)
+
+
+    #def get_cached_data(self, indices):
+    #    get_idx  = lambda i: np.load(self.cache_path.format(self.fname_idx,  i))
+    #    get_feat = lambda i: np.load(self.cache_path.format(self.fname_feat, i))
+    #    symm_idx = [get_idx[i] for i in indices]
+    #    feats    = [get_feat[i][0] for i in indices]
+    #    return feats, symm_idx
+
+    def get_cached_data(self, idx):
+        j = idx + 1 # the filenames are 1-indexed
+        get_idx  = lambda i: np.load(self.cache_path.format(self.fname_idx,  i))
+        get_feat = lambda i: np.load(self.cache_path.format(self.fname_feat, i))
+        #symm_idx = [get_idx[i] for i in indices]
+        #feats    = [get_feat[i][0] for i in indices]
+        feats    = get_feat(j)[0] # (S, 9)
+        symm_idx = list(get_idx(j)[0]) # (6,)
+        return feats, symm_idx
+
+    def get_za_fpm_data(self):
+        """ NO NORMALIZATION """
+        #=== formatting data
+        reshape_dims = (1, 1000, 32**3, 3)
+
+        #=== get ZA cubes
+        ZA_disp = (self.X[...,1:4]).reshape(*reshape_dims)
+        ZA_vel  = self.X[...,10:13].reshape(*reshape_dims)
+        X_ZA = np.concatenate([ZA_disp, ZA_vel], axis=-1)
+
+        #=== get FastPM cubes
+        FPM_disp = (self.X[...,7:10]).reshape(*reshape_dims)
+        FPM_vel  = self.X[...,16:19].reshape(*reshape_dims)
+        X_FPM = np.concatenate([FPM_disp, FPM_vel], axis=-1)
+
+        #=== Concat ZA and FastPM together, like typical redshift format
+        self.X = np.concatenate([X_ZA, X_FPM], axis=0) # (2, 1000, 32**3, 6)
+
+
+    def get_minibatch(self, idx):
+        # Cube data (fpm)
+        x_data = self.X[:,idx:idx+1]
+        # Cached data
+        feats, symm_idx = self.get_cached_data(idx)
+        return x_data, feats, symm_idx
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+class Uni_Dataset(Dataset):
+    fname = '/uniform/X_{:.4f}_.npy'
+    cube_steps  = UNI_REDSHIFTS
+    def __init__(self, args):
+        super().__init__(args)
+        filenames = [self.name_format(self.cube_steps[z]) for z in self.z_idx]
+        paths = [f'{self.simulation_data_path}/{fname}' for fname in filenames]
+        self.load_simulation_data(paths) # assigns self.X
+        self.split_dataset()
+
+    def normalize(self):
+        self.X[...,:3] = self.X[...,:3] / 32.0
+
+#------------------------------------------------------------------------------
+
+def get_dataset(args):
+    dset = args.dataset_type
+    if dset == 'ZA':
+        return ZA_Dataset(args)
+    elif dset == 'ZA_15':
+        return ZA_Cached_Dataset(args)
+    else:
+        return Uni_Dataset(args)
 '''
