@@ -4,6 +4,7 @@ utils provides the following:
 user settings & defaults
 ------------------------
 - data paths
+    * change these to point to your data dirs!
 - model naming
 - default values for initialization, training, model architecture, etc.
 
