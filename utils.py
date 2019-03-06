@@ -17,7 +17,6 @@ import time
 import random
 import argparse
 import datetime
-from collections import NamedTuple
 
 import yaml
 import numpy as np
@@ -70,8 +69,6 @@ def W_yml(fname, obj):
         yaml.dump(obj, file, default_flow_style=False)
 
 
-
-
 #-----------------------------------------------------------------------------#
 #                                   PATHING                                   #
 #-----------------------------------------------------------------------------#
@@ -87,7 +84,9 @@ _project = os.path.abspath(os.path.dirname(__file__)) # '/path/to/nbody_project'
 
 # data dirs
 data_path = _data + '/nbody_simulations'        # location of simulation datasets
-experiments_path = _data + '/Experiments/Nbody' # where model params & test preds saved
+EXPERIMENTS_DIR = _data + '/Experiments/Nbody' # where model params & test preds saved
+PARAMS_DIR  = EXPERIMENTS_DIR + '/{}' + '/Session'
+RESULTS_DIR = EXPERIMENTS_DIR + '/{}' + '/Results'
 
 # Dataset
 # =======
@@ -115,27 +114,11 @@ model_tag  = ''        # default model name
 
 # Model naming
 # ============
-ZA_naming  = AttrDict(model='ZA-FPM_{}', cube='X_{}')
-model_gen_tags = ['arae', 'boot', 'cari', 'drac', 'erid', 'forn', 'gemi',
-                  'hyda', 'indi', 'lyra', 'mensa', 'norma', 'orion', 'pavo',
-                  'reti', 'scut', 'taur', 'ursa', 'virgo']
-
-def name_model(naming, label_idx, model_tag=''):
-    """ format naming style with dataset index {0:'001', '1':'002',...} and tag
-    eg:
-    name_model(ZA_naming, 3, 'testbatch')
-        ---> (model='ZA-FPM_3_testbatch', cube='X_3')
-
-    name_model(ZA_naming, 2) # (random tag)
-        ---> (model='ZA-FPM_2_erid-ursa-hyda', cube='X_2')
-    """
-    if model_tag == '':
-        mtags = random.choices(model_gen_tags, k=3)
-        model_tag = '-'.join(mtags)
-    model_tag = f'{label_idx}_{model_tag}'
-    naming.model = naming.model.format(model_tag)
-    naming.cube  = naming.cube.format(label_idx)
-    print(f"NAMED: model={naming.model}\n       cube={naming.cube}")
+CUBE_NAME = 'X_{}'
+MODEL_NAME_ZA = 'ZA-FPM_{}'
+MODEL_TAGLIST = ['arae', 'boot', 'cari', 'drac', 'erid', 'forn', 'gemi',
+                 'hyda', 'indi', 'lyra', 'mensa', 'norma', 'orion', 'pavo',
+                 'reti', 'scut', 'taur', 'ursa', 'virgo']
 
 
 #-----------------------------------------------------------------------------#
@@ -157,7 +140,7 @@ za_default = za_labels[za_default_idx] # '001'
 #-----------------------------------------------------------------------------#
 # Params
 # ======
-params_seed  = 77743196 # seed for weight inits; may be modified
+PARAMS_SEED  = 77743196 # seed for weight inits; may be modified
 channels = [6, 32, 64, 16, 8, 3]
 #channels = [9, 32, 16, 8, 3] # shallow for corrected shift-inv (mem)
 #channels = [6, 32, 64, 128, 256, 64, 16, 8, 3]  # set can go deeeeeep
@@ -168,9 +151,6 @@ num_layer_W = 4  # num weights per layer in network; 15 for upd. shiftinv, 4 for
 num_layer_B = 1  # 2 for 15op, 1 normally
 num_scalar  = 2
 scalar_val_init = 0.002
-
-
-
 
 
 #-----------------------------------------------------------------------------#
@@ -266,7 +246,7 @@ def get_weight(layer_idx):
 
 # Scoped wrappers
 # ===============
-def initialize_params(channels, vscope=VAR_SCOPE, restore=False, seed=params_seed):
+def initialize_params(channels, vscope=VAR_SCOPE, restore=False, seed=PARAMS_SEED):
     kdims = list(zip(channels[:-1], channels[1:]))
     tf.set_random_seed(seed)
     with tf.variable_scope(vscope, reuse=tf.AUTO_REUSE):
@@ -305,370 +285,96 @@ def initialize_graph(sess):
     sess.run(tf.global_variables_initializer())
     print('\n\nAll variables initialized\n')
 
-#██████████████████████████████████████████████████████████████████████████████
-#                                 WHERE I STOPPED                             #
-#██████████████████████████████████████████████████████████████████████████████
-
 #=============================================================================#
 #                                    SAVER                                    #
 #=============================================================================#
 """ utils for saving model parameters and experiment results """
 
-####  WORK-IN-PROGRESS  ####
-# this class has not yet been integrated into utils here !
+class Saver:
+    """ a class which aggregates all the pathing and naming
 
-class ModelSaver:
-    #==== directories
-    params_dir  = 'Session'
-    results_dir = 'Results'
-    def __init__(self, args):
-        self.experiments_dir = args.experiments_dir
-        self.num_iters = args.num_iters
-        self.model_tag = args.model_tag
-        self.dataset_type = args.dataset_type
-        self.z_idx = args.z_idx[self.dataset_type]
-        self.always_write_meta = args.always_write_meta
+    NB: This class does *not* hold any data. It is a wrapper for
+        the many pathing and file saving utils.
 
-        # Model params
-        # ============
-        self.restore = args.restore
+    Attrs
+    -----
+    name : name of the model, eg 'ZA-FPM_2_erid_ursa_hyda'
+    cube : filename for the result cubes
+    results : where model results are saved; '.../{name}/Results'
+    params  : where model params are saved; '.../{name}/Session'
 
-        # Format naming and paths
-        # =======================
-        self.assign_names()
-        self.assign_pathing()
+    restore : bool
+        whether to restore trained params
 
+    saver : tf.train.Saver
+        tf saver for saving and loading model data
 
-    def init_sess_saver(self):
+    """
+    def __init__(self, basename, label_idx, cube_name=CUBE_NAME,
+                 model_tag=model_tag, restore=False):
+        if model_tag == '': # If no tag specified, generate random one
+            mtags = random.choices(MODEL_TAGLIST, k=3)
+            model_tag = '-'.join(mtags)
+
+        #=== format names
+        model_tag = f'{label_idx}_{model_tag}' # eg '2_foo'
+        self.name = basename.format(model_tag)  # 'ZA-FPM_{}'.format('2_foo')
+        self.cube = cube_name.format(label_idx) # 'X_{}'.format(2)
+
+        #=== format paths with model name
+        self.results = RESULTS_DIR.format(model_tag) # '{datadir}/ZA-FPM_2_foo/Results'
+        self.params  = PARAMS_DIR.format(model_tag)  # '{datadir}/ZA-FPM_2_foo/Session'
+        print(f"MODEL NAMED: {self.name}")
+
+        #=== session attrs
+        self.restore = restore
+
+    def init_sess_saver(self,):
         """ tensorflow.train.Saver must be initialized AFTER the computational graph
             has been initialized via tensorflow.global_variables_initializer
         """
-        self.saver = tensorflow.train.Saver()
+        self.saver = tf.train.Saver()
         if self.restore:
             self.restore_model_parameters()
 
-    def assign_names(self):
-        self.start_time = time.time()
-        #==== key into naming and format args
-        dset = self.dataset_type
-        zidx = self.z_idx
-        naming = naming_map[dset]
+    def restore_model_parameters(self):
+        raise NotImplementedError('TODO')
 
-        #==== format names
-        mname = naming['model'].format(*zidx)
-        self.cube_name = naming['cube'].format(*zidx)
-        if self.model_tag != '':
-            mname = f'{mname}_{self.model_tag}'
-        self.model_name = mname
+    def save_model(self, cur_iter, sess, write_meta=False):
+        self.saver.save(sess, self.params + '/chkpt',
+            global_step=cur_iter+1, write_meta_graph=write_meta)
 
+    def save_error(self, error, training=False):
+        suffix = 'training' if training else 'test'
+        dst = self.results + f'/error_{suffix}'
+        np.save(dst, error)
+        print(f"\n\tSaved model {suffix} error: \n\t\t{dst}\n")
 
-    def assign_pathing(self):
-        """ Pathing to directories for this model """
-        # Base path
-        # ---------
-        epath = f"{self.experiments_dir}/{self.model_name}"
-        self.experiments_path = epath
-
-        # Directory pathing
-        # -----------------
-        self.params_path  = f'{epath}/{self.params_dir}'
-        self.results_path = f'{epath}/{self.results_dir}'
-
-        # Create model dirs
-        # -----------------
-        for p in [self.params_path, self.results_path]:
-            if not os.path.exists(p): os.makedirs(p)
-
-
-    def restore_model_parameters(self, sess):
-        chkpt_state = tensorflow.train.get_checkpoint_state(self.params_path)
-        self.saver.restore(sess, chkpt_state.model_checkpoint_path)
-        print(f'Restored trained model parameters from {self.params_path}')
-
-
-    def save_model_error(self, error, training=False):
-        name = 'training' if training else 'validation'
-        path = f'{self.results_path}/error_{name}'
-        numpy.save(path, error)
-        print(f'Saved error: {path}')
-
-
-    def save_model_cube(self, cube, ground_truth=False):
-        #name = self.cube_name_truth if ground_truth else self.cube_name_pred
+    def save_cube(self, cube, ground_truth=False):
         suffix = 'truth' if ground_truth else 'prediction'
-        path = f'{self.results_path}/{self.cube_name}_{suffix}'
-        numpy.save(path, cube)
-        print(f'Saved cube: {path}')
+        dst = f'{self.results}/{self.cube}_{suffix}'
+        np.save(dst, cube)
+        print(f"\n\tSaved {suffix} cube: \n\t\t{dst}\n")
 
+    @staticmethod
+    def print_checkpoint(step, err):
+        print(f"Checkpoint {step + 1 :>5} : {err:.6f}")
 
-    def save_model_params(self, cur_iter, sess):
-        write_meta = self.always_write_meta
-        if cur_iter == self.num_iters: # then training complete
-            write_meta = True
-            tsec = time.time() - self.start_time
-            tmin  = tsec / 60.0
-            thour = tmin / 60.0
-            tS, tM, tH = f'{tsec: .3f}${tmin: .3f}${thour: .3f}'.split('$')
-            print(f'Training complete!\n est. elapsed time: {tH}h, or {tM}m')
-        step = cur_iter + 1
-        self.saver.save(sess, self.params_path + '/chkpt',
-                        global_step=step, write_meta_graph=write_meta)
-
-
-    def print_checkpoint(self, step, err):
-        print(f'Checkpoint {step + 1 :>5} :  {err:.6f}')
-
-
-    def print_evaluation_results(self, err):
-        #zx, zy = self.z_idx
-        if 'ZA' in self.dataset_type:
-            zx, zy = 'ZA', 'FastPM'
-        else:
-            zx, zy = self.z_idx
-
+    @staticmethod
+    def print_evaluation_results(err):
         #==== Statistics
         err_avg = numpy.mean(err)
         err_std = numpy.std(err)
         err_median = numpy.median(err)
-
         #==== Text
-        title = f'\n# Evaluation Results:\n# {"="*78}'
-        body = [f'# Location error : {zx:>3} ---> {zy:<3}',
-                f'  median : {err_median : .5f}',
-                f'    mean : {err_avg : .5f} +- {err_std : .4f} stdv',]
-        #==== Print results
-        print(title)
-        for b in body:
-            print(b)
+        tbody = [f'\n# Validation Error\n# {"="*17}',
+                 f'  median : {err_median : .5f}',
+                 f'    mean : {err_avg : .5f} +- {err_std : .4f} stdv',]
+        eval_results = '\n'.join(tbody)
+        print(eval_results)
 
 
 
-
-
-#-----------------------------------------------------------------------------#
+#=============================================================================#
 #                                   DATASET                                   #
-#-----------------------------------------------------------------------------#
-
-"""
-
-# ZA Data Features
-# ================
-For each simulation, the shape of data is 32*32*32*19.
-
-32*32*32 is the number of particles and,
-they are on the uniform 32*32*32 grid.
-
-
-## The meaning of the 19 columns is as follows:
-
-oneSimu[...,  1:4] : ZA displacements (Dx,Dy,Dz)
-oneSimu[...,  4:7] : 2LPT displacements
-oneSimu[..., 7:10] : FastPM displacements
-oneSimu[...,10:13] : ZA velocity
-oneSimu[...,13:16] : 2LPT velocity
-oneSimu[...,16:19] : FastPM velocity
-
-"""
-
-'''
-class Dataset:
-    seed = 12345  # for consistent splits
-    def __init__(self, args):
-        self.dataset_type = args.dataset_type
-        self.batch_size = args.batch_size
-        self.num_eval_samples = args.num_eval_samples
-        self.simulation_data_path = args.simulation_data_path
-        self.z_idx = args.z_idx[self.dataset_type]
-
-        #=== Load data
-        filenames = [self.fname.format(self.cube_steps[z]) for z in self.z_idx]
-        paths = [f'{self.simulation_data_path}/{fname}' for fname in filenames]
-        self.load_simulation_data(paths) # assigns self.X
-
-    def split_dataset(self):
-        """ split dataset into training and evaluation sets
-        Both simulation datasets have their sample indices on
-        the 1st axis
-        """
-        num_val = self.num_eval_samples
-        np.random.seed(self.seed)
-        ridx = np.random.permutation(self.X.shape[1])
-        self.X_train, self.X_test = np.split(self.X[:, ridx], [-num_val], axis=1)
-        #self.X = None # reduce memory overhead
-
-    def get_minibatch(self):
-        """ randomly select training minibatch from dataset """
-        batch_size = self.batch_size
-        batch_idx = np.random.choice(self.X_train.shape[1], batch_size)
-        x_batch = np.copy(self.X_train[:, batch_idx])
-        return x_batch
-
-    def normalize(self):
-        raise NotImplementedError
-
-    def load_simulation_data(self, paths):
-        for i, p in enumerate(paths):
-            if i == 0:
-                X = np.expand_dims(np.load(p), 0)
-                continue
-            X = np.concatenate([X, np.expand_dims(np.load(p), 0)], axis=0)
-        self.X = X
-
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
-class ZA_Dataset(Dataset):
-    fname = '/ZA/ZA_{}.npy'
-    cube_steps = ZA_STEPS
-    def __init__(self, args):
-        super().__init__(args)
-        self.get_za_fpm_data()
-        #self.normalize()
-        self.split_dataset()
-
-    def get_za_fpm_data(self):
-        """ NO NORMALIZATION """
-        #=== formatting data
-        reshape_dims = (1, 1000, 32**3, 3)
-
-        #=== get ZA cubes
-        ZA_disp = (self.X[...,1:4]).reshape(*reshape_dims)
-        ZA_vel  = self.X[...,10:13].reshape(*reshape_dims)
-        X_ZA = np.concatenate([ZA_disp, ZA_vel], axis=-1)
-
-        #=== get FastPM cubes
-        FPM_disp = (self.X[...,7:10]).reshape(*reshape_dims)
-        FPM_vel  = self.X[...,16:19].reshape(*reshape_dims)
-        X_FPM = np.concatenate([FPM_disp, FPM_vel], axis=-1)
-
-        #=== Concat ZA and FastPM together, like typical redshift format
-        self.X = np.concatenate([X_ZA, X_FPM], axis=0) # (2, 1000, 32**3, 6)
-
-
-    def normalize(self):
-        """ convert to positions and concat respective vels
-        For each simulation, the shape of data is 32*32*32*19.
-
-        32*32*32 is the number of particles and,
-        they are on the uniform 32*32*32 grid.
-
-        ## The meaning of the 19 columns is as follows:
-        oneSimu[...,  1:4] : ZA displacements (Dx,Dy,Dz)
-        oneSimu[...,  4:7] : 2LPT displacements
-        oneSimu[..., 7:10] : FastPM displacements
-        oneSimu[...,10:13] : ZA velocity
-        oneSimu[...,13:16] : 2LPT velocity
-        oneSimu[...,16:19] : FastPM velocity
-        """
-        #=== formatting data
-        reshape_dims = (1, 1000, 32**3, 3)
-        mrng = range(2,130,4)
-        q = np.einsum('ijkl->kjli',np.array(np.meshgrid(mrng, mrng, mrng)))
-        # q.shape = (32, 32, 32, 3)
-
-        #=== get ZA cubes
-        ZA_pos = (self.X[...,1:4] + q).reshape(*reshape_dims)
-        ZA_vel = self.X[...,10:13].reshape(*reshape_dims)
-        X_ZA = np.concatenate([ZA_pos, ZA_vel], axis=-1)
-
-        #=== get FastPM cubes
-        FPM_pos = (self.X[...,7:10] + q).reshape(*reshape_dims)
-        FPM_vel = self.X[...,16:19].reshape(*reshape_dims)
-        X_FPM = np.concatenate([FPM_pos, FPM_vel], axis=-1)
-
-        #=== Concat ZA and FastPM together, like typical redshift format
-        self.X = np.concatenate([X_ZA, X_FPM], axis=0) # (2, 1000, 32**3, 6)
-
-class ZA_Cached_Dataset(Dataset):
-    fname = '/ZA/ZA_{}.npy'
-    fname_idx  = 'symm_idx'
-    fname_feat = 'features'
-    cube_steps = ZA_STEPS
-    def __init__(self, args):
-        super().__init__(args)
-        self.cache_path = self.simulation_data_path + '/cached/X_{}_{}.npy'
-        self.get_za_fpm_data()
-        self.split_dataset()
-
-
-    def split_dataset(self):
-        # This simply splits indices
-        np.random.seed(self.seed) # lol just use permutation, whyu use choice?
-        #indices = np.random.choice(1000, 1000, replace=False)
-        indices = np.random.permutation(np.arange(1000))
-        self.eval_idx  = indices[-self.num_eval_samples:]
-        self.train_idx = indices[:-self.num_eval_samples]
-
-    def shuffle_train_idx(self):
-        np.random.shuffle(self.train_idx)
-
-
-    #def get_cached_data(self, indices):
-    #    get_idx  = lambda i: np.load(self.cache_path.format(self.fname_idx,  i))
-    #    get_feat = lambda i: np.load(self.cache_path.format(self.fname_feat, i))
-    #    symm_idx = [get_idx[i] for i in indices]
-    #    feats    = [get_feat[i][0] for i in indices]
-    #    return feats, symm_idx
-
-    def get_cached_data(self, idx):
-        j = idx + 1 # the filenames are 1-indexed
-        get_idx  = lambda i: np.load(self.cache_path.format(self.fname_idx,  i))
-        get_feat = lambda i: np.load(self.cache_path.format(self.fname_feat, i))
-        #symm_idx = [get_idx[i] for i in indices]
-        #feats    = [get_feat[i][0] for i in indices]
-        feats    = get_feat(j)[0] # (S, 9)
-        symm_idx = list(get_idx(j)[0]) # (6,)
-        return feats, symm_idx
-
-    def get_za_fpm_data(self):
-        """ NO NORMALIZATION """
-        #=== formatting data
-        reshape_dims = (1, 1000, 32**3, 3)
-
-        #=== get ZA cubes
-        ZA_disp = (self.X[...,1:4]).reshape(*reshape_dims)
-        ZA_vel  = self.X[...,10:13].reshape(*reshape_dims)
-        X_ZA = np.concatenate([ZA_disp, ZA_vel], axis=-1)
-
-        #=== get FastPM cubes
-        FPM_disp = (self.X[...,7:10]).reshape(*reshape_dims)
-        FPM_vel  = self.X[...,16:19].reshape(*reshape_dims)
-        X_FPM = np.concatenate([FPM_disp, FPM_vel], axis=-1)
-
-        #=== Concat ZA and FastPM together, like typical redshift format
-        self.X = np.concatenate([X_ZA, X_FPM], axis=0) # (2, 1000, 32**3, 6)
-
-
-    def get_minibatch(self, idx):
-        # Cube data (fpm)
-        x_data = self.X[:,idx:idx+1]
-        # Cached data
-        feats, symm_idx = self.get_cached_data(idx)
-        return x_data, feats, symm_idx
-
-
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
-class Uni_Dataset(Dataset):
-    fname = '/uniform/X_{:.4f}_.npy'
-    cube_steps  = UNI_REDSHIFTS
-    def __init__(self, args):
-        super().__init__(args)
-        filenames = [self.name_format(self.cube_steps[z]) for z in self.z_idx]
-        paths = [f'{self.simulation_data_path}/{fname}' for fname in filenames]
-        self.load_simulation_data(paths) # assigns self.X
-        self.split_dataset()
-
-    def normalize(self):
-        self.X[...,:3] = self.X[...,:3] / 32.0
-
-#------------------------------------------------------------------------------
-
-def get_dataset(args):
-    dset = args.dataset_type
-    if dset == 'ZA':
-        return ZA_Dataset(args)
-    elif dset == 'ZA_15':
-        return ZA_Cached_Dataset(args)
-    else:
-        return Uni_Dataset(args)
-'''
+#=============================================================================#
