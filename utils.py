@@ -17,31 +17,15 @@ import time
 import random
 import argparse
 import datetime
+from functools import wraps
 
 import yaml
 import numpy as np
 import tensorflow as tf
 
-"""
-CURRENT GOALS
--------------
-Turn utils into a monolithic script that does nearly everything
-besides tf.nn and pyplot stuff
 
-Splitting the utils stuff into a module ended up creating more overhead,
-and the yaml config script is too static for actual usage
-
-So:
-* Consolidate data_loader, initializer, parser, saver into this script
-* consolidate config.yml here (ez)
-* make all new, better argparse.parser
-* clean up train scripts
-* clean up nn
-
-"""
 # Handy Helpers
 # =============
-
 def get_date():
     # OUT: (YYYY, M, D), eg (2019, 2, 27)
     date  = datetime.datetime.now().date()
@@ -56,6 +40,13 @@ class AttrDict(dict):
     __getattr__ = dict.__getitem__
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
+
+def TODO(f):
+    """ Decorator that flags a function and insures wrapee will not run """
+    @wraps(f)
+    def not_finished():
+        raise NotImplementedError('\n    {} IS INCOMPLETE'.format(f.__name__))
+    return not_finished
 
 
 # yaml RW funcs
@@ -83,7 +74,7 @@ _data = _home + '/.Data'   # '/home/$USER/.Data'
 _project = os.path.abspath(os.path.dirname(__file__)) # '/path/to/nbody_project'
 
 # data dirs
-data_path = _data + '/nbody_simulations'        # location of simulation datasets
+data_path = _data + '/nbody_simulations'       # location of simulation datasets
 EXPERIMENTS_DIR = _data + '/Experiments/Nbody' # where model params & test preds saved
 PARAMS_DIR  = EXPERIMENTS_DIR + '/{}' + '/Session'
 RESULTS_DIR = EXPERIMENTS_DIR + '/{}' + '/Results'
@@ -91,12 +82,12 @@ RESULTS_DIR = EXPERIMENTS_DIR + '/{}' + '/Results'
 # Dataset
 # =======
 ZA_path = data_path + '/ZA'
-ZA_samples = ZA_datasets = sorted(glob.glob(ZA_path + '/*.npy'))
+ZA_PATHS = ZA_datasets = sorted(glob.glob(ZA_path + '/*.npy'))
 
 # dataset labels
 # --------------
 # example za dpath: '/home/evan/.Data/nbody_simulations/ZA/007.npy'
-za_labels = ['001', '002', '003', '004', '005',
+ZA_LABELS = ['001', '002', '003', '004', '005',
              '006', '007', '008', '009', '010']
 
 #-----------------------------------------------------------------------------#
@@ -127,12 +118,12 @@ MODEL_TAGLIST = ['arae', 'boot', 'cari', 'drac', 'erid', 'forn', 'gemi',
 # Data vars
 # =========
 num_samples   = 1000
-num_particles = 32**3
-dataset_seed  = 12345
+NUM_PARTICLES = 32**3
+DATASET_SEED  = 12345
 
 # default dataset selection
-za_default_idx = 0
-za_default = za_labels[za_default_idx] # '001'
+ZA_DEFAULT_IDX = 0
+za_default = ZA_LABELS[ZA_DEFAULT_IDX] # '001'
 
 
 #-----------------------------------------------------------------------------#
@@ -161,9 +152,10 @@ scalar_val_init = 0.002
 # ================
 batch_size = 4
 num_iters  = 20000
-num_eval_samples  = 200
+num_test_samples  = 200
 always_write_meta = False
 restore = False # use pretrained model params
+
 
 
 #=============================================================================#
@@ -285,6 +277,10 @@ def initialize_graph(sess):
     sess.run(tf.global_variables_initializer())
     print('\n\nAll variables initialized\n')
 
+
+
+
+
 #=============================================================================#
 #                                    SAVER                                    #
 #=============================================================================#
@@ -378,3 +374,88 @@ class Saver:
 #=============================================================================#
 #                                   DATASET                                   #
 #=============================================================================#
+"""
+# ZA Data Features
+# ================
+For each simulation, the shape of data is 32*32*32*19.
+
+32*32*32 is the number of particles and,
+they are on the uniform 32*32*32 grid.
+
+## The meaning of the 19 columns is as follows:
+X[...,  1:4] : ZA displacements (Dx,Dy,Dz)
+X[...,  4:7] : 2LPT displacements
+X[..., 7:10] : FastPM displacements
+X[...,10:13] : ZA velocity
+X[...,13:16] : 2LPT velocity
+X[...,16:19] : FastPM velocity
+"""
+
+class Dataset:
+    """ Manages dataset and loading, processing, batching """
+
+    seed = DATASET_SEED # 12345
+    data_paths = ZA_PATHS # ['/path/to/data/ZA_001.npy', '/path/to/data/ZA_002.npy',...]
+    num_particles = NUM_PARTICLES # 32**3
+    num_samples   = num_samples   # 1000
+    def __init__(self, data_idx=ZA_DEFAULT_IDX, num_test=num_test_samples):
+        self.data_idx = data_idx
+        self.num_test = num_test
+        X = self.load_data(data_idx)
+        self.X_train, self.X_test = self.split_dataset(X, num_test)
+
+    def get_minibatch(self, batch_size=batch_size):
+        """ randomly select training minibatch from dataset """
+        N = self.X_train.shape[1]
+        batch_idx = np.random.choice(N, batch_size, replace=False)
+        x = np.copy(self.X_train[:, batch_idx])
+        return x
+
+    #@TODO
+    #def test_epoch(self):
+    #    """ make separate 'batching' func for testing? """
+    #    pass
+
+    @classmethod
+    def split_dataset(cls, X, num_test_samples):
+        """ Splits dataset into train and test sets
+
+        Params
+        ------
+        X : ndarray.float32; (2, 1000, 32**3, 6)
+            ZA and FPM data
+
+        num_test_samples : int
+            number of samples in the test set
+        """
+        np.random.seed(cls.seed)
+        rnd_idx = np.random.permutation(X.shape[1])
+        return np.split(X[:, rnd_idx], [-num_test_samples], axis=1)
+
+    @classmethod
+    def load_data(cls, data_idx):
+        """ load dataset given data index which corresponds to the filename """
+        dpath = cls.data_paths[data_idx]
+        data = np.load(dpath) # (1000, 32, 32, 32, 19)
+
+        #=== Process data
+        reshape_dims = (1, cls.num_samples, cls.num_particles, 3)
+        # data is reshaped like:
+        #     (1000, 32, 32, 32, 3) ---> (1, 1000, 32**3, 3)
+
+        # displacements
+        za_displacement  = data[...,1: 4].reshape(*reshape_dims)
+        frm_displacement = data[...,7:10].reshape(*reshape_dims)
+
+        # velocities
+        za_velocity  = data[...,10:13].reshape(*reshape_dims)
+        fpm_velocity = data[...,16:19].reshape(*reshape_dims)
+
+        # 'cat disp and vel; (1, 1000, 32**3, 6)
+        x_za  = np.concatenate([za_displacement,   za_velocity], axis=-1)
+        x_fpm = np.concatenate([fpm_displacement, fpm_velocity], axis=-1)
+
+        # 'cat za & fpm; (2, 1000, 32**3, 6)
+        X = np.concatenate([x_za, x_fpm], axis=0)
+        return X
+
