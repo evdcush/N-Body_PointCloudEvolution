@@ -1,12 +1,30 @@
 """
-utils module handles everything related to data/datasets, RW stuff, and
-session initialization
+utils provides the following:
 
-Datasets
-========
-You must adjust the data path variables to point to the location of your
-data
-I keep the datasets in a directory in my home folder, '.Data/nbody_simulations'
+user settings & defaults
+------------------------
+- data paths
+- model naming
+- default values for initialization, training, model architecture, etc.
+
+Parser
+======
+The argument parser (CLI) for training a model.
+Common argument adjustments are '--num_iters' '--batch_size' and '--name'
+
+Session
+=======
+Important functions for initialization and retrieval of tensorflow
+variables.
+
+Saver
+=====
+A class that wraps all the naming and saving for experiments and models.
+
+Dataset
+=======
+Manages the loading and processing of datasets from disk, and also
+provides the batching interface to the dataset during training.
 
 """
 import os
@@ -132,10 +150,10 @@ za_default = ZA_LABELS[ZA_DEFAULT_IDX] # '001'
 # Params
 # ======
 PARAMS_SEED  = 77743196 # seed for weight inits; may be modified
-channels = [6, 32, 64, 16, 8, 3]
-#channels = [9, 32, 16, 8, 3] # shallow for corrected shift-inv (mem)
+CHANNELS = [6, 32, 64, 16, 8, 3]
+#channels = [9, 32, 16, 8, 3] # shallow for corrected shift-inv (mem constrained)
 #channels = [6, 32, 64, 128, 256, 64, 16, 8, 3]  # set can go deeeeeep
-num_neighbors = 14
+NUM_NEIGHBORS = 14
 
 # layer vars
 num_layer_W = 4  # num weights per layer in network; 15 for upd. shiftinv, 4 for old
@@ -159,8 +177,86 @@ restore = False # use pretrained model params
 
 
 #=============================================================================#
-#                                   SESSION                                   #
+#                                                                             #
+#   88888888ba                                                                #
+#   88      "8b                                                               #
+#   88      ,8P                                                               #
+#   88aaaaaa8P'  ,adPPYYba,  8b,dPPYba,  ,adPPYba,   ,adPPYba,  8b,dPPYba,    #
+#   88""""""'    ""     `Y8  88P'   "Y8  I8[    ""  a8P_____88  88P'   "Y8    #
+#   88           ,adPPPPP88  88           `"Y8ba,   8PP"""""""  88            #
+#   88           88,    ,88  88          aa    ]8I  "8b,   ,aa  88            #
+#   88           `"8bbdP"Y8  88          `"YbbdP"'   `"Ybbd8"'  88            #
+#                                                                             #
 #=============================================================================#
+doc = """\
+CLI for model training. Make sure to adjust paths in utils.py to your setup!
+
+To use this parser in your training script:
+from utils import PARSER
+args = PARSER.parse_args()  # your config variables are under the args namespace
+channels = args.channels
+num_iters = args.num_iters
+"""
+
+epi = """\
+Some example usage:
+
+# defaults
+python train.py
+
+# train for 10000 iterations, batch size 8, using param seed 98765
+python train.py -i 10000 -b 8 -s 98765
+
+# train with different channels c, named n, on different dataset d
+python train.py -c 6 64 64 128 32 3 -n 'denser_layer_test' -d 4
+"""
+
+# Parser init and args
+PARSER = argparse.ArgumentParser(description=doc, epilog=epi)
+adg = Parser.add_argument
+adg('-c', '--channels', type=int, nargs='+', default=CHANNELS,
+    help='List of ints that define layer sizes')
+
+adg('-i', '--num_iters', type=int, default=num_iters, metavar='N',
+    help='Number of training iterations')
+
+adg('-b', '--batch_size', type=int, default=batch_size, metavar='B',
+    help='Number of samples per training batch')
+
+adg('-d', '--data_idx', type=int, default=0, choices=set(range(len(ZA_LABELS))),
+    help='Index, int in [0, 10), corresponding to a dataset')
+
+adg('-k', '--kneighbors', type=int, default=NUM_NEIGHBORS, metavar='K',
+    help='Number of neighbors in graph model (KNN)')
+
+adg('-n', '--name', type=str, default='',
+    help='Name for model; randomly generated if not specified')
+
+adg('-s', '--seed', type=int, default=PARAMS_SEED, metavar='X',
+    help='Random seed for parameter initialization')
+
+adg('-t', '--num_test', type=int, default=num_test_samples,
+    help='Number of samples in test set')
+
+
+# NOT YET SUPPORTED
+#adg('-r', '--restore', action='store_true',
+#    help='Restore pretrained model parameters')
+
+
+
+#===============================================================================#
+#                                                                               #
+#  ad88888ba                                     88                             #
+# d8"     "8b                                    ""                             #
+# Y8,                                                                           #
+# `Y8aaaaa,     ,adPPYba,  ,adPPYba,  ,adPPYba,  88   ,adPPYba,   8b,dPPYba,    #
+#   `"""""8b,  a8P_____88  I8[    ""  I8[    ""  88  a8"     "8a  88P'   `"8a   #
+#         `8b  8PP"""""""   `"Y8ba,    `"Y8ba,   88  8b       d8  88       88   #
+# Y8a     a8P  "8b,   ,aa  aa    ]8I  aa    ]8I  88  "8a,   ,a8"  88       88   #
+#  "Y88888P"    `"Ybbd8"'  `"YbbdP"'  `"YbbdP"'  88   `"YbbdP"'   88       88   #
+#                                                                               #
+#===============================================================================#
 """
 This section has the variable initializers and getters.
 
@@ -280,9 +376,17 @@ def initialize_graph(sess):
 
 
 
-
 #=============================================================================#
-#                                    SAVER                                    #
+#                                                                             #
+#         ad88888ba                                                           #
+#        d8"     "8b                                                          #
+#        Y8,                                                                  #
+#        `Y8aaaaa,    ,adPPYYba,  8b       d8   ,adPPYba,  8b,dPPYba,         #
+#          `"""""8b,  ""     `Y8  `8b     d8'  a8P_____88  88P'   "Y8         #
+#                `8b  ,adPPPPP88   `8b   d8'   8PP"""""""  88                 #
+#        Y8a     a8P  88,    ,88    `8b,d8'    "8b,   ,aa  88                 #
+#         "Y88888P"   `"8bbdP"Y8      "8"       `"Ybbd8"'  88                 #
+#                                                                             #
 #=============================================================================#
 """ utils for saving model parameters and experiment results """
 
@@ -363,17 +467,25 @@ class Saver:
         err_std = numpy.std(err)
         err_median = numpy.median(err)
         #==== Text
-        tbody = [f'\n# Validation Error\n# {"="*17}',
+        tbody = [f'\n# Test Error\n# {"="*17}',
                  f'  median : {err_median : .5f}',
                  f'    mean : {err_avg : .5f} +- {err_std : .4f} stdv',]
         eval_results = '\n'.join(tbody)
         print(eval_results)
 
 
-
-#=============================================================================#
-#                                   DATASET                                   #
-#=============================================================================#
+#==================================================================================#
+#                                                                                  #
+# 88888888ba,                                                                      #
+# 88      `"8b                 ,d                                          ,d      #
+# 88        `8b                88                                          88      #
+# 88         88  ,adPPYYba,  MM88MMM  ,adPPYYba,  ,adPPYba,   ,adPPYba,  MM88MMM   #
+# 88         88  ""     `Y8    88     ""     `Y8  I8[    ""  a8P_____88    88      #
+# 88         8P  ,adPPPPP88    88     ,adPPPPP88   `"Y8ba,   8PP"""""""    88      #
+# 88      .a8P   88,    ,88    88,    88,    ,88  aa    ]8I  "8b,   ,aa    88,     #
+# 88888888Y"'    `"8bbdP"Y8    "Y888  `"8bbdP"Y8  `"YbbdP"'   `"Ybbd8"'    "Y888   #
+#                                                                                  #
+#==================================================================================#
 """
 # ZA Data Features
 # ================
@@ -437,6 +549,7 @@ class Dataset:
         """ load dataset given data index which corresponds to the filename """
         dpath = cls.data_paths[data_idx]
         data = np.load(dpath) # (1000, 32, 32, 32, 19)
+        print("\nLoaded data from:\n\t" + dpath + '\n')
 
         #=== Process data
         reshape_dims = (1, cls.num_samples, cls.num_particles, 3)
@@ -458,4 +571,3 @@ class Dataset:
         # 'cat za & fpm; (2, 1000, 32**3, 6)
         X = np.concatenate([x_za, x_fpm], axis=0)
         return X
-
