@@ -1,136 +1,87 @@
+import sys
 import code
+import time
 import numpy as np
 import tensorflow as tf
-from utils import data_loader, initializer, saver, parser
+
 import nn
-#=============================================================================#
-#                        _____    ___    ____     ___                         #
-#                       |_   _|  / _ \  |  _ \   / _ \                        #
-#                         | |   | | | | | | | | | | | |                       #
-#                         | |   | |_| | | |_| | | |_| |                       #
-#                         |_|    \___/  |____/   \___/                        #
-#                                                                             #
-"""===========================================================================#
-
-# 1
-- TRY CURRENT GRAPH-BASED UPDATES TO ZA MODEL
-
-# 2
-IF THINGS WORK: update to correct shift_inv ops (15 ops)
-
-# 3 encoding
-graph model with different encoding
-- instead of placeing za on diagonal
-  ---> define a set of neighbors as the union of grid pos and final ZA pos
-       (where ZA_final_pos is just za_init + za_disp)
-- each edge will contain the diff between corresponding grid pos,
-  and the diff between corresponding final pos
-
-# 4 SET:
-(this task should be easy), thus we shouldnt need all this expensive machinery
-with graph
-- Instead have a set of N particles (vanilla), so just nodes
-  - node features:
-    - ZA_disp
-    - positions of init_particles
-- drastically reduced ops
-  - just vanilla: affine transformation with pooling op (mean, max, etc..)
+import utils
+from utils import PARSER, Dataset, Saver
 
 
-#==========================================================================="""
+#-----------------------------------------------------------------------------#
+#                           Training & Model Config                           #
+#-----------------------------------------------------------------------------#
 
+# Parse args
+args = PARSER.parse_args()
 
-
-
-#==============================================================================
-# Data & Session config
-#==============================================================================
-
-# Arg parser
-# ========================================
-arg_parser = parser.Parser()
-args = arg_parser.parse()
-
-saver = saver.ModelSaver(args)
-sess_mgr = initializer.Initializer(args)
-dataset  = data_loader.get_dataset(args)
-#dataset.normalize()
-
-
-# Dimensionality
-# ========================================
-N = 32**3
-M = args.neighbors
-batch_size = args.batch_size
-
-# Training variables
-# ========================================
-learning_rate = 0.01
-checkpoint = 250 #args.checkpoint
+# Training
+# ========
 num_iters  = args.num_iters
-num_val_batches = args.num_eval_samples // batch_size
+batch_size = args.batch_size
+data_idx   = args.data_idx
+num_test   = args.num_test
+model_name = args.name
+saver = Saver(data_idx, model_tag=model_name)
+
+# train loop
+checkpoint = 250
 save_checkpoint = lambda step: (step+1) % checkpoint == 0
 
+# Data
+# ====
+num_test_batches = num_test // batch_size
+num_particles = 32**3
+dataset = Dataset(data_idx, num_test)
 
-# Network config
-# ========================================
-dims = [batch_size, N, M]
-#loss_func = nn.pbc_loss
-loss_func = nn.loss_ZA if args.dataset_type == 'ZA' else nn.pbc_loss
+# Model
+# =====
+lr = args.learnrate
+channels = args.channels
+num_layers = len(channels) - 1
+params_seed = args.seed
+var_scope = utils.VAR_SCOPE
+get_layer_vars = lambda i: utils.get_params(i, vscope=var_scope)
+activation = tf.nn.relu
+model_vars = utils.ModelVars(num_layers, get_layer_vars, activation)
+#kneighbors = args.kneighbors  # focusing on set
 
-# Initialize model parameters
-# ========================================
-sess_mgr.initialize_params()
+
+#-----------------------------------------------------------------------------#
+#                               Session Config                                #
+#-----------------------------------------------------------------------------#
+
+# Initialize params
+utils.initialize_params(channels, vscope=var_scope, seed=params_seed)
 
 # Inputs
-# ========================================
-# Placeholders
-#in_shape = (None, N, 6)
-in_shape = (None, N, 3)
-X_input = tf.placeholder(tf.float32, shape=in_shape, name='X_input')
-#X_truth = tf.placeholder(tf.float32, shape=in_shape)
-true_error  = tf.placeholder(tf.float32, shape=in_shape, name='true_error')
-coo_feats   = tf.placeholder(tf.int32,  shape=(3, batch_size*N*M), name='coo_feats')
-za_displacement = tf.placeholder(tf.float32, shape=in_shape, name='za_displacement')
-#za_diagonal = tf.placeholder(tf.int32,  shape=(batch_size*N*M))
-za_diagonal = tf.placeholder(tf.int32,  shape=(batch_size*N), name='za_diagonal')
-
+# ======
+in_shape = (None, num_particles, 3)
+X_input = tf.placeholder(tf.float32, shape=in_shape)
+true_error = tf.placeholder(tf.float32, shape=in_shape)
 
 # Outputs
-# ========================================
-#X_pred = nn.model_func_shift_inv(X_input, coo_feats, sess_mgr, dims)
-model_args = (X_input, coo_feats, za_displacement, za_diagonal, sess_mgr, dims)
-pred_error = nn.model_func_shift_inv_za(*model_args)
+# =======
+pred_error = nn.model_func_set(X_input, model_vars)
 
 # Optimizer and loss
-# ========================================
-optimizer = tf.train.AdamOptimizer(learning_rate)
-#error = loss_func(X_pred, X_truth, scale_error=False)
+# ==================
+optimizer = tf.train.AdamOptimizer(lr)
 error = nn.loss_ZA(pred_error, true_error)
 train = optimizer.minimize(error)
 
-
 # Initialize session and variables
-# ========================================
-# Session
-sess = sess_mgr()
-
-# Variables
-sess_mgr.initialize_graph()
+sess = utils.initialize_session()
+utils.initialize_graph(sess)
 saver.init_sess_saver()
 
-
-#test_pred_shape = (200, N,) + (args.channels[-1],) # (200, N, 3)
-test_pred_shape = (2, 200, N,) + (args.channels[-1],) # (200, N, 3)
-test_predictions = np.zeros(test_pred_shape).astype(np.float32)
-test_loss = np.zeros((50,)).astype(np.float32)
-
-
-#=============================================================================
-# TRAINING
-#=============================================================================
-num_chkpts = num_iters // checkpoint
-training_error = np.zeros((2, num_chkpts, batch_size, N, 3)).astype(np.float32)
+#=============================================================================#
+#                                    Training                                 #
+#=============================================================================#
+#num_chkpts = num_iters // checkpoint
+#training_error = np.zeros((2, num_chkpts, batch_size, N, 3)).astype(np.float32)
+tstart = time.time()
 
 print(f'\nTraining:\n{"="*78}')
 for step in range(num_iters):
@@ -147,49 +98,43 @@ for step in range(num_iters):
     x_fpm_disp = x_fpm[...,:3]
 
     # get initial positions
-    init_pos = nn.get_init_pos(x_za_disp)
+    #init_pos = nn.get_init_pos(x_za_disp)
 
     # calculate true_error
     true_err = x_fpm_disp - x_za_disp
 
-    # Graph data
-    # ----------------
-    csr_list  = nn.get_kneighbor_list(init_pos, M)
-    #coo_batch = nn.to_coo_batch(csr_list)
-    coo_batch, diag = nn.to_coo_batch_ZA_diag(csr_list)
-
     # Feed data and Train
     fdict = {
-        X_input : init_pos,
-        #X_truth : x_truth,
+        X_input : x_za_disp,
         true_error : true_err,
-        za_displacement : x_za_disp,
-        za_diagonal : diag,
-        coo_feats : coo_batch,
     }
     train.run(feed_dict=fdict)
 
     # Save
     if save_checkpoint(step):
         err, pred_err = sess.run([error, pred_error], feed_dict=fdict)
-        saver.save_model_params(step, sess)
+        saver.save_model(step, sess)
         saver.print_checkpoint(step, err)
-        idx = step // checkpoint
-        training_error[0, idx] = true_err
-        training_error[1, idx] = pred_err
 
+tfin = time.time()
+est_time = (tfin - tstart) / 60  # minutes
+print(f"Training finished!\n\tElapsed time: {est_time}")
 # Save trained variables and session
-saver.save_model_params(num_iters, sess)
-saver.save_model_error(training_error, training=True)
+saver.save_model(num_iters, sess, write_meta=True)
 
 
+# Test results
+# ============
+test_error = np.zeros((num_test_batches,), dtype=np.float32)
+test_predictions = np.zeros((2, num_test, num_particles, channels[-1]), dtype=np.float32)
 
-#=============================================================================
-# EVALUATION
-#=============================================================================
+#=============================================================================#
+#                                 Evaluation                                  #
+#=============================================================================#
+
 print(f'\nEvaluation:\n{"="*78}')
 X_test = dataset.X_test
-for j in range(num_val_batches): # ---> range(50) for b = 4
+for j in range(num_test_batches): # ---> range(50) for b = 4
     # Validation cubes
     # ----------------
     p, q = batch_size*j, batch_size*(j+1)
@@ -203,26 +148,13 @@ for j in range(num_val_batches): # ---> range(50) for b = 4
     x_za_disp  = x_za[...,:3]
     x_fpm_disp = x_fpm[...,:3]
 
-    # get initial displacement
-    init_pos = nn.get_init_pos(x_za_disp)
-
     # calculate true_error
     true_err = x_fpm_disp - x_za_disp
 
-    # Graph data
-    # ----------------
-    csr_list  = nn.get_kneighbor_list(init_pos, M)
-    #coo_batch = nn.to_coo_batch(csr_list)
-    coo_batch, diag = nn.to_coo_batch_ZA_diag(csr_list)
-
     # Feed data and Train
     fdict = {
-        X_input : init_pos,
-        #X_truth : x_truth,
+        X_input : x_za_disp,
         true_error : true_err,
-        za_displacement : x_za_disp,
-        za_diagonal : diag,
-        coo_feats : coo_batch,
     }
 
     # Validation output
@@ -230,13 +162,15 @@ for j in range(num_val_batches): # ---> range(50) for b = 4
     p_error, v_error = sess.run([pred_error, error], feed_dict=fdict)
     test_predictions[0, p:q] = true_err
     test_predictions[1, p:q] = p_error
-    test_loss[j] = v_error
+    test_error[j] = v_error
     print(f'val_err, {j} : {v_error}')
 
 
 
 # END Validation
 # ========================================
-saver.save_model_cube(test_predictions)
-saver.save_model_error(test_loss)
-saver.print_evaluation_results(test_loss)
+saver.save_cube(test_predictions)
+saver.save_error(test_error)
+saver.print_evaluation_results(test_error)
+
+

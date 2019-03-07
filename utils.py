@@ -37,6 +37,7 @@ import random
 import argparse
 import datetime
 from functools import wraps
+from collections import namedtuple
 
 import yaml
 import numpy as np
@@ -101,11 +102,18 @@ RESULTS_DIR = EXPERIMENTS_DIR + '/{}' + '/Results'
 # Dataset
 # =======
 ZA_path = data_path + '/ZA'
-ZA_PATHS = ZA_datasets = sorted(glob.glob(ZA_path + '/*.npy'))
+ZA_PATHS = ZA_datasets = sorted(glob.glob(ZA_path + '/*.npy')) # 10 total ZA datasets
+# example paths:
+#  ['/home/evan/.Data/nbody_simulations/ZA/ZA_001.npy',
+#   '/home/evan/.Data/nbody_simulations/ZA/ZA_002.npy',
+#    ...,
+#   '/home/evan/.Data/nbody_simulations/ZA/ZA_010.npy']
+
 
 # dataset labels
 # --------------
-# example za dpath: '/home/evan/.Data/nbody_simulations/ZA/007.npy'
+#ZA_LABELS = [f'{i:0>2}' for i in range(1, len(ZA_PATHS) + 1)]
+#ZA_LABELS = [p.split('_')[-1][:3] for p in ZA_paths]
 ZA_LABELS = ['001', '002', '003', '004', '005',
              '006', '007', '008', '009', '010']
 
@@ -151,12 +159,22 @@ za_default = ZA_LABELS[ZA_DEFAULT_IDX] # '001'
 # Params
 # ======
 PARAMS_SEED  = 77743196 # seed for weight inits; may be modified
-CHANNELS = [6, 32, 64, 16, 8, 3]
+#CHANNELS = [6, 32, 64, 16, 8, 3]
 #channels = [9, 32, 16, 8, 3] # shallow for corrected shift-inv (mem constrained)
-#channels = [6, 32, 64, 128, 256, 64, 16, 8, 3]  # set can go deeeeeep
+CHANNELS = [6, 32, 64, 128, 256, 64, 16, 8, 3]  # set can go deeeeeep
 NUM_NEIGHBORS = 14
 
+# initializers
+# ============
+# These are the distributions from which WEIGHTS sampled (biases just near 0)
+uniform = tf.random_uniform_initializer
+normal  = tf.random_normal_initializer
+glorot_uniform = tf.glorot_uniform_initializer # trying this out
+glorot_normal  = tf.glorot_normal_initializer  # historic default
+
 # layer vars
+# ==========
+INIT_DISTRIBUTION = glorot_uniform
 num_layer_W = 4  # num weights per layer in network; 15 for upd. shiftinv, 4 for old
 num_layer_B = 1  # 2 for 15op, 1 normally
 num_scalar  = 2
@@ -175,6 +193,12 @@ num_test_samples  = 200
 always_write_meta = False
 restore = False # use pretrained model params
 
+# training-model interface
+# ========================
+ModelVars = namedtuple('ModelVars', ['num_layers',     # len(channels) - 1
+                                    'get_layer_vars', # will wrap `get_params`
+                                    'activation']      # tf.nn activation func
+                                    )
 
 
 #=============================================================================#
@@ -194,7 +218,7 @@ CLI for model training. Make sure to adjust paths in utils.py to your setup!
 
 To use this parser in your training script:
 from utils import PARSER
-args = PARSER.parse_args()  # your config variables are under the args namespace
+args = PARSER.parse_args()  # your config variables are in this namespace
 channels = args.channels
 num_iters = args.num_iters
 """
@@ -208,13 +232,13 @@ python train.py
 # train for 10000 iterations, batch size 8, using param seed 98765
 python train.py -i 10000 -b 8 -s 98765
 
-# train with different channels c, named n, on different dataset d
+# train with different channels c, name n, on different dataset d
 python train.py -c 6 64 64 128 32 3 -n 'denser_layer_test' -d 4
 """
 
 # Parser init and args
 PARSER = argparse.ArgumentParser(description=doc, epilog=epi)
-adg = Parser.add_argument
+adg = PARSER.add_argument
 adg('-c', '--channels', type=int, nargs='+', default=CHANNELS,
     help='List of ints that define layer sizes')
 
@@ -225,16 +249,19 @@ adg('-b', '--batch_size', type=int, default=batch_size, metavar='B',
     help='Number of samples per training batch')
 
 adg('-d', '--data_idx', type=int, default=0, choices=set(range(len(ZA_LABELS))),
-    help='Index, int in [0, 10), corresponding to a dataset')
+    help='Index, int in [0, 10), corresponding to a dataset; eg 0: ')
 
 adg('-k', '--kneighbors', type=int, default=NUM_NEIGHBORS, metavar='K',
-    help='Number of neighbors in graph model (KNN)')
+    help='Number of neighbors in graph model (KNN); if K == -1, then set model')
 
 adg('-n', '--name', type=str, default='',
     help='Name for model; randomly generated if not specified')
 
 adg('-s', '--seed', type=int, default=PARAMS_SEED, metavar='X',
     help='Random seed for parameter initialization')
+
+adg('-l', '--learnrate', type=float, default=0.01,
+    help='Learning rate for optimizer')
 
 adg('-t', '--num_test', type=int, default=num_test_samples,
     help='Number of samples in test set')
@@ -300,12 +327,12 @@ def init_bias(kdims, layer_idx, nbiases=num_layer_B, restore=False):
             init = None
             args += (k,)
         else:
-            init = tf.ones((k_out,), dtype=tf.float32) * 1e-8
+            init = tf.ones((k,), dtype=tf.float32) * 1e-8
         tf.get_variable(*args, dtype=tf.float32, initializer=init)
 
 def get_bias(layer_idx):
     b0 = tf.get_variable(bias_tag.format(layer_idx, 0))
-    # FOR NOW, ASSUME WORKING WITH ONLY 1 BIAS
+    # FOR NOW, ASSUME WORKING WITH ONLY 1 BIAS (fully expressed graph uses 2)
     #if num_layer_B > 1:
     #    biases = [b0]
     #    for i in range(1, num_layer_B):
@@ -317,7 +344,8 @@ def get_bias(layer_idx):
 
 # Weights
 # =======
-def init_weight(kdims, layer_idx, nweights=num_layer_W, restore=False):
+def init_weight(kdims, layer_idx, nweights=num_layer_W,
+                initializer=INIT_DISTRIBUTION, restore=False):
     """ weights sampled from glorot normal """
     for i in range(nweights):
         wname = weight_tag.format(layer_idx, i)
@@ -344,7 +372,7 @@ def initialize_params(channels, vscope=VAR_SCOPE, restore=False, seed=PARAMS_SEE
             init_weight(kdim, layer_idx, restore=restore)
             init_bias(  kdim, layer_idx, restore=restore)
         #==== network out scalar
-        init_scalar()
+        #init_scalar()
 
 def get_params(layer_idx, vscope=VAR_SCOPE):
     with tf.variable_scope(vscope, reuse=True):
@@ -391,6 +419,10 @@ def initialize_graph(sess):
 #=============================================================================#
 """ utils for saving model parameters and experiment results """
 
+def mkpath(p):
+    if not os.path.exists(p):
+        os.makedirs(p)
+
 class Saver:
     """ a class which aggregates all the pathing and naming
 
@@ -411,7 +443,7 @@ class Saver:
         tf saver for saving and loading model data
 
     """
-    def __init__(self, basename, label_idx, cube_name=CUBE_NAME,
+    def __init__(self, label_idx, basename=MODEL_NAME_ZA, cube_name=CUBE_NAME,
                  model_tag=model_tag, restore=False):
         if model_tag == '': # If no tag specified, generate random one
             mtags = random.choices(MODEL_TAGLIST, k=3)
@@ -419,13 +451,17 @@ class Saver:
 
         #=== format names
         model_tag = f'{label_idx}_{model_tag}' # eg '2_foo'
-        self.name = basename.format(model_tag)  # 'ZA-FPM_{}'.format('2_foo')
+        model_name = basename.format(model_tag)  # 'ZA-FPM_{}'.format('2_foo')
+        self.name = model_name
         self.cube = cube_name.format(label_idx) # 'X_{}'.format(2)
 
         #=== format paths with model name
-        self.results = RESULTS_DIR.format(model_tag) # '{datadir}/ZA-FPM_2_foo/Results'
-        self.params  = PARAMS_DIR.format(model_tag)  # '{datadir}/ZA-FPM_2_foo/Session'
+        self.results = RESULTS_DIR.format(model_name) # '{datadir}/ZA-FPM_2_foo/Results'
+        self.params  = PARAMS_DIR.format(model_name)  # '{datadir}/ZA-FPM_2_foo/Session'
+        mkpath(self.results)
+        mkpath(self.params)
         print(f"MODEL NAMED: {self.name}")
+
 
         #=== session attrs
         self.restore = restore
@@ -464,9 +500,9 @@ class Saver:
     @staticmethod
     def print_evaluation_results(err):
         #==== Statistics
-        err_avg = numpy.mean(err)
-        err_std = numpy.std(err)
-        err_median = numpy.median(err)
+        err_avg = np.mean(err)
+        err_std = np.std(err)
+        err_median = np.median(err)
         #==== Text
         tbody = [f'\n# Test Error\n# {"="*17}',
                  f'  median : {err_median : .5f}',
@@ -559,7 +595,7 @@ class Dataset:
 
         # displacements
         za_displacement  = data[...,1: 4].reshape(*reshape_dims)
-        frm_displacement = data[...,7:10].reshape(*reshape_dims)
+        fpm_displacement = data[...,7:10].reshape(*reshape_dims)
 
         # velocities
         za_velocity  = data[...,10:13].reshape(*reshape_dims)
