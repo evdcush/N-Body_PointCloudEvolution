@@ -58,7 +58,7 @@ utils.initialize_params(channels, vscope=var_scope, seed=params_seed)
 # Inputs
 # ======
 in_shape = (None, num_particles, 3)
-X_input = tf.placeholder(tf.float32, shape=in_shape)
+X_input = tf.placeholder(tf.float32, shape=in_shape[:-1] + (6,))
 true_error = tf.placeholder(tf.float32, shape=in_shape)
 
 # Outputs
@@ -90,23 +90,26 @@ for step in range(num_iters):
     _x_batch = dataset.get_minibatch() # (2, 4, N, 6)
 
     # split data
-    x_za  = _x_batch[0] # (b, N, 6)
-    x_fpm = _x_batch[1] # (b, N, 6)
+    #x_za  = _x_batch[0] # (b, N, 6)
+    #x_fpm = _x_batch[1] # (b, N, 6)
+    x_za = _x_batch[...,:6]
+    x_fpm = _x_batch[...,6:]
 
     # displacements
-    x_za_disp  = x_za[...,:3]
-    x_fpm_disp = x_fpm[...,:3]
+    #x_za_disp  = x_za[...,:3]
+    #x_fpm_disp = x_fpm[...,:3]
 
     # get initial positions
     #init_pos = nn.get_init_pos(x_za_disp)
 
     # calculate true_error
-    true_err = x_fpm_disp - x_za_disp
+    #true_err = x_fpm_disp - x_za_disp
 
     # Feed data and Train
+    #code.interact(local=dict(globals(), **locals()))
     fdict = {
-        X_input : x_za_disp,
-        true_error : true_err,
+        X_input : x_za,
+        true_error : x_fpm, #true_err,
     }
     train.run(feed_dict=fdict)
 
@@ -118,7 +121,7 @@ for step in range(num_iters):
 
 tfin = time.time()
 est_time = (tfin - tstart) / 60  # minutes
-print(f"Training finished!\n\tElapsed time: {est_time}")
+print(f"Training finished!\n\tElapsed time: {est_time:.2f}m")
 # Save trained variables and session
 saver.save_model(num_iters, sess, write_meta=True)
 
@@ -138,29 +141,34 @@ for j in range(num_test_batches): # ---> range(50) for b = 4
     # Validation cubes
     # ----------------
     p, q = batch_size*j, batch_size*(j+1)
-    _x_batch = X_test[:, p:q]
+    #_x_batch = X_test[:, p:q]
+    _x_batch = X_test[p:q]
 
     # split data
-    x_za  = _x_batch[0] # (b, N, 6)
-    x_fpm = _x_batch[1] # (b, N, 6)
+    #x_za  = _x_batch[0] # (b, N, 6)
+    #x_fpm = _x_batch[1] # (b, N, 6)
+    x_za = _x_batch[...,:6]
+    x_fpm = _x_batch[...,6:]
+
 
     # displacements
-    x_za_disp  = x_za[...,:3]
-    x_fpm_disp = x_fpm[...,:3]
+    #x_za_disp  = x_za[...,:3]
+    #x_fpm_disp = x_fpm[...,:3]
 
     # calculate true_error
-    true_err = x_fpm_disp - x_za_disp
+    #true_err = x_fpm_disp - x_za_disp
 
     # Feed data and Train
     fdict = {
-        X_input : x_za_disp,
-        true_error : true_err,
+        X_input : x_za,
+        true_error : x_fpm, #true_err,
     }
 
     # Validation output
     # ----------------
     p_error, v_error = sess.run([pred_error, error], feed_dict=fdict)
-    test_predictions[0, p:q] = true_err
+    #test_predictions[0, p:q] = true_err
+    test_predictions[0, p:q] = x_fpm
     test_predictions[1, p:q] = p_error
     test_error[j] = v_error
     print(f'val_err, {j} : {v_error}')

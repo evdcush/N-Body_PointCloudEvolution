@@ -67,7 +67,7 @@ def network_func_set(X_in, model_vars):
     return H
 
 
-def model_func_set(za_in, model_vars):
+def model_func_set(X_in, model_vars):
     """ Model functions are the interface to network functions
     The network function is purely the neural network forward ops,
     while the model function manages any pre/post processing
@@ -90,9 +90,8 @@ def model_func_set(za_in, model_vars):
     #    X_in = get_init_pos_tf(za_disp)
     #    pred_error = network_func_set(X_in, num_layers, activation, model_vars)
     #    return pred_error
-
-    init_pos = get_init_pos(za_in)
-    X_in = tf.concat([init_pos, za_in], axis=-1)
+    #init_pos = get_init_pos(za_in)
+    #X_in = tf.concat([init_pos, za_in], axis=-1)
 
     X_out = network_func_set(X_in, model_vars)
     return X_out
@@ -199,7 +198,7 @@ def get_init_pos_tf(disp):
 
 
 
-
+# pm = pmesh.pm.ParticleMesh(BoxSize=128, Nmesh=[32,32,32])  # slower than numpy
 
 # https://arxiv.org/abs/1506.02025 # spatial trans
 # https://arxiv.org/abs/1706.03762 # attn all u need (nlp)

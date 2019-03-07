@@ -161,7 +161,8 @@ za_default = ZA_LABELS[ZA_DEFAULT_IDX] # '001'
 PARAMS_SEED  = 77743196 # seed for weight inits; may be modified
 #CHANNELS = [6, 32, 64, 16, 8, 3]
 #channels = [9, 32, 16, 8, 3] # shallow for corrected shift-inv (mem constrained)
-CHANNELS = [6, 32, 64, 128, 256, 64, 16, 8, 3]  # set can go deeeeeep
+#CHANNELS = [6, 32, 64, 128, 256, 64, 16, 8, 3]  # set can go deeeeeep
+CHANNELS = [6, 64, 128, 128, 256, 64, 128, 16, 3]  # set can go deeeeeep
 NUM_NEIGHBORS = 14
 
 # initializers
@@ -174,10 +175,10 @@ glorot_normal  = tf.glorot_normal_initializer  # historic default
 
 # layer vars
 # ==========
-INIT_DISTRIBUTION = glorot_uniform
+INIT_DISTRIBUTION = glorot_normal #glorot_uniform
 num_layer_W = 4  # num weights per layer in network; 15 for upd. shiftinv, 4 for old
 num_layer_B = 1  # 2 for 15op, 1 normally
-num_scalar  = 2
+num_scalar  = 1
 scalar_val_init = 0.002
 
 
@@ -213,17 +214,17 @@ ModelVars = namedtuple('ModelVars', ['num_layers',     # len(channels) - 1
 #   88           `"8bbdP"Y8  88          `"YbbdP"'   `"Ybbd8"'  88            #
 #                                                                             #
 #=============================================================================#
-doc = """\
+doc = '''\
 CLI for model training. Make sure to adjust paths in utils.py to your setup!
 
-To use this parser in your training script:
+# To use this parser in your training script:
 from utils import PARSER
 args = PARSER.parse_args()  # your config variables are in this namespace
 channels = args.channels
 num_iters = args.num_iters
-"""
+'''
 
-epi = """\
+epi = '''\
 Some example usage:
 
 # defaults
@@ -234,12 +235,14 @@ python train.py -i 10000 -b 8 -s 98765
 
 # train with different channels c, name n, on different dataset d
 python train.py -c 6 64 64 128 32 3 -n 'denser_layer_test' -d 4
-"""
+
+'''
 
 # Parser init and args
-PARSER = argparse.ArgumentParser(description=doc, epilog=epi)
+PARSER = argparse.ArgumentParser(description=doc, epilog=epi,
+                                 formatter_class=argparse.RawTextHelpFormatter)
 adg = PARSER.add_argument
-adg('-c', '--channels', type=int, nargs='+', default=CHANNELS,
+adg('-c', '--channels', type=int, nargs='+', default=CHANNELS, metavar='C',
     help='List of ints that define layer sizes')
 
 adg('-i', '--num_iters', type=int, default=num_iters, metavar='N',
@@ -248,22 +251,23 @@ adg('-i', '--num_iters', type=int, default=num_iters, metavar='N',
 adg('-b', '--batch_size', type=int, default=batch_size, metavar='B',
     help='Number of samples per training batch')
 
-adg('-d', '--data_idx', type=int, default=0, choices=set(range(len(ZA_LABELS))),
+adg('-d', '--data_idx', type=int, default=0,
+    choices=set(range(len(ZA_LABELS))), metavar='i',
     help='Index, int in [0, 10), corresponding to a dataset; eg 0: ')
 
 adg('-k', '--kneighbors', type=int, default=NUM_NEIGHBORS, metavar='K',
     help='Number of neighbors in graph model (KNN); if K == -1, then set model')
 
-adg('-n', '--name', type=str, default='',
+adg('-n', '--name', type=str, default='', metavar='name',
     help='Name for model; randomly generated if not specified')
 
 adg('-s', '--seed', type=int, default=PARAMS_SEED, metavar='X',
     help='Random seed for parameter initialization')
 
-adg('-l', '--learnrate', type=float, default=0.01,
+adg('-l', '--learnrate', type=float, default=0.01, metavar='lr',
     help='Learning rate for optimizer')
 
-adg('-t', '--num_test', type=int, default=num_test_samples,
+adg('-t', '--num_test', type=int, default=num_test_samples, metavar='M',
     help='Number of samples in test set')
 
 
@@ -310,8 +314,8 @@ def init_scalar(nscalars=num_scalar, sval=scalar_val_init):
 
 def get_scalar():
     t1 = tf.get_variable(scalar_tag.format(0))
-    t2 = tf.get_variable(scalar_tag.format(1))
-    return t1, t2
+    #t2 = tf.get_variable(scalar_tag.format(1))
+    return t1#, t2
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -542,7 +546,6 @@ X[...,16:19] : FastPM velocity
 
 class Dataset:
     """ Manages dataset and loading, processing, batching """
-
     seed = DATASET_SEED # 12345
     data_paths = ZA_PATHS # ['/path/to/data/ZA_001.npy', '/path/to/data/ZA_002.npy',...]
     num_particles = NUM_PARTICLES # 32**3
@@ -551,14 +554,17 @@ class Dataset:
         self.data_idx = data_idx
         self.num_test = num_test
         X = self.load_data(data_idx)
-        self.X_train, self.X_test = self.split_dataset(X, num_test)
+        self.X_train, self.X_val, self.X_test = self.split_dataset(X, num_test)
 
     def get_minibatch(self, batch_size=batch_size):
         """ randomly select training minibatch from dataset """
-        N = self.X_train.shape[1]
+        #N = self.X_train.shape[1]
+        N = self.X_train.shape[0]
         batch_idx = np.random.choice(N, batch_size, replace=False)
-        x = np.copy(self.X_train[:, batch_idx])
+        #x = np.copy(self.X_train[:, batch_idx])
+        x = np.copy(self.X_train[batch_idx])
         return x
+
 
     #@TODO
     #def test_epoch(self):
@@ -566,20 +572,23 @@ class Dataset:
     #    pass
 
     @classmethod
-    def split_dataset(cls, X, num_test_samples):
-        """ Splits dataset into train and test sets
+    def split_dataset(cls, X, num_test):
+        """ Splits dataset into train, validation, and test sets
 
         Params
         ------
-        X : ndarray.float32; (2, 1000, 32**3, 6)
+        X : ndarray.float32; (2, 1000, 32**3, D)
             ZA and FPM data
 
-        num_test_samples : int
+        num_test : int
             number of samples in the test set
         """
         np.random.seed(cls.seed)
-        rnd_idx = np.random.permutation(X.shape[1])
-        return np.split(X[:, rnd_idx], [-num_test_samples], axis=1)
+        #rnd_idx = np.random.permutation(X.shape[1])
+        rnd_idx = np.random.permutation(X.shape[0])
+        split_idx = [-num_test - 100, -num_test] # could just go from front..
+        #return np.split(X[:, rnd_idx], split_idx, axis=1)
+        return np.split(X[rnd_idx], split_idx, axis=0)
 
     @classmethod
     def load_data(cls, data_idx):
@@ -589,22 +598,33 @@ class Dataset:
         print("\nLoaded data from:\n\t" + dpath + '\n')
 
         #=== Process data
-        reshape_dims = (1, cls.num_samples, cls.num_particles, 3)
+        reshape_dims = (cls.num_samples, cls.num_particles, 3)
         # data is reshaped like:
         #     (1000, 32, 32, 32, 3) ---> (1, 1000, 32**3, 3)
 
         # displacements
-        za_displacement  = data[...,1: 4].reshape(*reshape_dims)
-        fpm_displacement = data[...,7:10].reshape(*reshape_dims)
+        za  = data[...,1: 4].reshape(*reshape_dims)
+        fpm = data[...,7:10].reshape(*reshape_dims)
+        fpm = fpm - za # NOTE: THIS IS DIFF FROM PREVIOUS WAY (true_error)
 
-        # velocities
-        za_velocity  = data[...,10:13].reshape(*reshape_dims)
-        fpm_velocity = data[...,16:19].reshape(*reshape_dims)
+        # grid pos
+        mg = range(2, 130, 4)
+        q = np.einsum('ijkl->kjli', np.array(np.meshgrid(mg, mg, mg)))
+        q = np.broadcast_to(q.reshape(1, -1, 3), za.shape)#.reshape(*za.shape) # broadcast
 
-        # 'cat disp and vel; (1, 1000, 32**3, 6)
-        x_za  = np.concatenate([za_displacement,   za_velocity], axis=-1)
-        x_fpm = np.concatenate([fpm_displacement, fpm_velocity], axis=-1)
+        za = np.concatenate([q-64, za], axis=-1) # (1000, N, 6)
 
-        # 'cat za & fpm; (2, 1000, 32**3, 6)
-        X = np.concatenate([x_za, x_fpm], axis=0)
+        # 'cat cubes
+        #X = np.concatenate([za, fpm], axis=-1)
+        X = np.concatenate([za, fpm], axis=-1)
+        #code.interact(local=dict(globals(), **locals()))
         return X
+
+
+def get_init_pos(za_disp):
+    b, N, k = za_disp.shape
+    mg = range(2, 130, 4)
+    q = np.einsum('ijkl->kjli', np.array(np.meshgrid(mg, mg, mg)))
+    qr = q.reshape(-1, 3)
+    init_pos = za_disp + qr
+    return init_pos
