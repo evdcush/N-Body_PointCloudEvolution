@@ -1,8 +1,11 @@
 import os
 import code
-import utils
+import argparse
+
 import numpy as np
 import tensorflow as tf
+
+import utils
 
 ####  data  ####
 didx = 0
@@ -12,8 +15,9 @@ dataset = utils.Dataset(didx, num_test)
 
 ####  vars  ####
 lr = 0.01
-channels = [6, 64, 128, 256, 32, 3]
-#channels = [6, 64, 128, 256, 8, 3]
+#channels = [6, 64, 128, 256, 32, 3]
+#channels = [6, 256, 512, 512, 256, 3]
+channels = [6, 512, 512, 3]
 kdims = list(zip(channels[:-1], channels[1:]))
 rdims = [(6, k) for _, k in kdims]
 num_layers = len(kdims)
@@ -28,7 +32,6 @@ def loss(yhat, y):
     err_diff = tf.squared_difference(yhat, y) # (b, N, 3)
     error = tf.reduce_mean(tf.reduce_sum(err_diff, axis=-1))
     return error
-
 
 ####  init  ####
 def glorot_normal(kdims, scale=1.0):
@@ -85,10 +88,12 @@ def set_layer(h_in, idx):
 # Placeholders
 X_in = tf.placeholder(tf.float32, shape=(None, N, 6))
 Y = tf.placeholder(tf.float32, shape=(None, N, 3))
+
+####  NETWORK  ####
+"""
 A = tf.nn.relu
 C = tf.nn.tanh
 
-####  NETWORK  ####
 H0 = tf.layers.batch_normalization(A(set_layer(X_in, 0)))
 R0 = C(res_layer(0))
 
@@ -101,11 +106,29 @@ R2 = C(res_layer(2))
 H3 = tf.layers.batch_normalization(A(set_layer(H2 + R2, 3)))
 R3 = C(res_layer(3))
 
-H4 = set_layer(H3 + R3, 4)  # output
+Y_hat = set_layer(H3 + R3, 4)  # output
+"""
+
+def net_fwd(x_in):
+    #=== misc func
+    norm = tf.layers.batch_normalization
+
+    #=== Activations
+    act_set = tf.nn.relu
+    act_res = tf.nn.tanh
+
+    #=== net vars
+    H = norm(act_set(set_layer(x_in, 0)))
+    R = act_res(res_layer(0))
+    for i in range(1, num_layers - 1):
+        H = norm(act_set(set_layer(H + R, i)))
+        R = act_res(res_layer(i))
+    return set_layer(H + R, num_layers - 1)
 
 ####  MODEL OPT  ####
+Y_hat = net_fwd(X_in)
 opt = tf.train.AdamOptimizer(lr)
-error = loss(H4, Y)
+error = loss(Y_hat, Y)
 train = opt.minimize(error)
 
 ### Session setup ###
@@ -157,7 +180,7 @@ J = 100
 chk = lambda i: (i+1) % J == 0
 num_chks = num_iters // J
 
-def train_model(num_iters, peval=True):
+def train_model(num_iters, batch_size=batch_size, peval=True):
     train_hist = np.zeros((num_chks,), dtype=np.float32)
     for step in range(num_iters):
         _x_batch = dataset.get_minibatch(batch_size)
@@ -198,9 +221,8 @@ def test():
         fdict = {X_in : x_za, Y : x_fpm}
         #train.run(feed_dict=fdict)
 
-        err, pred = sess.run([error, H4], feed_dict=fdict)
+        err, pred = sess.run([error, Y_hat], feed_dict=fdict)
         test_hist[j] = err
-        #code.interact(local=dict(globals(), **locals()))
         test_data[0,p:q] = x_fpm
         test_data[1,p:q] = pred
         #print(f"Test batch {j+1 : >3} : {err:.6f}")
@@ -222,14 +244,23 @@ def savestuff(name, err, data):
     np.save(f'{spath}/test_error', err)
     print('saved to ' + spath)
 
+cli = argparse.ArgumentParser()
+cli.add_argument('-i', '--num_iters', type=int, default=num_iters)
+cli.add_argument('-b', '--batch_size', type=int, default=batch_size)
+cli.add_argument('-n', '--name', type=str, default='TEST')
 
+def main():
+    args = cli.parse_args()
+    n_iters = args.num_iters
+    bsize = args.batch_size
+    sname = args.name
+    train_hist = train_model(n_iters, bsize, False)
+    test_hist, test_data  = test()
+    #sname = 'resnet_bnorm_relu_r0_raw_100k'
+    savestuff(sname, test_hist, test_data)
 
 if __name__ == '__main__':
-    train_hist = train_model(num_iters, False)
-    test_hist, test_data  = test()
-    #sname = sys.argv[1]
-    sname = 'resnet_bnorm_relu_r0_raw_100k'
-    savestuff(sname, test_hist, test_data)
+    main()
 
 
 """
